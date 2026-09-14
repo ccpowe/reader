@@ -1,0 +1,18 @@
+packages:
+  - .
+
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
+
+minimumReleaseAgeExclude:
+  - '@expo/cli@57.0.22'
+  - expo-modules-core@57.0.16
+  - expo-modules-jsi@57.0.8
+  - expo@57.0.20
+  - expo-build-properties@57.0.17
+  - expo-image-picker@57.0.16
+  - expo-secure-store@57.0.4
+
+patchedDependencies:
+  react-native-webview@13.16.1: patches/react-native-webview+13.16.1.patch

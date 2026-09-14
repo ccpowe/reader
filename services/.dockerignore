@@ -1,0 +1,11 @@
+# Local credentials and runtime state must never enter the image build context.
+.env
+scweet/cookies.json
+scweet/*.db
+scweet/*.db-*
+scweet/outputs/
+scweet/.venv/
+scweet/.git/
+scweet/.pytest_cache/
+scweet/__pycache__/
+scweet/**/*.pyc

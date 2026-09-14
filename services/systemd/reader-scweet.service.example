@@ -1,0 +1,24 @@
+[Unit]
+Description=Reader private Scweet collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Create this unprivileged account before enabling the service.
+User=reader
+Group=reader
+WorkingDirectory=/opt/reader/services/scweet_service
+EnvironmentFile=/etc/reader/scweet.env
+ExecStart=/opt/reader/services/scweet/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8090
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/reader-scweet
+
+[Install]
+WantedBy=multi-user.target

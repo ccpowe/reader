@@ -1,0 +1,70 @@
+{
+  "expo": {
+    "name": "Reader",
+    "slug": "reader-mobile",
+    "scheme": "reader",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.ccpower.reader",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.ccpower.reader",
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "expo-image-picker",
+      "expo-web-browser",
+      "expo-font",
+      "expo-sqlite",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": ["zh-Hans", "en"],
+            "android": ["zh-Hans", "en"]
+          }
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "fc7abbec-8db2-40d4-a794-17076593aa9a"
+      }
+    },
+    "owner": "ccpower"
+  }
+}

@@ -1,0 +1,27 @@
+.DS_Store
+.idea/
+.vscode/
+.zvec-grep/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local configuration and credentials
+.env
+*.env
+!.env.example
+
+
+# Experimental workspaces live outside the public repository.
+/workspaces/
+
+# Local data
+data/
+uploads/
+
+# Generated architecture preview
+/architecture/html/

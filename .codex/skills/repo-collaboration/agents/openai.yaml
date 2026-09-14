@@ -1,0 +1,4 @@
+interface:
+  display_name: "仓库文档体系"
+  short_description: "明确仓库文档定位与更新规则，支持新建、改造及代码文档一致性检查"
+  default_prompt: "用 $repo-collaboration 建设或改造仓库文档，明确各类资料的定位、事实来源和更新时机，并检查文档与代码的一致性。"

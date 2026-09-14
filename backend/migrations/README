@@ -1,0 +1,6 @@
+Single-database configuration for Alembic.
+
+Run migrations after filling `backend/.env`:
+
+    uv run alembic upgrade head
+

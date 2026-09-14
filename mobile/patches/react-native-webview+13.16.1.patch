@@ -1,0 +1,180 @@
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+index 80c6803..2b886c8 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+@@ -9,6 +9,7 @@ import android.view.Menu;
+ import android.view.MenuItem;
+ import android.view.MotionEvent;
+ import android.view.View;
++import android.view.WindowInsets;
+ import android.webkit.JavascriptInterface;
+ import android.webkit.ValueCallback;
+ import android.webkit.WebChromeClient;
+@@ -17,6 +18,8 @@ import android.webkit.WebViewClient;
+ 
+ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
++import androidx.core.graphics.Insets;
++import androidx.core.view.WindowInsetsCompat;
+ import androidx.webkit.JavaScriptReplyProxy;
+ import androidx.webkit.WebMessageCompat;
+ import androidx.webkit.WebViewCompat;
+@@ -91,6 +94,23 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+         progressChangedFilter = new ProgressChangedFilter();
+     }
+ 
++    @Override
++    public WindowInsets onApplyWindowInsets(WindowInsets insets) {
++        // React Native owns the app's edge-to-edge layout. Forwarding the same system-bar and
++        // display-cutout insets into web content adds a second safe area and shifts fullscreen
++        // players away from the physical center of the display. Keep IME and future inset updates
++        // intact, but zero the native inset types that have already been handled by the app.
++        final int webContentInsetTypes = WindowInsetsCompat.Type.systemBars()
++                | WindowInsetsCompat.Type.displayCutout();
++        final WindowInsetsCompat adjustedInsets = new WindowInsetsCompat.Builder(
++                WindowInsetsCompat.toWindowInsetsCompat(insets)
++        )
++                .setInsets(webContentInsetTypes, Insets.NONE)
++                .build();
++        final WindowInsets adjustedPlatformInsets = adjustedInsets.toWindowInsets();
++        return super.onApplyWindowInsets(adjustedPlatformInsets != null ? adjustedPlatformInsets : insets);
++    }
++
+     public void setBasicAuthCredential(RNCBasicAuthCredential credential) {
+         mRNCWebViewClient.setBasicAuthCredential(credential);
+     }
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+index f83033b..d071b08 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+@@ -10,7 +10,6 @@ import android.os.Environment
+ import android.util.Log
+ import android.view.View
+ import android.view.ViewGroup
+-import android.view.WindowManager
+ import android.webkit.CookieManager
+ import android.webkit.DownloadListener
+ import android.webkit.WebSettings
+@@ -159,10 +158,9 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+                         mCustomViewCallback = callback
+                         activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                         mVideoView.systemUiVisibility = FULLSCREEN_SYSTEM_UI_VISIBILITY
+-                        activity.window.setFlags(
+-                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+-                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+-                        )
++                        // React Native already owns the edge-to-edge window bounds. Applying
++                        // the legacy no-limits flag here shifts this centered view beyond the
++                        // physical display on landscape devices with a cutout.
+                         mVideoView.setBackgroundColor(Color.BLACK)
+ 
+                         // Since RN's Modals interfere with the View hierarchy
+@@ -197,7 +195,6 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+                             // Same view hierarchy (no Modal)
+                             mWebView.visibility = View.VISIBLE
+                         }
+-                        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+                         rootView.removeView(mVideoView)
+                         mCustomViewCallback.onCustomViewHidden()
+                         mVideoView = null
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebChromeClient.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebChromeClient.java
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebChromeClient.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebChromeClient.java
+@@ -85,8 +85,86 @@
+         this.mWebView = webView;
+     }
+
++    // Keep the actual Chromium child window. Loading only its URL in the parent
++    // (or in an unrelated WebView) breaks OAuth window.opener/postMessage.
++    private android.app.Dialog readerPopup;
++
++    private boolean openReaderPopup(WebView parent, boolean userGesture, Message resultMsg) {
++        Activity activity = mWebView.getThemedReactContext().getCurrentActivity();
++        if (!userGesture || readerPopup != null || activity == null || activity.isFinishing()) return false;
++        final android.app.Dialog dialog = new android.app.Dialog(activity);
++        final WebView child = new WebView(activity);
++        final android.widget.LinearLayout layout = new android.widget.LinearLayout(activity);
++        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
++        final android.widget.LinearLayout toolbar = new android.widget.LinearLayout(activity);
++        toolbar.setGravity(Gravity.CENTER_VERTICAL);
++        final android.widget.TextView address = new android.widget.TextView(activity);
++        address.setText("about:blank");
++        address.setTextColor(android.graphics.Color.BLACK);
++        address.setSingleLine(true);
++        address.setEllipsize(android.text.TextUtils.TruncateAt.END);
++        final int padding = (int) (12 * activity.getResources().getDisplayMetrics().density);
++        address.setPadding(padding, padding, padding, padding);
++        toolbar.addView(address, new android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
++        final android.widget.Button close = new android.widget.Button(activity);
++        close.setText(android.R.string.cancel);
++        close.setOnClickListener(v -> dialog.dismiss());
++        toolbar.addView(close);
++        layout.setBackgroundColor(android.graphics.Color.WHITE);
++        layout.addView(toolbar);
++        layout.addView(child, new android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
++        dialog.setContentView(layout);
++        child.getSettings().setJavaScriptEnabled(parent.getSettings().getJavaScriptEnabled());
++        child.getSettings().setDomStorageEnabled(parent.getSettings().getDomStorageEnabled());
++        child.getSettings().setUserAgentString(parent.getSettings().getUserAgentString());
++        child.getSettings().setSupportMultipleWindows(true); // Nested popups remain blocked.
++        child.getSettings().setAllowFileAccess(false);
++        child.getSettings().setAllowContentAccess(false);
++        android.webkit.CookieManager cookies = android.webkit.CookieManager.getInstance();
++        cookies.setAcceptThirdPartyCookies(child, cookies.acceptThirdPartyCookies(parent));
++        child.setWebViewClient(new WebViewClient() {
++            @Override
++            public boolean shouldOverrideUrlLoading(WebView view, String url) {
++                String scheme = Uri.parse(url).getScheme();
++                return !("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme) || "about:blank".equals(url));
++            }
++            @Override
++            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
++                Uri uri = Uri.parse(url);
++                // Display the origin, never OAuth query parameters or credentials.
++                address.setText(uri.getHost() == null ? "about:blank" : uri.getScheme() + "://" + uri.getHost());
++            }
++        });
++        child.setWebChromeClient(new WebChromeClient() {
++            @Override
++            public void onCloseWindow(WebView window) { dialog.dismiss(); }
++        });
++        final View.OnAttachStateChangeListener detachListener = new View.OnAttachStateChangeListener() {
++            @Override public void onViewAttachedToWindow(View view) { }
++            @Override public void onViewDetachedFromWindow(View view) { dialog.dismiss(); }
++        };
++        parent.addOnAttachStateChangeListener(detachListener);
++        dialog.setOnDismissListener(ignored -> {
++            parent.removeOnAttachStateChangeListener(detachListener);
++            cookies.flush();
++            child.stopLoading();
++            layout.removeView(child);
++            child.destroy();
++            if (readerPopup == dialog) readerPopup = null;
++        });
++        readerPopup = dialog;
++        dialog.show();
++        dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
++        final WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
++        transport.setWebView(child);
++        resultMsg.sendToTarget();
++        return true;
++    }
++
+     @Override
+     public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
++
++        if (!mHasOnOpenWindowEvent) return openReaderPopup(view, isUserGesture, resultMsg);
+
+         final WebView newWebView = new WebView(view.getContext());
+
+@@ -347,7 +425,9 @@
+     public void onHostPause() { }
+
+     @Override
+-    public void onHostDestroy() { }
++    public void onHostDestroy() {
++        if (readerPopup != null) readerPopup.dismiss();
++    }
+
+     protected ViewGroup getRootView() {
+         return this.mWebView.getThemedReactContext().getCurrentActivity().findViewById(android.R.id.content);

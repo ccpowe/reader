@@ -1,0 +1,72 @@
+name: Web translation browser gate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/web-translation-browser.yml'
+      - 'mobile/components/TranslatableWebView.tsx'
+      - 'mobile/domain/translationRuntimeSources.generated.ts'
+      - 'mobile/domain/webTranslation.ts'
+      - 'mobile/domain/webTranslationRules.ts'
+      - 'mobile/domain/webTranslationRuntime.ts'
+      - 'mobile/scripts/browser/**'
+      - 'mobile/scripts/fixtures/web-translation-browser/**'
+      - 'mobile/scripts/generate-translation-runtime-sources.mjs'
+      - 'mobile/scripts/test-translation-runtime-serialization.mjs'
+      - 'mobile/scripts/test-web-translation-rules.mjs'
+      - 'mobile/package.json'
+      - 'mobile/pnpm-lock.yaml'
+      - 'mobile/pnpm-workspace.yaml'
+  push:
+    paths:
+      - '.github/workflows/web-translation-browser.yml'
+      - 'mobile/components/TranslatableWebView.tsx'
+      - 'mobile/domain/translationRuntimeSources.generated.ts'
+      - 'mobile/domain/webTranslation.ts'
+      - 'mobile/domain/webTranslationRules.ts'
+      - 'mobile/domain/webTranslationRuntime.ts'
+      - 'mobile/scripts/browser/**'
+      - 'mobile/scripts/fixtures/web-translation-browser/**'
+      - 'mobile/scripts/generate-translation-runtime-sources.mjs'
+      - 'mobile/scripts/test-translation-runtime-serialization.mjs'
+      - 'mobile/scripts/test-web-translation-rules.mjs'
+      - 'mobile/package.json'
+      - 'mobile/pnpm-lock.yaml'
+      - 'mobile/pnpm-workspace.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  chromium:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: mobile/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run translation runtime gate
+        run: pnpm run test:translation-runtime

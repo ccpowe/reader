@@ -1,0 +1,4 @@
+interface:
+  display_name: "开发总工作流"
+  short_description: "统一协调想法、产品、UI、架构、代码实现、质量审查与变更回流"
+  default_prompt: "使用 $development-workflow 判断当前决定所属阶段，更新权威产物并推进到可验证结果。"

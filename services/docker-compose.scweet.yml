@@ -1,0 +1,25 @@
+services:
+  scweet:
+    build:
+      context: .
+      dockerfile: scweet_service/Dockerfile
+    restart: unless-stopped
+    environment:
+      SCWEET_COOKIES_FILE: /run/secrets/scweet-cookies.json
+      SCWEET_STATE_DB: /var/lib/scweet/scweet_state.db
+      SCWEET_MANIFEST_TTL_SECONDS: "86400"
+      SCWEET_SERVICE_TOKEN: ${SCWEET_SERVICE_TOKEN:?set_in_services/.env}
+    volumes:
+      - ./scweet/cookies.json:/run/secrets/scweet-cookies.json:ro
+      - scweet-state:/var/lib/scweet
+    # Do not publish this port. The reader backend should join this internal
+    # network and call http://scweet:8090.
+    networks:
+      - reader-internal
+
+volumes:
+  scweet-state:
+
+networks:
+  reader-internal:
+    name: reader-internal

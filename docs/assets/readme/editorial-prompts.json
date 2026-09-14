@@ -1,0 +1,82 @@
+{
+  "tool": "image_gen.imagegen",
+  "mode": "built-in",
+  "created": "2026-09-12",
+  "path_base": "docs/assets/readme",
+  "note": "Generation inputs used absolute local paths; this record uses repository-relative asset names. Outputs are AI-assisted presentation composites, not pixel-identical screenshots.",
+  "assets": [
+    {
+      "output": "hero-editorial.png",
+      "referenced_images": [
+        "home.png",
+        "subscriptions.png",
+        "logo.png"
+      ],
+      "prompt": "Create a finished editorial GitHub README hero image for Reader, a Chinese reading application. Landscape 1800x1120 or similar, high-resolution. Composite the supplied REAL app screenshots into a sophisticated magazine cover. Input 1: home/today screenshot, actual UI content must be preserved. Input 2: subscription folders screenshot, actual UI must be preserved. Input 3: existing black-and-white Reader mascot logo, keep identity. This is visual presentation of actual software, never invent UI, rewrite articles, add features, fake metrics, or brand awards. Crop out ALL Android status bars (time, battery, VPN, network), bottom system gesture bars, personal circular avatar, and truncate phone panels at the canvas bottom if useful. Do not alter article titles or app labels. Art direction: warm cream #f4f0e5 background, near-black evergreen #19392f type, muted sage #d5ddc9 secondary block, subtle warm paper grain, crisp premium Swiss editorial typography, restrained rules, broad margins. Flat near-front-facing layered interface panels with subtle realistic paper shadows; no glossy phone hardware, no fake iPhone notches, no 3D clutter. Left 43% editorial headline area: small supplied mascot in small white square and wordmark 'READER' at top. A large beautifully typeset Chinese headline exactly in 3 lines: '把世界的' / '好内容，' / '读成自己的。'. Make it visually dominant and perfectly legible. Under it smaller exact text '多源订阅 · 双语阅读 · 视频字幕'. Bottom-left small exact text 'Android / 自托管'. Right 57%: layered app-window crops, main Today screenshot tall large in foreground beginning below original avatar/logo area, title 今日 and category tabs with real content intact; behind it a staggered subscription panel emphasizing two actual category cards AI and blog. Do not show two full tiny phones side by side. Use generous cropping and overlapping to communicate collecting many sources in one reading space. A small editorial label outside panels reads '关注，汇成日常。'. Fine decorative rule and small circle accent only. All added text must be exactly as specified. Keep text away from edges, no watermark. Product screenshot text must remain faithful. Aim for an elegant collectible magazine cover that reads at GitHub width 900px, not a feature grid."
+    },
+    {
+      "output": "reading-editorial.png",
+      "referenced_images": [
+        "reader.png",
+        "web.png",
+        "hero-editorial.png"
+      ],
+      "prompt": "Create a second finished GitHub README editorial feature illustration for Reader. Landscape approx 1800x1040. Input 1 is a REAL Reader article screenshot, Input 2 is REAL Reader original webpage screenshot, Input 3 is style reference only: continue its warm cream paper, near-black forest-green Chinese serif headline, muted sage geometric shape, refined thin rules, understated shadows and magazine typography. This artwork is about bilingual reading in TWO actual reading surfaces. No invented UI, buttons, modes, source text, logo, awards, metrics. Preserve the actual screenshot pixels and content; crop and enlarge faithfully rather than retyping the paragraphs. COMPOSITION: roomy top 24% with small editorial eyebrow '01 / 双语阅读', then very large Chinese headline exactly '读原文，也读懂。' and smaller subtitle exactly '专注正文，或留在原网页。'. Lower 76%: two broad differently staggered screenshot excerpt panels, no full phones, no phone hardware, no Android status or navigation bars. LEFT panel occupies 53% width, warm off-white paper and readable original paragraph followed by its Chinese translation from Input 1, using its central paragraph starting 'MCP’s official Tier 1 SDKs' and Chinese paragraph 'MCP 官方的一级 SDK 下载量已接近每月五亿次'; omit the huge chart and partial article header image, can crop bottom paragraph rather than invent or rewrite text. RIGHT panel occupies 39% width and is slightly higher, with pale-blue original website excerpt from Input 2, displaying its actual English / Chinese bullet list including 'First-class MCP support' / '一流的 MCP 支持', 'Built on FastMCP' / '基于 FastMCP 构建', and 'Client-side caching' / '客户端缓存'. Remove Android overlays by cropping; do not redraw toolbar or add controls. Small editorial labels OUTSIDE the panels: '阅读模式' above left, '原网页' above right. Overall image: dominant green title, generous margin, pleasantly legible genuine bilingual content rather than dense full screenshots; off-white throughout with a muted sage semicircle behind right panel. Very subtle paper grain, no extra text, no watermark, no oversized mascot, no marketing claim beyond specified text. It should form a coherent designed set with input 3 while using a distinct wide excerpt composition."
+    },
+    {
+      "output": "video-editorial.png",
+      "referenced_images": [
+        "youtube.png",
+        "hero-editorial.png",
+        "reading-editorial.png"
+      ],
+      "prompt": "Create a finished third editorial GitHub README promotional image for Reader. Landscape approx 1800x1040. Input 1 is the real Android video and bilingual subtitle timeline screenshot: use faithful crops of its actual video frame and subtitle card, do not invent content, UI, captions, controls or features. Inputs 2 and 3 are visual style references ONLY. Continue their premium magazine design, Chinese serif headline, fine rules and quiet paper grain, but invert to a deep forest-green #173a2e background with warm cream lettering, muted sage shapes for a strong editorial chapter change. Small eyebrow top-left exactly '02 / 视频字幕'. Large headline upper-left in two lines exactly '看视频，' / '也能跟着读。'. Small supporting text under headline exactly '对照原文与译文，回看感兴趣的片段。'. COMPOSITION: generous safe margins. On the right upper half, a broad 16:9 subtly tilted paper-mounted crop of the REAL VIDEO FRAME from Input 1 showing its three orange-outlined boxes labeled PACKAGE INDEX, 500 MB, YOUR MACHINE, the magenta torch-2.13.0.whl label, and original English subtitle 'here’s how Python packages are distributed.' Crop out all Android status bars, Reader header, surrounding timeline; no invented video controls. In foreground across lower-left and lower-center, a LARGE CREAM CARD extracted from the actual selected 0:40 subtitle timeline entry, overlapping the video panel's lower-left edge without hiding its diagram. This is an enlarged screenshot excerpt, not a new app UI: preserve the visible timestamp '0:40' and exact existing English 'But before we get to what UV optimized, here’s how Python packages are distributed. A package ships as one file' followed by Chinese exactly '但在介绍 UV 优化了什么之前，先看看 Python 程序包是如何分发的。一个程序包作为单个文件的形式发布'. Use actual source content, faithful typography and warm-gray highlight. Omit surrounding inactive subtitle rows, scrollbars and floating translation overlay. A restrained thin editorial pointer from outside the card to timestamp with label exactly '点击字幕，回到这一刻。'. Beautiful slightly staggered screenshot layers, subtle soft shadows, modern publication design, strong negative space. All annotations are outside the screenshot fragments. No phone mockups, no mascot, no new logos, no extra phrases, no watermark, no false quotes, no speed or quality claims. Ensure headline and subtitle demonstration remain clear at 900px displayed width."
+    },
+    {
+      "output": "rankings-editorial.png",
+      "created": "2026-09-13",
+      "referenced_images": [
+        "rankings.png",
+        "reading-editorial.png"
+      ],
+      "prompt": "Use case: compositing. Create a finished fourth editorial promotional image for the Reader GitHub README, landscape approx 1650x960. Input 1 is the REAL Reader rankings Android screenshot, the only interface/content source. Input 2 is a STYLE REFERENCE ONLY for the established cream and evergreen magazine series. Continue refined Chinese serif oversized headline, warm cream paper, muted sage green, subtle grain, generous margins, thin editorial rules. This chapter is content discovery via Hacker News, Reddit and GitHub. Small eyebrow top-left exactly '03 / 热门榜单'. Very large headline in two lines at left exactly '关注之外，' / '还有好发现。'. Under it smaller text exactly '热门讨论、文章与项目，一处发现。'. Three editorial text labels below: 'Hacker News' / 'Reddit' / 'GitHub', with small descriptions '技术讨论' / '社区话题' / '开源项目'. These labels are typography outside the screenshot, NOT fake app tabs or screenshots. Bottom-left a quiet editorial sentence exactly '发现感兴趣的内容，读完再收藏。'. Composition: text occupies left 43%; a large slightly tilted cream paper panel on the right shows a faithful CROP of the actual screenshot: crop off Android status bar, personal avatar, mascot header and bottom navigation, keep the real '榜单' title, ALL THREE ACTUAL TABS Hacker News / Reddit / GitHub, with Hacker News selected, and the first three real ranked rows 01, 02, 03 with original titles and metadata. Let last row run naturally to crop boundary. Do not paste a full phone. Add a separate enlarged floating cutout of the second actual ranking row at lower center overlapping panel edge for editorial depth, retaining exact source title 'Show HN: Copperhead – Hardware as Fast as Software' and original source copperhead.sh; preserve actual votes 18 and comments 1 if shown. Use source image faithfully; do not invent any Reddit or GitHub result lists, rankings, titles, counts, bookmark state, buttons, trophies or user statistics. A large pale sage '03' can be a subtle background typographic accent but must stay outside the UI. Keep typography visibly consistent with input 2 but use a different asymmetrical right-side composition. No phone hardware, no Android indicators, no personal account avatar, no watermark. Output is a magazine advertisement based on actual UI, not a redesign of the app. All named platform labels and headline must be crisp and readable at 900px display width. Restrained, beautiful, confident."
+    }
+  ],
+  "localizations": [
+    {
+      "output": "hero-editorial-en.png",
+      "created": "2026-09-14",
+      "referenced_images": [
+        "hero-editorial.png"
+      ],
+      "prompt": "Create an English-localized sibling of this exact image. Replace every visible Chinese editorial headline, caption, callout, navigation label, date label, source-count label, and Chinese article title with natural English. Preserve the original composition, cream-and-deep-green palette, paper texture, illustration, device panels, logos, icons, shadows, spacing, and 16:9 dimensions. Required copy: 'FOLLOWING, MADE PART OF EVERY DAY.', 'MAKE THE WORLD'S BEST CONTENT YOUR OWN.', 'MULTI-SOURCE FEEDS · BILINGUAL READING · VIDEO SUBTITLES', and 'Android / Self-hosted'. Interface localization should use concise labels including 'Today', 'Subscriptions', 'Search sources', 'My categories', 'All', 'Sep 8 · Tuesday', and '<number> sources' where applicable. Change only text localization; retain READER wordmarks and existing English brand or article-source text; no Chinese characters, extra words, or watermark.",
+      "follow_up": "Correct only the left editorial text hierarchy and the small upper-right callout. Use 'MAKE THE WORLD'S BEST CONTENT YOUR OWN.' as the large left headline, place 'MULTI-SOURCE FEEDS · BILINGUAL READING · VIDEO SUBTITLES' beneath it, and set the small upper-right callout to 'FOLLOWING, MADE PART OF EVERY DAY.' Preserve every other design and interface element."
+    },
+    {
+      "output": "reading-editorial-en.png",
+      "created": "2026-09-14",
+      "referenced_images": [
+        "reading-editorial.png"
+      ],
+      "prompt": "Create an English-localized sibling of this exact image. Translate the editorial heading, subheading, callouts, and interface chrome into English while preserving the original bilingual article example. Keep the English source paragraph and its Chinese translated paragraph unchanged because together they demonstrate bilingual reading. Preserve the exact composition, cream-and-sage palette, paper texture, panels, LangChain logo, typography hierarchy, shadows, spacing, and 16:9 dimensions. Required copy: '01 / BILINGUAL READING', 'READ THE ORIGINAL. UNDERSTAND IT TOO.', 'FOCUS ON THE TEXT, OR STAY ON THE ORIGINAL PAGE.', 'READER MODE', and 'ORIGINAL PAGE'. Localize '返回博客' as 'Back to blog'. Change only text localization; preserve the article meaning; no extra text or watermark."
+    },
+    {
+      "output": "video-editorial-en.png",
+      "created": "2026-09-14",
+      "referenced_images": [
+        "video-editorial.png"
+      ],
+      "prompt": "Create an English-localized sibling of this exact image. Translate the editorial heading, supporting caption, and callout into English. Keep the English subtitle and its Chinese translated subtitle unchanged because together they demonstrate bilingual subtitles. Preserve the exact composition, deep-green palette, paper texture, video frame, subtitle card, timing, typography hierarchy, shadows, decorative leaves, and 16:9 dimensions. Required copy: '02 / VIDEO SUBTITLES', 'WATCH VIDEOS. READ ALONG.', 'COMPARE THE ORIGINAL AND TRANSLATION. REPLAY WHAT MATTERS.', and 'SELECT A SUBTITLE TO JUMP BACK TO THIS MOMENT.' Change only the editorial text localization; no extra text or watermark."
+    },
+    {
+      "output": "rankings-editorial-en.png",
+      "created": "2026-09-14",
+      "referenced_images": [
+        "rankings-editorial.png"
+      ],
+      "prompt": "Create an English-localized sibling of this exact image. Replace every visible Chinese editorial headline, caption, callout, section label, UI title, category description, and comment-count label with natural English. Preserve all existing English story titles, domains, platform names, numbers, composition, cream-and-sage palette, paper texture, panels, shadows, spacing, and 16:9 dimensions. Required copy: '03 / TRENDING RANKINGS', 'DISCOVER BEYOND WHAT YOU FOLLOW.', 'TRENDING DISCUSSIONS, ARTICLES, AND PROJECTS—ALL IN ONE PLACE.', 'Hacker News / Tech discussions', 'Reddit / Community topics', 'GitHub / Open-source projects', and 'FIND WHAT INTERESTS YOU. READ IT, THEN SAVE IT.' Use 'Rankings' for the UI title and 'comments' for plural comment-count labels. Change only text localization; no Chinese characters, extra words, or watermark.",
+      "follow_up": "Correct only the two singular comment-count labels in item 02, changing '1 comments' to '1 comment' on both the large Rankings panel and the floating card. Preserve every other element."
+    }
+  ],
+  "updated": "2026-09-14"
+}
