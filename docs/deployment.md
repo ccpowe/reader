@@ -5,18 +5,63 @@
 
 ## 1. 部署边界与顺序
 
+### 第一步：先确认部署范围
+
+部署 Agent 不得直接按“最小可运行”配置开始安装，也不得自行假定用户只需要后端。
+开始修改系统、安装依赖或创建服务前，先向用户说明下面的选项和缺少依赖时的影响，
+等待用户确认范围。只询问选择，不要求用户把 key、Cookie、token 或密码发到聊天中。
+
+可直接使用以下问题模板：
+
+```text
+开始部署前，请确认：
+1. 部署目标是什么系统？服务通过 HTTP 仅供本机使用、通过 HTTP 供同一局域网设备连接，还是通过域名和 HTTPS 公网访问？
+2. 需要哪些体验入口：仅后端、Web 开发预览、安装现有 Android Release APK，还是本地构建 Android APK？
+3. 翻译选择 DeepSeek、OpenRouter，还是暂不启用？
+4. 是否启用 X 内容同步、YouTube Data API 和无 RSS 网站的 Web 规则自动生成？
+
+我会根据你的选择列出需要在本机填写的配置位置；请不要在聊天中发送任何密钥或 Cookie。
+```
+
+部署范围及依赖必须逐项确认：
+
+| 能力／入口 | 用户需要选择或提供的资源 | 不启用或不配置时的结果 |
+| --- | --- | --- |
+| 访问范围 | 本机 HTTP、局域网 HTTP 或公网 HTTPS；公网部署还需域名、证书和反向代理 | 只监听本机时，手机和其他设备无法连接；本机和受信局域网不要求额外配置 HTTPS |
+| Web 预览 | 是否启动 `mobile/` 的 Expo Web 开发预览 | 不影响后端和 Android；Web 只是开发预览，不能替代依赖原生 WebView 的 Android 体验 |
+| Android | 下载现有 [Release APK](https://github.com/ccpowe/reader/releases)，或用 EAS 重新构建 | 不影响 Web 和后端；未安装客户端时只能通过 API 或 Web 预览验收 |
+| 翻译 | DeepSeek 或 OpenRouter 二选一，并在 `backend/.env` 配置对应 key 和默认引擎 | 翻译不可用，翻译循环失败且 `/worker-ready` 不能通过；只能交付为用户明确接受的受限部署 |
+| X 内容 | 专用 X 账号的 `auth_token` Cookie、私有 Scweet 服务及服务间 token | 只有 X 同步不可用，其他来源、阅读和翻译不受影响 |
+| YouTube | 可选的 YouTube Data API v3 key | 回退到公开 Atom feed，仍可订阅公开频道，但数据完整性降低 |
+| Web 规则自动生成 | 模型 key、Linux、bubblewrap、Lightpanda 0.4.0 和 agent-browser 0.37.1 | 保持关闭；静态 HTTP、RSS 发现和已保存规则仍可工作，需要新规则的无 RSS／动态网站不能自动完成接入 |
+
+用户确认后，Agent 先从 `backend/.env.example` 创建 `backend/.env`，再按所选能力明确告知
+用户应填写的字段：DeepSeek 使用 `APP_DEEPSEEK_API_KEY`；OpenRouter 使用
+`APP_OPENROUTER_API_KEY` 并设置匹配的 `APP_TRANSLATION_DEFAULT_ENGINE_ID`；YouTube 使用
+`APP_YOUTUBE_DATA_API_KEY`；Scweet 的 X Cookie 写入 `services/scweet/cookies.json`，服务 URL
+和 token 写入 `backend/.env`；Web 规则 Agent 按第 6 节填写引擎和两个可执行文件路径。
+需要用户填写真实秘密时暂停，等用户在部署主机本地保存后再继续，并且检查时不得输出真实值。
+
+Web 预览在 `mobile/` 安装依赖后运行 `pnpm run web --max-workers 1`；Android 可安装 Release
+中的 APK，并在运行时输入 Reader 服务地址和连接 token，不需要把服务地址或模型 key 编译进 APK。
+本机和受信局域网可以直接使用 HTTP，不应强制用户配置 HTTPS；局域网体验还需确认 API
+监听地址和主机防火墙。服务暴露到公网时必须使用 HTTPS。只部署用户选择的
+入口和能力，验收也应覆盖这些选择。所选能力与目标系统不兼容时（例如在 Windows 上启用
+Web 规则 Agent），先说明限制，让用户改用 Linux 主机或明确关闭该能力，不能静默降级。
+
 Reader 的最小生产形态有三个独立进程／服务：PostgreSQL、Reader API、Reader Worker。
 移动 APK 不保存服务端密钥。规则 Agent 运行在现有 Worker 内，普通抓取和阅读不调用它。
 
 ```text
-Android APK ── HTTPS ──> Reader API ──> PostgreSQL
+Android APK ── HTTP（本机／局域网）或 HTTPS（公网） ──> Reader API ──> PostgreSQL
                               │
 Reader Worker ────────────────┘
 Reader Worker 内：LangChain 规则作者 → 受控页面工具／真实规则验证 → Crawl4AI
 ```
 
-推荐按以下顺序进行：填写后端环境变量 → 启动 PostgreSQL → 运行迁移 → 启动 API 和
-Worker → 验证发现文档和健康检查 → 安装／连接 APK。需要自动解析新 Web 来源时，按第 6 节配置规则引擎。
+推荐按以下顺序进行：确认范围与目标系统 → 告知本地凭证填写位置并等待用户完成 → 安装所选
+依赖 → 启动 PostgreSQL → 运行迁移 → 启动 API 和 Worker → 验证所选能力 → 启动 Web 预览
+或安装／连接 APK → 按第 7 节总结结果。需要自动解析新 Web 来源时，按第 6 节配置规则引擎。
 
 ## 2. 凭证清单与获取方式
 
@@ -115,6 +160,11 @@ Cookie 会过期，需要由该专用账号重新登录后更新本机文件，�
 [X 自动化规则](https://help.x.com/en/rules-and-policies/x-automation)、适用条款及当地法律；
 保持低频率，不要自动发帖、私信或规避限流。
 
+Scweet 是非官方集成，X 可能随时调整政策、页面结构、登录验证和限制机制，采集可能受到
+限流、中断或账号限制。本项目及其维护者无法保证 X 采集持续可用，也无法避免、解除或恢复
+账号限制。部署者启用该功能即表示自行评估并承担账号与合规风险；如果不能接受这些风险，
+应保持 X 采集关闭。关闭它不会影响其他来源和阅读功能。
+
 ## 3. 配置 PostgreSQL
 
 在 `backend/` 从 `.env.example` 创建权限为 600 的 `.env`，设置上表必需值。
@@ -186,12 +236,14 @@ DeepSeek 并发而按同样数字扩大数据库池：配置与翻译缓存的 s
 
 ## 5. 验收
 
-替换成真实地址后逐项检查：
+按用户选择的访问范围替换地址后逐项检查。本机和局域网可以使用 HTTP；下面以本机为例，
+手机连接时改为部署主机的局域网 IP，公网部署则改为实际的 HTTPS 域名：
 
 ```bash
-curl -fsS https://reader.example.com/health
-curl -fsS https://reader.example.com/ready
-curl -fsS https://reader.example.com/worker-ready
+READER_API_BASE_URL=http://127.0.0.1:8000
+curl -fsS "$READER_API_BASE_URL/health"
+curl -fsS "$READER_API_BASE_URL/ready"
+curl -fsS "$READER_API_BASE_URL/worker-ready"
 ```
 
 通过客户端或从受限配置读取 header 的脚本检查 discovery，避免 token 写入命令历史。
@@ -410,10 +462,22 @@ PYTHON_DOTENV_DISABLED=1 READER_TEST_AGENT_BROWSER_BINARY=/opt/reader/agent-brow
 
 ## 7. 交付前清单
 
+- [ ] 开始安装前已让用户确认目标系统、访问范围、体验入口和四项可选能力。
 - [ ] `backend/.env`、私有配置和 provider key 都未提交。
-- [ ] API、Worker、数据库迁移和 `/ready`／`/worker-ready` 均通过。
+- [ ] API、Worker、数据库迁移和 `/ready` 均通过；完整部署的 `/worker-ready` 也通过，受限部署则已明确记录翻译循环未就绪。
 - [ ] 更新部署已重启实际 systemd 进程，并核对新 PID、启动时间和最新 journal。
 - [ ] 实时翻译日志未出现 `QueuePool` timeout，provider、quota 与 persistence 耗时可区分。
-- [ ] 客户端使用 HTTPS 地址完成连接、注册、登录与同步测试。
+- [ ] 客户端通过用户选择的本机／局域网 HTTP 或公网 HTTPS 地址完成连接、注册、登录与同步测试。
 - [ ] 启用 X 功能前完成条款、政策与账户风险审查；不需要时保持关闭。
 - [ ] APK 作为 GitHub Release asset 上传，而不是提交进仓库。
+
+最后必须向用户总结：
+
+- 实际启动的服务、是否开机自启，以及本机／局域网／公网可用的 HTTP 或 HTTPS 地址；
+- Web 预览的打开方式，以及 Android 的安装方式、服务地址和连接 token 的本地存放位置；
+- 翻译、X、YouTube 和 Web 规则自动生成分别是已启用、降级还是关闭，并说明实际影响；
+- 对用户所选能力执行了哪些验收、结果如何，模型 key 是否做过获授权的在线请求验证；
+- 尚需用户完成的操作和已知限制。
+
+用户明确放弃的可选能力不算部署失败，但必须在总结中列明。任何用户已选择的必需组件或
+验收失败时，不得宣布部署完成；可以准确说明当前已完成部分和剩余阻塞项。

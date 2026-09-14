@@ -36,13 +36,21 @@ Reader is a self-hosted information aggregation app. Bring blogs, communities, w
 
 ## Getting started
 
-**Android is currently the primary platform for usage and validation. A public APK download will be added with the first public release.** The client must connect to a Reader backend; the project does not currently provide a publicly hosted service.
+**Android is currently the primary platform for usage and validation. Preview APKs are available from [GitHub Releases](https://github.com/ccpowe/reader/releases).** The client must connect to a Reader backend; the project does not currently provide a publicly hosted service.
 
 1. **Prepare the service.** Follow the [deployment guide](docs/deployment.md) to configure PostgreSQL and start the Reader API and Worker. If a service is already available, ask its administrator for the service URL and connection token.
-2. **Prepare the client.** Follow the [frontend development and APK build instructions](mobile/AGENTS.md#环境与命令), use the `preview` profile, and build an installable standalone Android APK.
+2. **Prepare the client.** Download an APK from GitHub Releases, or follow the [frontend development and APK build instructions](mobile/AGENTS.md#环境与命令), use the `preview` profile, and build an installable standalone Android APK.
 3. **Start reading.** Enter the service URL and connection token on the connection screen, register or sign in to a Reader account, and add your first subscription.
 
 The minimum deployment consists of **Reader API + Worker + PostgreSQL**. Registration does not require email verification. Translation models are optional; the service operator is responsible for server and third-party API costs.
+
+> [!CAUTION]
+> **X / Scweet risk notice**
+>
+> - X collection is optional and currently uses the unofficial Scweet service with an X web-login cookie.
+> - Create a secondary account dedicated to Reader instead of using your primary personal account. Keep its cookie only on the deployment host; never commit it to Git or send it through chat.
+> - X may change its policies, pages, or enforcement at any time, and collection may trigger rate limits, login challenges, or account restrictions. This project cannot guarantee continued X availability or prevent, reverse, or recover an account restriction. Operators must assess these risks and comply with applicable policies and local law.
+> - Without this configuration, only X synchronization is unavailable; other sources and reading features continue to work. See the [deployment guide](docs/deployment.md#x-内容可选scweet) for setup details.
 
 ## Reading experience
 
@@ -96,7 +104,7 @@ When something looks interesting, open it to continue reading or **save it and r
 | **Websites** | Article lists from public blogs | Reader first looks for RSS / Atom. If no usable feed is available and a rules Agent is configured on the server, it attempts to discover article updates. Sites requiring sign-in or using anti-bot protections may not work; not every website is supported |
 | **Reddit** | Community posts | Add a community source |
 | **YouTube** | Channel updates | Optionally configure the YouTube Data API; otherwise Reader uses the public Atom feed |
-| **X** | Public posts from an account | Requires an additional X collection service on the backend |
+| **X** | Public posts from an account | Uses Scweet and a dedicated secondary-account cookie; platform policy, rate-limit, and account-restriction risks apply |
 
 A website subscription may initially discover only currently available articles, and historical coverage can be limited. The backend stores the rules Agent's decisions and limitations for administrators to inspect. Main-content extraction does not determine whether a subscription succeeds.
 

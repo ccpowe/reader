@@ -36,13 +36,21 @@ Reader 是一个自托管信息聚合应用。把博客、社区、网站和视�
 
 ## 开始使用
 
-**目前以 Android 为主要使用和验证平台，公开 APK 下载入口尚待首次发布补充。** 客户端需要连接 Reader 后端；项目目前未提供公共托管服务。
+**目前以 Android 为主要使用和验证平台，可从 [GitHub Releases](https://github.com/ccpowe/reader/releases) 下载预览版 APK。** 客户端需要连接 Reader 后端；项目目前未提供公共托管服务。
 
 1. **准备服务。** 按[部署指南](docs/deployment.md)配置 PostgreSQL，启动 Reader API 和 Worker。如果已有可用服务，向管理员获取服务地址和连接 token。
-2. **准备客户端。** 按[前端开发与 APK 构建约定](mobile/AGENTS.md#环境与命令)，使用 `preview` profile 构建并安装可独立运行的 Android APK。
+2. **准备客户端。** 从 GitHub Releases 下载安装包，或按[前端开发与 APK 构建约定](mobile/AGENTS.md#环境与命令)，使用 `preview` profile 构建并安装可独立运行的 Android APK。
 3. **开始阅读。** 在连接页填写服务地址和连接 token，注册或登录 Reader 账号，然后添加第一个订阅。
 
 最小运行组合为 **Reader API + Worker + PostgreSQL**。注册无需邮箱验证；翻译模型按需配置，服务器和第三方 API 的费用由部署者承担。
+
+> [!CAUTION]
+> **X / Scweet 风险提示**
+>
+> - X 内容采集是可选能力，当前使用非官方 Scweet 服务和 X 网页登录 Cookie。
+> - 建议注册仅供 Reader 使用的小号，不要使用个人主账号；Cookie 只能保存在部署主机，不要提交到 Git 或发送到聊天中。
+> - X 的政策、页面和限制机制可能随时变化，也可能触发限流、登录验证或账号限制。本项目无法保证 X 采集持续可用，也无法避免、解除或恢复账号限制；启用者需自行评估风险并遵守适用政策与当地法律。
+> - 不配置时只有 X 同步不可用，其他来源和阅读功能不受影响。配置方法见[部署指南](docs/deployment.md#x-内容可选scweet)。
 
 ## 阅读体验
 
@@ -96,7 +104,7 @@ Reader 是一个自托管信息聚合应用。把博客、社区、网站和视�
 | **网站** | 公开博客的文章列表 | 优先检测 RSS / Atom；没有可用 feed 时，在服务端已配置规则 Agent 的情况下尝试获取文章更新。需登录或有反爬限制的网站可能无法订阅，不保证所有网站可用 |
 | **Reddit** | 社区帖子 | 添加社区来源 |
 | **YouTube** | 频道更新 | 可配置 YouTube Data API；未配置时使用公开 Atom feed |
-| **X** | 账号公开内容 | 需要服务端额外配置 X 采集服务 |
+| **X** | 账号公开内容 | 使用 Scweet 和专用小号 Cookie；存在平台政策、限流和账号限制风险 |
 
 网站订阅可以先发现当前文章，历史获取范围可能有限。服务端保存规则 Agent 的判断与限制，管理员可查看；正文提取不决定订阅是否成功。
 
