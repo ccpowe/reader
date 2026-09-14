@@ -104,6 +104,8 @@ Reader 是一个自托管信息聚合应用。把博客、社区、网站和视�
 
 Android 客户端在运行时连接服务，不需要在安装包中写入服务器地址或翻译密钥。账号、订阅和收藏由所连接的 Reader 服务及其数据库保存。
 
+可前往 [GitHub Releases](https://github.com/ccpowe/reader/releases) 下载 Android 预览版安装包。当前提供 arm64-v8a 版本，安装后在应用内输入自己的 Reader 服务地址和连接 token。
+
 一个客户端可以切换多个 Reader 服务，会话和本地缓存按服务隔离。切换服务不会自动迁移原服务中的订阅、收藏和账号数据。
 
 ## 常见问题

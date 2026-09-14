@@ -104,6 +104,8 @@ A website subscription may initially discover only currently available articles,
 
 The Android client connects to a service at runtime, so server URLs and translation credentials do not need to be embedded in the APK. Accounts, subscriptions, and saved items are stored by the connected Reader service and its database.
 
+Download the Android preview APK from [GitHub Releases](https://github.com/ccpowe/reader/releases). The current build targets arm64-v8a devices; after installation, enter your own Reader service URL and connection token in the app.
+
 One client can switch between multiple Reader services. Sessions and local caches are isolated by service. Switching services does not migrate subscriptions, saved items, or account data from the previous service.
 
 ## Frequently asked questions
