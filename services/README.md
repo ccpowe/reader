@@ -2,9 +2,11 @@
 
 ## Scweet
 
-`services/scweet/` is a local clone of `Altimis/Scweet`, deliberately ignored
-by this application's Git repository. It was installed and import-checked with
-its own `.venv` on 2026-07-27. It is an optional X collection integration.
+Reader pins `Altimis/Scweet` v5.5.0 at commit
+`0192d1a74a1421c61f75c35bd7917c18d90227fd`. The Docker build downloads that
+archive and verifies its SHA-256 before installing the locked runtime
+dependencies. `services/scweet/` remains an ignored local clone only for the
+host-Python deployment. Scweet is an optional X collection integration.
 
 It uses undocumented X web GraphQL endpoints and a dedicated account Cookie,
 so it can break whenever X changes its web application. Keep requests bounded,
@@ -17,8 +19,9 @@ applicable law before enabling it. The complete setup is in the root
 ```bash
 git clone https://github.com/Altimis/Scweet.git services/scweet
 cd services/scweet
+git checkout 0192d1a74a1421c61f75c35bd7917c18d90227fd
 uv venv .venv
-uv pip install -e . -r ../scweet_service/requirements.txt
+uv pip install -e . -r ../scweet_service/requirements.in
 ```
 
 ### Credentials and safety
@@ -64,13 +67,16 @@ sudo chmod 0640 /etc/reader/scweet.env
 # Edit /etc/reader/scweet.env: set the shared token and absolute Cookie path.
 ```
 
-4. Enable and verify the service:
+4. Enable and verify the service. `/health` reports process liveness; `/ready`
+   additionally confirms that at least one locally configured account is
+   currently eligible to collect:
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now reader-scweet.service
 systemctl status reader-scweet.service --no-pager
 curl -fsS http://127.0.0.1:8090/health
+curl -fsS http://127.0.0.1:8090/ready
 ```
 
 5. Put the same `SCWEET_SERVICE_TOKEN` in the API process environment as
@@ -80,10 +86,9 @@ curl -fsS http://127.0.0.1:8090/health
 
 ### Optional Docker deployment
 
-Docker Compose is available for an isolated local/container deployment, but is
-not the current server startup path. Keep `scweet/cookies.json` local, copy
-`.env.example` to `.env` in this directory, set a long random
-`SCWEET_SERVICE_TOKEN`, then run:
+Docker Compose builds from the pinned upstream archive; it does not require a
+local Scweet clone. Keep `scweet/cookies.json` local, copy `.env.example` to
+`.env` in this directory, set a long random `SCWEET_SERVICE_TOKEN`, then run:
 
 ```bash
 docker compose -f docker-compose.scweet.yml -f docker-compose.scweet.dev.yml up --build -d
@@ -96,11 +101,20 @@ APP_SCWEET_SERVICE_URL=http://127.0.0.1:8090
 APP_SCWEET_SERVICE_TOKEN=the_same_long_random_token
 ```
 
-The compose file intentionally does not publish port `8090`; attach the
-backend to the `reader-internal` Docker network when it too runs in Docker and
-set `APP_SCWEET_SERVICE_URL=http://scweet:8090`. The `*.dev.yml` override is
-the only configuration that opens a port, and it is bound to localhost. Do not
-expose this service publicly.
+The Cookie is mounted as a read-only runtime secret, the collector state stays
+in the `scweet-state` volume, and neither enters the image. The service starts
+only when the Cookie file is readable and imports at least one account with
+complete local auth material. Temporary cooldowns and daily limits do not make
+startup fail; `/ready` returns 503 until an account becomes eligible again, and
+a request made while every account is unavailable returns a structured
+retryable failure promptly.
+
+The compose file intentionally does not publish port `8090`; attach the Reader
+Worker to the `reader-internal` Docker network when it too runs in Docker and
+set `APP_SCWEET_SERVICE_URL=http://scweet:8090`. Scweet also needs outbound DNS
+and HTTPS access to X, so do not make its only network internal-only. The
+`*.dev.yml` override is the only configuration that opens a port, and it is
+bound to localhost. Do not expose this service publicly.
 
 Set `APP_X_PROVIDER=scweet` explicitly (it is the default). Apify remains an
 explicit compatibility path through `APP_X_PROVIDER=apify`; the backend never

@@ -1,0 +1,12 @@
+# Reader service boundary.
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+
+# Altimis/Scweet v5.5.0 runtime dependencies. Keep these synchronized with
+# the pinned source archive in the Dockerfile.
+python-dotenv==1.2.3
+sqlmodel==0.0.42
+SQLAlchemy==2.0.54
+curl_cffi==0.16.3
+XClientTransaction==1.0.3
+pydantic==2.13.5

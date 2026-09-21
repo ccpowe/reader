@@ -65,6 +65,8 @@ async def test_scweet_runtime_falls_back_to_latest_search_for_an_empty_profile_t
     calls: dict[str, object] = {}
 
     class Client:
+        _accounts_repo = SimpleNamespace(count_eligible=lambda: 1)
+
         def get_profile_tweets(self, usernames, *, limit, save):
             return []
 
@@ -100,6 +102,8 @@ async def test_scweet_service_rejects_an_unverified_empty_timeline() -> None:
     service = _load_service_module()
 
     class Client:
+        _accounts_repo = SimpleNamespace(count_eligible=lambda: 1)
+
         def get_profile_tweets(self, usernames, *, limit, save):
             return []
 
@@ -128,6 +132,8 @@ async def test_scweet_runtime_allows_a_confirmed_profile_with_no_recent_tweets()
     service = _load_service_module()
 
     class Client:
+        _accounts_repo = SimpleNamespace(count_eligible=lambda: 1)
+
         def get_profile_tweets(self, usernames, *, limit, save):
             return []
 

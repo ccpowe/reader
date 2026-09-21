@@ -120,7 +120,10 @@ key 的鉴权和额度真实可用。部署 Agent 默认只检查 key 已配置�
 
 Scweet 是 Reader 当前的 X 采集实现。它使用一个专用 X 账号的网页登录 Cookie，服务
 只能部署在私有网络中。没有配置它时，只有 X 同步不可用；RSS、网页、Reddit、YouTube、
-阅读和翻译不受影响。
+阅读和翻译不受影响。Reader 固定使用 Scweet v5.5.0 的提交
+`0192d1a74a1421c61f75c35bd7917c18d90227fd`；Docker 构建会校验源码归档并安装锁定依赖，
+宿主机 Python 安装也必须检出同一提交，具体命令见
+[Scweet 服务文档](../services/README.md#clone-and-install-again)。
 
 1. 注册并只用于 Reader 的 X 专用账号；不要使用个人主账号。登录
    `https://x.com` 并完成该账号需要的安全验证。
@@ -153,8 +156,14 @@ Scweet 是 Reader 当前的 X 采集实现。它使用一个专用 X 账号的�
    APP_SCWEET_SERVICE_TOKEN=<与 /etc/reader/scweet.env 相同的值>
    ```
 
-   Docker Compose 仍是可选方案；详见同一服务文档。API 和 Scweet 都运行在 Docker 时，
-   把 API 加入 `reader-internal` 网络，并将 URL 改为 `http://scweet:8090`。
+   启动后用 `/health` 检查进程存活，用 `/ready` 检查当前是否至少有一个可采集账号。
+   Cookie 缺失、格式错误或不能导入完整认证资料时服务拒绝启动；账号临时冷却或达到当日
+   限额时进程继续运行，`/health` 返回 200，`/ready` 暂时返回 503，恢复后自动变回 200。
+
+   Docker Compose 方案不需要预先克隆 Scweet，详见同一服务文档。Worker 和 Scweet 都运行
+   在 Docker 时，把 Worker 加入 `reader-internal` 网络，并将 URL 改为
+   `http://scweet:8090`。Cookie 只作为运行时只读 secret 挂载，SQLite 状态保存在命名卷中；
+   Scweet 还需要访问 X 的 DNS 和 HTTPS 出站网络。
 
 Cookie 会过期，需要由该专用账号重新登录后更新本机文件，再重启容器。使用前请自行审查
 [X 自动化规则](https://help.x.com/en/rules-and-policies/x-automation)、适用条款及当地法律；

@@ -31,6 +31,14 @@ class UnverifiedEmptyTimelineError(RuntimeError):
     """Neither timeline data nor a valid public profile could be confirmed."""
 
 
+class ScweetConfigurationError(RuntimeError):
+    """The local collector credentials cannot provision a usable account."""
+
+
+class AccountTemporarilyUnavailable(RuntimeError):
+    """All configured accounts are currently cooling down, leased, or limited."""
+
+
 class ProfileTweetsRequest(BaseModel):
     usernames: list[str] = Field(min_length=1, max_length=10)
     limit: int = Field(default=10, ge=1, le=50)
@@ -61,19 +69,71 @@ class ScweetRuntime:
     """One serial client: a single account must not run concurrent jobs."""
 
     def __init__(self) -> None:
+        from Scweet.auth import load_cookies_json
+
         cookie_file = os.environ.get("SCWEET_COOKIES_FILE", "/run/secrets/scweet-cookies.json")
         state_db = os.environ.get("SCWEET_STATE_DB", "/var/lib/scweet/scweet_state.db")
         manifest_ttl = int(os.environ.get("SCWEET_MANIFEST_TTL_SECONDS", "86400"))
+        try:
+            cookie_records = load_cookies_json(cookie_file)
+        except Exception as exc:
+            raise ScweetConfigurationError(
+                "SCWEET_COOKIES_FILE is missing, unreadable, or malformed."
+            ) from exc
+        if not cookie_records:
+            raise ScweetConfigurationError("SCWEET_COOKIES_FILE contains no accounts.")
         self._client = Scweet(
             cookies_file=cookie_file,
             db_path=state_db,
             manifest_scrape_on_init=True,
             config=ScweetConfig(manifest_ttl_s=manifest_ttl),
         )
+        self._assert_account_configured()
         self._lock = asyncio.Lock()
+
+    def _assert_account_configured(self) -> None:
+        diagnostics = self._client._accounts_repo.eligibility_diagnostics(sample_limit=100_000)
+        total = int(diagnostics.get("total", 0) or 0)
+        if total <= 0:
+            raise ScweetConfigurationError("Scweet did not import an account from the Cookie file.")
+        if int(diagnostics.get("eligible", 0) or 0) > 0:
+            return
+
+        missing_auth_reasons = {
+            "missing_auth_token",
+            "missing_csrf",
+            "missing_cookies",
+            "missing_bearer",
+        }
+        blocked_samples = diagnostics.get("blocked_samples", [])
+        if any(
+            not missing_auth_reasons.intersection(sample.get("reasons", []))
+            for sample in blocked_samples
+            if isinstance(sample, dict)
+        ):
+            # A locally complete account may be cooling down, leased, or at its
+            # daily limit. Those states are temporary and must survive restart.
+            return
+        raise ScweetConfigurationError("Scweet imported no account with complete auth material.")
+
+    def _assert_account_available(self) -> None:
+        accounts_repo = getattr(self._client, "_accounts_repo", None)
+        if accounts_repo is None:
+            raise ScweetConfigurationError("Scweet account repository is unavailable.")
+        if accounts_repo.count_eligible() <= 0:
+            raise AccountTemporarilyUnavailable(
+                "No eligible account is currently available; retry after its cooldown or limit."
+            )
+
+    def is_ready(self) -> bool:
+        accounts_repo = getattr(self._client, "_accounts_repo", None)
+        if accounts_repo is None:
+            raise ScweetConfigurationError("Scweet account repository is unavailable.")
+        return accounts_repo.count_eligible() > 0
 
     async def get_profile_tweets(self, usernames: list[str], limit: int) -> list[dict[str, Any]]:
         async with self._lock:
+            await asyncio.to_thread(self._assert_account_available)
             return await asyncio.to_thread(self._get_profile_tweets, usernames, limit)
 
     def _get_profile_tweets(self, usernames: list[str], limit: int) -> list[dict[str, Any]]:
@@ -114,6 +174,7 @@ class ScweetRuntime:
 
     async def get_user_info(self, usernames: list[str]) -> list[dict[str, Any]]:
         async with self._lock:
+            await asyncio.to_thread(self._assert_account_available)
             return await asyncio.to_thread(self._client.get_user_info, usernames, save=False)
 
 
@@ -128,22 +189,39 @@ def _require_internal_token(request: Request) -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    # Initialization validates cookies and refreshes the cached manifest once.
-    # A startup error is deliberate: an unhealthy collector must not pretend to
-    # be ready and cause opaque sync failures in the main backend.
+    if not os.environ.get("SCWEET_SERVICE_TOKEN", "").strip():
+        raise ScweetConfigurationError("SCWEET_SERVICE_TOKEN must be configured.")
+    # Initialization validates local credentials and refreshes the cached
+    # manifest once. Temporary account cooldowns do not fail startup.
     app.state.runtime = ScweetRuntime()
     logger.info("Scweet service initialized")
     yield
 
 
 app = FastAPI(
-    title="Reader internal Scweet service", docs_url=None, redoc_url=None, lifespan=_lifespan
+    title="Reader internal Scweet service",
+    docs_url=None,
+    redoc_url=None,
+    lifespan=_lifespan,
 )
 
 
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready(request: Request) -> dict[str, str]:
+    runtime = getattr(request.app.state, "runtime", None)
+    if not isinstance(runtime, ScweetRuntime):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Not ready.")
+    if not await asyncio.to_thread(runtime.is_ready):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No eligible Scweet account is currently available.",
+        )
+    return {"status": "ready"}
 
 
 @app.post(
@@ -243,15 +321,27 @@ def _decode_cursor(cursor: str | None) -> int:
         padded = cursor + "=" * (-len(cursor) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded).decode())
         offset = int(payload["offset"])
-    except (binascii.Error, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+    except (
+        binascii.Error,
+        ValueError,
+        KeyError,
+        TypeError,
+        json.JSONDecodeError,
+    ) as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "cursor_invalid", "message": "Invalid Scweet continuation."},
+            detail={
+                "code": "cursor_invalid",
+                "message": "Invalid Scweet continuation.",
+            },
         ) from exc
     if offset < 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "cursor_invalid", "message": "Invalid Scweet continuation."},
+            detail={
+                "code": "cursor_invalid",
+                "message": "Invalid Scweet continuation.",
+            },
         )
     return offset
 
@@ -308,7 +398,7 @@ def _collector_error_code(exc: Exception) -> str:
         return "manifest_failed"
     if "protected" in message or "private" in message:
         return "protected_account"
-    if (
+    if isinstance(exc, AccountTemporarilyUnavailable) or (
         "rate" in message
         or "429" in message
         or "accountpoolexhausted" in message

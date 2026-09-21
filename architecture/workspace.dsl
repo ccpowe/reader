@@ -196,7 +196,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
             }
             scweetState = container "Scweet 状态库" "保存 Scweet 采集账号与运行状态；独立于 Reader 业务数据库。" "SQLite" "Database,Optional" {
                 properties {
-                    "sources" "services/scweet/Scweet/db.py; services/scweet_service/app.py; services/docker-compose.scweet.yml"
+                    "sources" "services/scweet_service/app.py; services/scweet_service/Dockerfile; services/docker-compose.scweet.yml"
                 }
             }
         }

@@ -4,14 +4,36 @@ services:
       context: .
       dockerfile: scweet_service/Dockerfile
     restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
       SCWEET_COOKIES_FILE: /run/secrets/scweet-cookies.json
       SCWEET_STATE_DB: /var/lib/scweet/scweet_state.db
       SCWEET_MANIFEST_TTL_SECONDS: "86400"
       SCWEET_SERVICE_TOKEN: ${SCWEET_SERVICE_TOKEN:?set_in_services/.env}
+    secrets:
+      - source: scweet-cookies
+        target: scweet-cookies.json
     volumes:
-      - ./scweet/cookies.json:/run/secrets/scweet-cookies.json:ro
       - scweet-state:/var/lib/scweet
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8090/ready', timeout=3).read()
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     # Do not publish this port. The reader backend should join this internal
     # network and call http://scweet:8090.
     networks:
@@ -19,6 +41,10 @@ services:
 
 volumes:
   scweet-state:
+
+secrets:
+  scweet-cookies:
+    file: ./scweet/cookies.json
 
 networks:
   reader-internal:
