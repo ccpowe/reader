@@ -143,7 +143,7 @@ export function RankingPreviewScreen({
     session,
     targetLocale: translation.targetLocale,
   });
-  const { clearTimedOutSegments, enqueueSegments: enqueueItemTranslations } = itemTranslationQueue;
+  const { clearFailedSegments, clearTimedOutSegments, enqueueSegments: enqueueItemTranslations } = itemTranslationQueue;
   const markTitleRetryFailure = useCallback((retryItem: RankingTitleRetryItem) => {
     clearTimedOutSegments([`${retryItem.translation_key}:title`]);
     setLiveItem((current) => current.translation_key === retryItem.translation_key
@@ -151,9 +151,11 @@ export function RankingPreviewScreen({
       : current);
   }, [clearTimedOutSegments]);
   const handleTitleRetryResults = useCallback((results: TranslationSegmentResult[]) => {
-    clearTimedOutSegments(results.map((result) => result.segment_id));
+    const segmentIds = results.map((result) => result.segment_id);
+    clearFailedSegments(segmentIds);
+    clearTimedOutSegments(segmentIds);
     applyItemTranslations(results);
-  }, [applyItemTranslations, clearTimedOutSegments]);
+  }, [applyItemTranslations, clearFailedSegments, clearTimedOutSegments]);
   const {
     isTitleRetrying,
     retryTitleTranslation,

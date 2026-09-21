@@ -19,6 +19,7 @@ import { colors } from '../ui/tokens';
 import { xCardSnippet } from '../domain/xCardPreview';
 import { relativeTime } from '../domain/formatting';
 import { useTranslation } from '../i18n';
+import type { XFeedCardTranslation } from '../domain/xFeedTranslation';
 import {
   displaySourceLabel,
   sourceHost,
@@ -29,12 +30,16 @@ export function ArticleCard({
   avatarAccessToken,
   item,
   onPress,
+  onRetryXTranslation,
   onToggleSave,
+  xTranslation,
 }: {
   avatarAccessToken: string;
   item: FeedItem;
   onPress: () => void;
+  onRetryXTranslation?: () => void;
   onToggleSave: () => void;
+  xTranslation?: XFeedCardTranslation;
 }) {
   const { t } = useTranslation('common');
   const isVideo = item.source_kind === 'youtube';
@@ -73,14 +78,30 @@ export function ArticleCard({
         </View>
         {threadCount > 1 ? <View style={styles.threadBadge}><Text style={styles.threadText}>{t('threadCollected', { count: threadCount })}</Text></View> : null}
         {preview?.reply_to ? <Text style={styles.replyContext}>{preview.reply_to.handle ? t('replyToHandle', { handle: preview.reply_to.handle.replace(/^@/, '') }) : t('repliedToPost')}</Text> : null}
-        {!(preview?.is_repost && preview.repost) ? <Text numberOfLines={4} style={styles.postText}>{xCardSnippet(preview?.text || item.excerpt || item.title, 180)}</Text> : null}
+        {!(preview?.is_repost && preview.repost) ? <Text numberOfLines={4} style={styles.postText}>{xCardSnippet(xTranslation?.bodyText || preview?.text || item.excerpt || item.title, 180)}</Text> : null}
         {reference ? <View style={styles.quote}>
           <Text style={styles.quoteLabel}>{t(preview?.is_repost ? 'repostedPost' : 'quotedPost')}</Text>
           {reference.availability === 'available' ? <>
             <Text numberOfLines={1} style={styles.quoteAuthor}>{reference.author.name || reference.author.handle || t('xUser')}</Text>
-            <Text numberOfLines={2} style={styles.quoteText}>{xCardSnippet(reference.text, 80)}</Text>
+            <Text numberOfLines={2} style={styles.quoteText}>{xCardSnippet(xTranslation?.referenceText || reference.text, 80)}</Text>
           </> : <Text style={styles.quoteText}>{t('quoteUnavailable')}</Text>}
         </View> : null}
+        {xTranslation?.retryable && onRetryXTranslation ? (
+          <View accessibilityLiveRegion="polite" style={styles.translationFailure}>
+            <Text style={styles.translationFailureText}>{t('translationFailed')}</Text>
+            <Pressable
+              accessibilityLabel={t('retryTranslation')}
+              accessibilityRole="button"
+              onPress={(event) => {
+                event.stopPropagation();
+                onRetryXTranslation();
+              }}
+              style={styles.translationRetry}
+            >
+              <Text style={styles.translationRetryText}>{t('retryTranslation')}</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {item.thumbnail_url ? <ContentImage uri={item.thumbnail_url} resizeMode="contain" style={styles.postImage} /> : null}
         <View style={styles.postLink}><Text style={styles.postLinkText}>{t(threadCount > 1 ? 'readThread' : 'viewOriginalPost')}</Text><MaterialCommunityIcons color={colors.textMuted} name="open-in-new" size={13} /></View>
       </Pressable>
@@ -243,4 +264,8 @@ const styles = StyleSheet.create({
   quoteText: { color: colors.textSecondary, fontSize: 12, lineHeight: 21, marginTop: 5 },
   postLink: { alignItems: 'center', flexDirection: 'row', gap: 5, minHeight: 36, marginTop: 6 },
   postLinkText: { color: colors.textMuted, fontSize: 11 },
+  translationFailure: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 8 },
+  translationFailureText: { color: '#B42318', fontSize: 12, fontWeight: '600' },
+  translationRetry: { borderColor: '#B42318', borderRadius: 6, borderWidth: 1, minHeight: 30, paddingHorizontal: 9, paddingVertical: 5 },
+  translationRetryText: { color: '#8A1C13', fontSize: 12, fontWeight: '700' },
 });

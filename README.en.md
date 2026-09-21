@@ -22,7 +22,7 @@
 Reader is a self-hosted information aggregation app. Bring blogs, communities, websites, and video channels into one reading space, organize subscriptions around your interests, read translations alongside the original text, and save content worth revisiting.
 
 - **Make following a daily habit.** Updates from multiple sources flow into the Today timeline. Organize your reading topics with folders, or discover something new through trending rankings.
-- **Understand more, then go deeper.** Read articles and web pages in bilingual views. For YouTube videos, follow the subtitle timeline, jump to a line, and replay it.
+- **Understand more, then go deeper.** X posts in Today are translated automatically according to your preference. Read articles and web pages in bilingual views. For YouTube videos, follow the subtitle timeline, jump to a line, and replay it.
 - **Connect to your own service.** Subscriptions, saved items, and accounts live on the Reader service you connect to. The service operator configures the translation models.
 
 ## Current release status

@@ -9,6 +9,7 @@ import { readerQueryKeys } from '../state/queryClient';
 import { useReaderRuntime } from '../lib/connection/react';
 import type { ActiveReaderRuntime } from '../lib/connection';
 import { useTitleTranslationConvergence } from './useTitleTranslationConvergence';
+import { useXFeedTranslation } from './useXFeedTranslation';
 
 const FEED_PAGE_SIZE = 20;
 
@@ -35,6 +36,7 @@ export function useInboxFeed(
   active: boolean,
   translationLocale = 'zh-CN',
   engineId: string | null = null,
+  translationEnabled = false,
 ) {
   const { t } = useTranslation('errors');
   const runtime = useReaderRuntime();
@@ -60,6 +62,15 @@ export function useInboxFeed(
     engineId,
     `feed:${feedScopeCacheKey(scope)}`,
   );
+  const xTranslation = useXFeedTranslation(
+    session,
+    items,
+    active,
+    translationEnabled,
+    translationLocale,
+    engineId,
+    `feed:${feedScopeCacheKey(scope)}`,
+  );
 
   const message = query.error
     ? query.error.message
@@ -76,5 +87,6 @@ export function useInboxFeed(
     loading: query.isPending && items.length === 0,
     refreshing: query.isRefetching && !query.isFetchingNextPage,
     titleTranslation,
+    xTranslation,
   };
 }

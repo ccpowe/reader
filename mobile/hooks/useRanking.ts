@@ -96,7 +96,7 @@ export function useRanking(
     session,
     targetLocale,
   });
-  const { clearTimedOutSegments, enqueueSegments, isTranslating } = translationQueue;
+  const { clearFailedSegments, clearTimedOutSegments, enqueueSegments, isTranslating } = translationQueue;
   const markTitleRetryFailure = useCallback((item: RankingTitleRetryItem) => {
     const context = captureRuntimeContext(runtime);
     if (!context || !isRuntimeContextCurrent(context)) return;
@@ -114,9 +114,11 @@ export function useRanking(
     });
   }, [clearTimedOutSegments, queryClient, queryKey, runtime]);
   const handleTitleRetryResults = useCallback((results: TranslationSegmentResult[]) => {
-    clearTimedOutSegments(results.map((result) => result.segment_id));
+    const segmentIds = results.map((result) => result.segment_id);
+    clearFailedSegments(segmentIds);
+    clearTimedOutSegments(segmentIds);
     mergeTranslationResults(results);
-  }, [clearTimedOutSegments, mergeTranslationResults]);
+  }, [clearFailedSegments, clearTimedOutSegments, mergeTranslationResults]);
   const {
     isTitleRetrying,
     retryTitleTranslation,

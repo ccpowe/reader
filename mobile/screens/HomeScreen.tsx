@@ -189,6 +189,7 @@ export function HomeScreen({
           session={session}
           source={selectedSource}
           translationEngineId={translationPreference.effectiveEngineId}
+          translationEnabled={translationPreference.enabled}
           translationLocale={translationPreference.targetLocale}
         />
       ) : (
@@ -208,6 +209,7 @@ export function HomeScreen({
               session={session}
               source={null}
               translationEngineId={translationPreference.effectiveEngineId}
+              translationEnabled={translationPreference.enabled}
               translationLocale={translationPreference.targetLocale}
             />
           )}
@@ -238,6 +240,7 @@ function InboxFeedPage({
   session,
   source,
   translationEngineId,
+  translationEnabled,
   translationLocale,
 }: {
   active: boolean;
@@ -249,6 +252,7 @@ function InboxFeedPage({
   session: Session;
   source: SourceListItem | null;
   translationEngineId: string | null;
+  translationEnabled: boolean;
   translationLocale: string;
 }) {
   const { t } = useTranslation('feed');
@@ -258,6 +262,7 @@ function InboxFeedPage({
     active,
     translationLocale,
     translationEngineId,
+    translationEnabled,
   );
   return (
     <Reanimated.FlatList
@@ -273,7 +278,14 @@ function InboxFeedPage({
       }}
       onScroll={active ? onScroll : undefined}
       refreshing={feed.refreshing}
-      renderItem={({ item }) => <ArticleCard avatarAccessToken={session.access_token} item={item} onPress={() => onOpenArticle(item)} onToggleSave={() => void onToggleSave(item)} />}
+      renderItem={({ item }) => <ArticleCard
+        avatarAccessToken={session.access_token}
+        item={item}
+        onPress={() => onOpenArticle(item)}
+        onRetryXTranslation={() => feed.xTranslation.retry(item)}
+        onToggleSave={() => void onToggleSave(item)}
+        xTranslation={feed.xTranslation.byContentId.get(item.content_id)}
+      />}
       scrollEventThrottle={16}
       showsVerticalScrollIndicator={false}
       windowSize={5}

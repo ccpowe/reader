@@ -40,6 +40,7 @@ const item = {
 };
 let rankingRetryCalls = 0;
 let previewRetryCalls = 0;
+const clearedPreviewQueueFailures = [];
 const runtime = { generation: 1, identity: { server_id: 'ranking-surface-test' } };
 const savedState = { content_id: null, is_saved: false };
 let saveCalls = 0;
@@ -127,7 +128,13 @@ try {
     if (request === '../hooks/useCollapsingChrome') return { useChromeStyle: () => ({}), useCollapsingChrome: () => ({ onScroll: () => {}, revealChrome: () => {} }) };
     if (request === '../hooks/useSources') return { useSources: () => ({ error: null, isPending: false, isSuccess: true, items: [], message: '' }) };
     if (request === '../hooks/useTranslationPreference') return { useTranslationPreference: () => ({ effectiveEngineId: null, enabled: true, isPending: false, targetLocale: 'zh-CN' }) };
-    if (request === '../hooks/useSegmentTranslationQueue') return { useSegmentTranslationQueue: () => ({ clearTimedOutSegments: () => {}, enqueueSegments: () => {}, isTranslating: false, timedOutSegmentIds: new Set() }) };
+    if (request === '../hooks/useSegmentTranslationQueue') return { useSegmentTranslationQueue: () => ({
+      clearFailedSegments: (segmentIds) => clearedPreviewQueueFailures.push(...segmentIds),
+      clearTimedOutSegments: () => {},
+      enqueueSegments: () => {},
+      isTranslating: false,
+      timedOutSegmentIds: new Set(),
+    }) };
     if (request === '../hooks/useRankingTitleRetry') return {
       useRankingTitleRetry: ({ onResults }) => ({
         isTitleRetrying: (retryItem) => retryingIds.has(`${retryItem.translation_key}:title`),
@@ -240,6 +247,7 @@ try {
     previewRetry().props.onPress({ stopPropagation: () => {} });
   });
   assert.equal(previewRetryCalls, 1, 'RankingPreviewScreen suppresses duplicate explicit retries');
+  assert.deepEqual(clearedPreviewQueueFailures, ['ranking-1:title'], 'explicit retry releases the background queue terminal lock');
   assert.equal(previewRetry(), undefined, 'preview successful retry removes the failed affordance');
   const button = label => tree.root.findAll(node => node.type === 'Pressable' && node.props.accessibilityLabel === label)[0];
   assert.ok(button('收藏'));

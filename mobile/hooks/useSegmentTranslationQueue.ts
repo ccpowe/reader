@@ -115,6 +115,7 @@ export function useSegmentTranslationQueue({
   const runtime = useReaderRuntime();
   const pendingRef = useRef(new Map<string, QueueRecord>());
   const completedRef = useRef(new Map<string, CompletedRecord>());
+  const failedRef = useRef(new Map<string, TranslationSegment>());
   const timedOutRef = useRef(new Map<string, TranslationSegment>());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeControllersRef = useRef(new Set<AbortController>());
@@ -127,6 +128,7 @@ export function useSegmentTranslationQueue({
   const onResultsRef = useRef(onResults);
   const [activeCount, setActiveCount] = useState(0);
   const [error, setError] = useState<QueueError | null>(null);
+  const [failedSegmentIds, setFailedSegmentIds] = useState<ReadonlySet<string>>(new Set());
   const [timedOutSegmentIds, setTimedOutSegmentIds] = useState<ReadonlySet<string>>(new Set());
 
   enabledRef.current = enabled;
@@ -152,7 +154,9 @@ export function useSegmentTranslationQueue({
     inFlightCountRef.current = 0;
     pendingRef.current.clear();
     completedRef.current.clear();
+    failedRef.current.clear();
     timedOutRef.current.clear();
+    setFailedSegmentIds(new Set());
     setTimedOutSegmentIds(new Set());
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
@@ -254,11 +258,13 @@ export function useSegmentTranslationQueue({
 
       const returnedIds = new Set(freshResults.map((result) => result.segment_id));
       let convergenceTimedOut = false;
+      let failedSegmentsChanged = false;
       for (const result of freshResults) {
         const current = pendingRef.current.get(result.segment_id);
         if (!current) continue;
         if (result.translation_status === 'succeeded' && result.translated_text) {
           pendingRef.current.delete(result.segment_id);
+          failedSegmentsChanged = failedRef.current.delete(result.segment_id) || failedSegmentsChanged;
           completedRef.current.set(result.segment_id, {
             result,
             segment: current.segment,
@@ -279,6 +285,8 @@ export function useSegmentTranslationQueue({
         }
         if (convergence === 'settled') {
           pendingRef.current.delete(result.segment_id);
+          failedRef.current.set(result.segment_id, current.segment);
+          failedSegmentsChanged = true;
           continue;
         }
         const resultAt = Date.now();
@@ -321,6 +329,7 @@ export function useSegmentTranslationQueue({
         if (!oldest) break;
         completedRef.current.delete(oldest);
       }
+      if (failedSegmentsChanged) setFailedSegmentIds(new Set(failedRef.current.keys()));
       if (isRuntimeContextCurrent(context)) {
         setError(
           convergenceTimedOut || timedOutRef.current.size > 0
@@ -331,6 +340,7 @@ export function useSegmentTranslationQueue({
     } catch (cause) {
       if (generation !== generationRef.current || !mountedRef.current || !isRuntimeContextCurrent(context)) return;
       let stopped = false;
+      let failedSegmentsChanged = false;
       for (const record of batch) {
         const current = pendingRef.current.get(record.segment.segment_id);
         if (current?.version === record.version) {
@@ -340,10 +350,13 @@ export function useSegmentTranslationQueue({
             current.availableAt = Date.now() + decision.delayMs;
           } else {
             pendingRef.current.delete(record.segment.segment_id);
+            failedRef.current.set(record.segment.segment_id, current.segment);
+            failedSegmentsChanged = true;
             stopped = true;
           }
         }
       }
+      if (failedSegmentsChanged) setFailedSegmentIds(new Set(failedRef.current.keys()));
       if (isRuntimeContextCurrent(context)) setError({ kind: 'transport', cause, stopped });
     } finally {
       for (const record of batch) {
@@ -377,6 +390,7 @@ export function useSegmentTranslationQueue({
     if (!context) return;
     const cachedResults: TranslationSegmentResult[] = [];
     const seen = new Set<string>();
+    let clearedFailedSegment = false;
     let clearedTimedOutSegment = false;
     for (const candidate of segments) {
       const text = candidate.text.trim();
@@ -397,11 +411,16 @@ export function useSegmentTranslationQueue({
       if (completed) completedRef.current.delete(segment.segment_id);
       const pending = pendingRef.current.get(segment.segment_id);
       if (pending && sameSegment(pending.segment, segment)) continue;
-      const timedOut = timedOutRef.current.has(segment.segment_id);
+      const failed = failedRef.current.get(segment.segment_id);
+      // Terminal failures stay closed across renders. A changed source is a
+      // new demand and may reuse the stable UI segment id safely.
+      if (failed && sameSegment(failed, segment)) continue;
+      if (failedRef.current.delete(segment.segment_id)) clearedFailedSegment = true;
+      const timedOut = timedOutRef.current.get(segment.segment_id);
       // A render, query refresh, or re-entry must not silently reopen a
-      // convergence window.  `retrySegments` is the only path that sets
-      // allowTimedOut and deliberately starts a fresh window.
-      if (timedOut) continue;
+      // convergence window. A changed source is a distinct demand; otherwise
+      // only `retrySegments` deliberately starts a fresh window.
+      if (timedOut && sameSegment(timedOut, segment)) continue;
       if (timedOutRef.current.delete(segment.segment_id)) clearedTimedOutSegment = true;
       versionRef.current += 1;
       pendingRef.current.set(segment.segment_id, {
@@ -413,6 +432,7 @@ export function useSegmentTranslationQueue({
         version: versionRef.current,
       });
     }
+    if (clearedFailedSegment) setFailedSegmentIds(new Set(failedRef.current.keys()));
     if (clearedTimedOutSegment) {
       setTimedOutSegmentIds(new Set(timedOutRef.current.keys()));
       if (timedOutRef.current.size === 0) setError(null);
@@ -425,12 +445,28 @@ export function useSegmentTranslationQueue({
   const retrySegments = useCallback((segments: TranslationSegment[]) => {
     if (!enabledRef.current || !segments.length) return;
     for (const segment of segments) {
-      if (segment.segment_id) timedOutRef.current.delete(segment.segment_id);
+      if (segment.segment_id) {
+        failedRef.current.delete(segment.segment_id);
+        timedOutRef.current.delete(segment.segment_id);
+      }
     }
+    setFailedSegmentIds(new Set(failedRef.current.keys()));
     setTimedOutSegmentIds(new Set(timedOutRef.current.keys()));
-    if (!timedOutRef.current.size) setError(null);
+    if (!failedRef.current.size && !timedOutRef.current.size) setError(null);
     enqueueSegments(segments);
   }, [enqueueSegments]);
+
+  /** Release queue terminal state after another explicit retry path returns. */
+  const clearFailedSegments = useCallback((segmentIds: string[]) => {
+    if (!segmentIds.length) return;
+    let changed = false;
+    for (const segmentId of segmentIds) {
+      changed = failedRef.current.delete(segmentId) || changed;
+    }
+    if (!changed) return;
+    setFailedSegmentIds(new Set(failedRef.current.keys()));
+    if (!failedRef.current.size && !timedOutRef.current.size) setError(null);
+  }, []);
 
   const clearTimedOutSegments = useCallback((segmentIds: string[]) => {
     if (!segmentIds.length) return;
@@ -462,9 +498,11 @@ export function useSegmentTranslationQueue({
 
   return {
     activeCount,
+    clearFailedSegments,
     clearTimedOutSegments,
     enqueueSegments,
     error: queueErrorMessage(error),
+    failedSegmentIds,
     isTranslating: activeCount > 0,
     retrySegments,
     reset,
