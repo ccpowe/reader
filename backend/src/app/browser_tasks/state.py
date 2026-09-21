@@ -100,9 +100,13 @@ class TaskStateStore:
         except sqlite3.Error as exc:
             raise StateUnavailable("browser task state is unavailable") from exc
 
-    def initialize(self) -> None:
+    def prepare_directory(self) -> None:
+        """Prepare the shared-GID directory before any lifecycle file is created."""
         self.path.parent.mkdir(parents=True, mode=0o2770, exist_ok=True)
         self._ensure_shared_permissions(self.path.parent, directory=True)
+
+    def initialize(self) -> None:
+        self.prepare_directory()
         connection = self._connect()
         try:
             version = int(connection.execute("PRAGMA user_version").fetchone()[0])

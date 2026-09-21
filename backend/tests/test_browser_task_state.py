@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app.browser_tasks.auth import load_or_create_capability_key
 from app.browser_tasks.state import (
     ControllerLock,
     StateConflict,
@@ -124,6 +125,36 @@ def test_state_volume_lock_rejects_a_second_controller(tmp_path: Path):
             second.acquire()
     finally:
         first.release()
+
+
+def test_prepare_directory_precedes_lock_and_key_group_inheritance(tmp_path: Path):
+    supplemental_groups = [group for group in os.getgroups() if group != os.getgid()]
+    if not supplemental_groups:
+        pytest.skip("supplemental group required to verify setgid inheritance")
+    shared_gid = supplemental_groups[0]
+    os.chown(tmp_path, -1, shared_gid)
+    value = TaskStateStore(tmp_path / "tasks.sqlite3")
+
+    value.prepare_directory()
+    assert tmp_path.stat().st_mode & 0o7777 == 0o2770
+    assert not value.path.exists()
+
+    lock_path = tmp_path / "controller.lock"
+    lock = ControllerLock(lock_path)
+    lock.acquire()
+    try:
+        key_path = tmp_path / "capability.key"
+        load_or_create_capability_key(key_path)
+    finally:
+        lock.release()
+    value.initialize()
+
+    assert lock_path.stat().st_gid == shared_gid
+    assert key_path.stat().st_gid == shared_gid
+    assert value.path.stat().st_gid == shared_gid
+    assert lock_path.stat().st_mode & 0o777 == 0o660
+    assert key_path.stat().st_mode & 0o777 == 0o600
+    assert value.path.stat().st_mode & 0o777 == 0o660
 
 
 def test_non_owner_reaper_validates_shared_modes_without_chmod(tmp_path: Path, monkeypatch):

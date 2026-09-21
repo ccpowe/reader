@@ -116,6 +116,7 @@ async def build_runtime_from_environment(*, acquire_controller_lock: bool) -> Br
         await asyncio.to_thread(state.initialize)
         await engine.initialize()
         return runtime
+    await asyncio.to_thread(state.prepare_directory)
     lock = ControllerLock(state_dir / "controller.lock")
     await asyncio.to_thread(lock.acquire)
     runtime.controller_lock = lock

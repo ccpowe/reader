@@ -1,0 +1,366 @@
+name: ${COMPOSE_PROJECT_NAME:?run docker-init.sh init first}
+
+x-reader-environment: &reader-environment
+  APP_ENVIRONMENT: production
+  APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+  APP_CORS_ORIGINS: ${APP_CORS_ORIGINS:-[]}
+  APP_SERVER_ID: ${READER_DEPLOYMENT_ID}
+  APP_PUBLIC_API_BASE_URL: ${APP_PUBLIC_API_BASE_URL:-http://127.0.0.1:8000}
+  APP_DATABASE_HOST: postgres
+  APP_DATABASE_PORT: "5432"
+  APP_DATABASE_USER: reader
+  APP_DATABASE_NAME: reader
+  APP_DATABASE_SSL: "false"
+  APP_DATABASE_PASSWORD_FILE: /run/secrets/database-password
+  APP_SERVER_ACCESS_TOKEN_FILE: /run/secrets/server-access-token
+  APP_AUTH_JWT_SECRET_FILE: /run/secrets/auth-jwt-secret
+  APP_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek-api-key
+  APP_OPENROUTER_API_KEY_FILE: /run/secrets/openrouter-api-key
+  APP_DEEPSEEK_API_BASE: ${APP_DEEPSEEK_API_BASE:-https://api.deepseek.com}
+  APP_DEEPSEEK_MODEL: ${APP_DEEPSEEK_MODEL:-deepseek-flash}
+  APP_OPENROUTER_API_BASE: ${APP_OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}
+  APP_OPENROUTER_MODEL: ${APP_OPENROUTER_MODEL:-minimax/minimax-m3}
+  APP_TRANSLATION_DEFAULT_ENGINE_ID: ${APP_TRANSLATION_DEFAULT_ENGINE_ID:-deepseek-v4-flash}
+  APP_WEB_RULE_AGENT_ENGINE_ID: ${APP_WEB_RULE_AGENT_ENGINE_ID:-disabled}
+  APP_X_PROVIDER: scweet
+
+x-reader-runtime: &reader-runtime
+  image: ${READER_IMAGE_ID:?docker-init.sh up must select a Reader image}
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs:
+    - /tmp:rw,nosuid,nodev,noexec,size=64m,uid=10001,gid=10001,mode=1777
+  restart: unless-stopped
+
+x-api-secrets: &api-secrets
+  - database-password
+  - server-access-token
+  - auth-jwt-secret
+  - deepseek-api-key
+  - openrouter-api-key
+
+x-worker-secrets: &worker-secrets
+  - database-password
+  - deepseek-api-key
+  - openrouter-api-key
+  - browser-manager-token
+  - scweet-service-token
+
+services:
+  pg-init:
+    image: postgres:18@sha256:29ee7bb30d804447dc9a91fd0d74322ae1dc3a4072cc6346f70a5ed6e783b565
+    profiles: [tools]
+    user: "0:0"
+    read_only: true
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    cpus: 0.25
+    pids_limit: 32
+    entrypoint: [/bin/sh, -eu, -c]
+    command:
+      - >-
+        target=/var/lib/postgresql;
+        test -d "$$target" && test ! -L "$$target";
+        owner=$$(stat -c '%u:%g' "$$target");
+        case "$$owner" in 0:0|999:999) ;; *) echo "postgres volume has unexpected owner: $$owner" >&2; exit 1;; esac;
+        chown 999:999 "$$target";
+        test "$$(stat -c '%u:%g' "$$target")" = 999:999
+    volumes:
+      - postgres-data:/var/lib/postgresql
+
+  postgres:
+    image: postgres:18@sha256:29ee7bb30d804447dc9a91fd0d74322ae1dc3a4072cc6346f70a5ed6e783b565
+    user: "999:999"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    group_add: ["${READER_SECRET_GID}"]
+    environment:
+      POSTGRES_DB: reader
+      POSTGRES_USER: reader
+      POSTGRES_PASSWORD_FILE: /run/secrets/database-password
+    secrets: [database-password]
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    tmpfs:
+      - /var/run/postgresql:rw,nosuid,nodev,noexec,size=16m,uid=999,gid=999,mode=3775
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,uid=999,gid=999,mode=1777
+    shm_size: 128m
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+    networks: [db-data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U reader -d reader]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  migrate:
+    <<: *reader-runtime
+    profiles: [tools]
+    restart: "no"
+    user: "10001:10001"
+    group_add: ["${READER_SECRET_GID}"]
+    environment:
+      APP_ENVIRONMENT: production
+      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+      APP_DATABASE_HOST: postgres
+      APP_DATABASE_PORT: "5432"
+      APP_DATABASE_USER: reader
+      APP_DATABASE_NAME: reader
+      APP_DATABASE_SSL: "false"
+      APP_DATABASE_PASSWORD_FILE: /run/secrets/database-password
+      READER_ALEMBIC_DISABLE_DOTENV: "1"
+    secrets: [database-password]
+    command: [alembic, upgrade, head]
+    networks: [db-data]
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+
+  state-init:
+    <<: *reader-runtime
+    profiles: [tools]
+    restart: "no"
+    user: "0:20000"
+    network_mode: none
+    cap_add: [CHOWN]
+    environment:
+      APP_BROWSER_TASK_STATE_DIR: /var/lib/reader-browser
+    entrypoint: [reader-state-init]
+    command: []
+    volumes:
+      - browser-state:/var/lib/reader-browser
+    mem_limit: 64m
+    cpus: 0.25
+    pids_limit: 32
+
+  network-init:
+    <<: *reader-runtime
+    profiles: [tools]
+    restart: "no"
+    user: "10001:10001"
+    command: [/bin/true]
+    networks: [browser-egress]
+    mem_limit: 32m
+    cpus: 0.25
+    pids_limit: 16
+
+  browser-manager:
+    <<: *reader-runtime
+    user: "10001:10001"
+    group_add: ["20000", "${DOCKER_GID}", "${READER_SECRET_GID}"]
+    environment:
+      APP_BROWSER_TASK_DEPLOYMENT_ID: ${READER_DEPLOYMENT_ID}
+      APP_BROWSER_TASK_BROWSER_IMAGE: ${BROWSER_IMAGE_ID}
+      APP_BROWSER_TASK_ADAPTER_IMAGE: ${READER_IMAGE_ID}
+      APP_BROWSER_TASK_DATA_NETWORK: ${BROWSER_DATA_NETWORK}
+      APP_BROWSER_TASK_EGRESS_NETWORK: ${BROWSER_EGRESS_NETWORK}
+      APP_BROWSER_TASK_POLICY_VERSION: reader-browser-container-v1
+      APP_BROWSER_TASK_LIGHTPANDA_VERSION: 0.4.0
+      APP_BROWSER_TASK_LIGHTPANDA_SHA256: bfcf9bd7e80939b87232aa114a49d8f397f51af0c2632d9fc58d4a6d4386624f
+      APP_BROWSER_TASK_AGENT_BROWSER_VERSION: 0.37.1
+      APP_BROWSER_TASK_AGENT_BROWSER_SHA256: f8e5f9294bd0da70dda61854f12004fd61c668cd682bfb600cdf6d0df73dea69
+      APP_BROWSER_TASK_STATE_DIR: /var/lib/reader-browser
+      APP_BROWSER_MANAGER_TOKEN_FILE: /run/secrets/browser-manager-token
+    secrets: [browser-manager-token]
+    volumes:
+      - browser-state:/var/lib/reader-browser
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      browser-control:
+        aliases: [browser-manager]
+    command: [reader-browser-manager]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/ready', timeout=2).read()"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    labels:
+      io.reader.deployment: ${READER_DEPLOYMENT_ID}
+      io.reader.component: browser-manager
+    mem_limit: 384m
+    cpus: 0.75
+    pids_limit: 192
+
+  browser-reaper:
+    <<: *reader-runtime
+    user: "10002:10001"
+    group_add: ["20000", "${DOCKER_GID}"]
+    network_mode: none
+    environment:
+      APP_BROWSER_TASK_DEPLOYMENT_ID: ${READER_DEPLOYMENT_ID}
+      APP_BROWSER_TASK_BROWSER_IMAGE: ${BROWSER_IMAGE_ID}
+      APP_BROWSER_TASK_ADAPTER_IMAGE: ${READER_IMAGE_ID}
+      APP_BROWSER_TASK_DATA_NETWORK: ${BROWSER_DATA_NETWORK}
+      APP_BROWSER_TASK_EGRESS_NETWORK: ${BROWSER_EGRESS_NETWORK}
+      APP_BROWSER_TASK_POLICY_VERSION: reader-browser-container-v1
+      APP_BROWSER_TASK_LIGHTPANDA_VERSION: 0.4.0
+      APP_BROWSER_TASK_LIGHTPANDA_SHA256: bfcf9bd7e80939b87232aa114a49d8f397f51af0c2632d9fc58d4a6d4386624f
+      APP_BROWSER_TASK_AGENT_BROWSER_VERSION: 0.37.1
+      APP_BROWSER_TASK_AGENT_BROWSER_SHA256: f8e5f9294bd0da70dda61854f12004fd61c668cd682bfb600cdf6d0df73dea69
+      APP_BROWSER_TASK_STATE_DIR: /var/lib/reader-browser
+    volumes:
+      - browser-state:/var/lib/reader-browser
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: [reader-browser-reaper]
+    labels:
+      io.reader.deployment: ${READER_DEPLOYMENT_ID}
+      io.reader.component: browser-reaper
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+
+  api:
+    <<: *reader-runtime
+    user: "10001:10001"
+    group_add: ["${READER_SECRET_GID}"]
+    environment: *reader-environment
+    secrets: *api-secrets
+    networks: [db-data, app-egress]
+    ports:
+      - "${READER_API_BIND_HOST:-127.0.0.1}:${READER_API_PORT:-8000}:8000"
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2).read()"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    labels:
+      io.reader.deployment: ${READER_DEPLOYMENT_ID}
+      io.reader.component: api
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+
+  worker:
+    <<: *reader-runtime
+    user: "10001:10001"
+    group_add: ["${READER_SECRET_GID}"]
+    environment:
+      APP_ENVIRONMENT: production
+      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+      APP_DATABASE_HOST: postgres
+      APP_DATABASE_PORT: "5432"
+      APP_DATABASE_USER: reader
+      APP_DATABASE_NAME: reader
+      APP_DATABASE_SSL: "false"
+      APP_DATABASE_PASSWORD_FILE: /run/secrets/database-password
+      APP_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek-api-key
+      APP_OPENROUTER_API_KEY_FILE: /run/secrets/openrouter-api-key
+      APP_DEEPSEEK_API_BASE: ${APP_DEEPSEEK_API_BASE:-https://api.deepseek.com}
+      APP_DEEPSEEK_MODEL: ${APP_DEEPSEEK_MODEL:-deepseek-flash}
+      APP_OPENROUTER_API_BASE: ${APP_OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}
+      APP_OPENROUTER_MODEL: ${APP_OPENROUTER_MODEL:-minimax/minimax-m3}
+      APP_TRANSLATION_DEFAULT_ENGINE_ID: ${APP_TRANSLATION_DEFAULT_ENGINE_ID:-deepseek-v4-flash}
+      APP_WEB_RULE_AGENT_ENGINE_ID: ${APP_WEB_RULE_AGENT_ENGINE_ID:-disabled}
+      APP_BROWSER_CONTROLLER_URL: http://browser-manager:8091
+      APP_BROWSER_CONTROLLER_TOKEN_FILE: /run/secrets/browser-manager-token
+      APP_SCWEET_SERVICE_URL: http://scweet:8090
+      APP_SCWEET_SERVICE_TOKEN_FILE: /run/secrets/scweet-service-token
+    secrets: *worker-secrets
+    networks: [db-data, app-egress, browser-control, browser-data, scweet-control]
+    command: [reader-worker]
+    labels:
+      io.reader.deployment: ${READER_DEPLOYMENT_ID}
+      io.reader.component: worker
+    mem_limit: 1536m
+    cpus: 1.0
+    pids_limit: 384
+
+  scweet:
+    profiles: [scweet]
+    image: ${SCWEET_IMAGE_ID:?docker-init.sh up must select a Scweet image}
+    init: true
+    user: "10001:10001"
+    group_add: ["${READER_SECRET_GID}"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      SCWEET_COOKIES_FILE: /run/secrets/scweet-cookies.json
+      SCWEET_STATE_DB: /var/lib/scweet/scweet_state.db
+      SCWEET_MANIFEST_TTL_SECONDS: "86400"
+      SCWEET_SERVICE_TOKEN_FILE: /run/secrets/scweet-service-token
+    secrets:
+      - source: scweet-cookies
+        target: scweet-cookies.json
+      - scweet-service-token
+    volumes:
+      - scweet-state:/var/lib/scweet
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=32m,uid=10001,gid=10001,mode=1777
+    entrypoint: [/bin/sh, -eu, -c]
+    command:
+      - >-
+        test -r "$$SCWEET_SERVICE_TOKEN_FILE";
+        export SCWEET_SERVICE_TOKEN=$$(cat "$$SCWEET_SERVICE_TOKEN_FILE");
+        unset SCWEET_SERVICE_TOKEN_FILE;
+        exec uvicorn app:app --host 0.0.0.0 --port 8090
+    networks: [scweet-control, collector-egress]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/ready', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+    labels:
+      io.reader.deployment: ${READER_DEPLOYMENT_ID}
+      io.reader.component: scweet
+
+volumes:
+  postgres-data:
+  browser-state:
+  scweet-state:
+
+networks:
+  db-data:
+    name: ${DB_DATA_NETWORK}
+    internal: true
+  browser-control:
+    name: ${BROWSER_CONTROL_NETWORK}
+    internal: true
+  browser-data:
+    name: ${BROWSER_DATA_NETWORK}
+    internal: true
+  browser-egress:
+    name: ${BROWSER_EGRESS_NETWORK}
+  app-egress:
+    name: ${APP_EGRESS_NETWORK}
+  scweet-control:
+    name: ${SCWEET_CONTROL_NETWORK}
+    internal: true
+  collector-egress:
+    name: ${X_EGRESS_NETWORK}
+
+secrets:
+  database-password:
+    file: .docker/secrets/database-password
+  server-access-token:
+    file: .docker/secrets/server-access-token
+  auth-jwt-secret:
+    file: .docker/secrets/auth-jwt-secret
+  deepseek-api-key:
+    file: .docker/secrets/deepseek-api-key
+  openrouter-api-key:
+    file: .docker/secrets/openrouter-api-key
+  browser-manager-token:
+    file: .docker/secrets/browser-manager-token
+  scweet-service-token:
+    file: .docker/secrets/scweet-service-token
+  scweet-cookies:
+    file: .docker/secrets/scweet-cookies.json

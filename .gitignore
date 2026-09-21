@@ -14,6 +14,9 @@ __pycache__/
 .env
 *.env
 !.env.example
+!.env.docker.example
+.env.docker
+.docker/
 
 
 # Experimental workspaces live outside the public repository.

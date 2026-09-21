@@ -63,6 +63,95 @@ Reader Worker 内：LangChain 规则作者 → 受控页面工具／真实规则
 依赖 → 启动 PostgreSQL → 运行迁移 → 启动 API 和 Worker → 验证所选能力 → 启动 Web 预览
 或安装／连接 APK → 按第 7 节总结结果。需要自动解析新 Web 来源时，按第 6 节配置规则引擎。
 
+## Docker Compose 部署
+
+仓库根目录的 `compose.yaml` 提供 PostgreSQL、一次性迁移、Reader API、Worker、Browser
+Manager／Reaper 和可选 Scweet 的完整部署。使用 `docker-init.sh` 管理它；直接运行裸
+`docker compose up` 不受支持，因为它会绕过密钥封装、迁移顺序、旧任务 drain 和镜像身份切换。
+当前方案面向 Linux Docker Engine；rootless Docker 和 user namespace remap 尚未验收。
+
+### 首次启动
+
+```bash
+cp .env.docker.example .env.docker
+./docker-init.sh init
+```
+
+编辑 `.env.docker` 中的公开地址、端口和模型选择。实际秘密不放在这个文件中：把所用的
+模型 key 写入以下一个或两个长期配置源，文件保持 `0600`：
+
+```text
+.docker/inputs/deepseek-api-key
+.docker/inputs/openrouter-api-key
+```
+
+然后启动并取得客户端连接 token：
+
+```bash
+./docker-init.sh up
+./docker-init.sh status
+./docker-init.sh token
+```
+
+`init` 生成数据库密码、连接 token、JWT 密钥、Browser Manager token 和 Scweet 服务 token。
+这些值只保存在被 Git 忽略的 `.docker/secrets/` 中。每次 `up` 都在部署互斥锁内验证
+`.docker/inputs/` 的 owner、普通文件类型与 `0600` 权限，再原子封装为 `0440` 运行时 secret；
+各服务只挂载自己需要的文件。不要删除 `.docker/`，否则已有数据库卷将无法用原密码启动。
+
+API 默认发布到 `127.0.0.1:8000`。只有在已经配置防火墙、反向代理或可信局域网边界时，
+才修改 `READER_API_BIND_HOST`。其他容器不发布宿主端口。至少一个与默认翻译引擎匹配的 key
+非空时，Worker 的翻译循环才会就绪；两个 key 文件都为空时 API `/ready` 仍为 200，
+`/worker-ready` 返回 503，并明确列出两个翻译循环失败。这是受限部署状态，不代表 API 故障。
+
+### 升级、停止与持久数据
+
+再次运行 `./docker-init.sh up` 会按固定依赖重新构建候选 Browser 与 Reader 镜像。工具先停止
+旧 Worker，以旧 Manager 的实际容器 Image ID 和部署标签核对身份并运行管理 drain，确认本部署
+的动态 browser、adapter 和任务卷均已清理，再停止旧 API／Manager／Reaper。随后才使用候选
+Image ID 运行迁移和状态卷初始化。成功后、创建任何固定名称的候选服务前，工具先把候选 Image ID
+写入 `active.env`，使启动或健康检查失败后的下一次 `up`／`down` 仍能按正确身份恢复；Manager、API
+和可选 Scweet 的健康检查仍分别决定本次 `up` 是否成功。构建或 drain 失败会中止，不能在旧进程仍
+运行时迁移数据库。
+
+```bash
+./docker-init.sh down       # 安全 drain；保留三个数据卷和本地配置
+./docker-init.sh up         # 使用保存的 X 启用状态重新启动
+```
+
+PostgreSQL 数据、Browser 任务状态和 Scweet 状态分别保存在命名卷中。数据库长期进程固定以
+UID/GID `999:999`、只读根文件系统和零 capability 运行；短命 `pg-init` 只对专属 PostgreSQL
+卷根目录使用 `CHOWN`。Browser 状态初始化同样只对专属卷根目录使用 `CHOWN`，Manager 以
+UID 10001 创建 `2770` 目录、`0660` SQLite／lock 和仅自身可读的 `0600` capability key；
+UID 10002 的 Reaper 只能通过共享 GID 20000 访问 SQLite。Manager 与 Reaper 是唯一挂载
+Docker socket 的长期服务，Worker、API、adapter 和 browser 都不挂载它。
+
+### 容器网络
+
+- `db-data`：PostgreSQL、迁移、API 与 Worker；内部网络。
+- `browser-control`：Worker 与 Manager；内部网络。
+- `browser-data`：Worker 与短期 adapter；内部网络。
+- `browser-egress`：只供短期 adapter 出站；browser 本身始终为 `network none`。
+- `app-egress`：API 与 Worker 的普通出站网络。
+- `scweet-control`：Worker 与可选 Scweet；内部网络。
+- `x-egress`：只供可选 Scweet 访问 X。
+
+动态 browser 固定使用 Lightpanda 0.4.0 和 agent-browser 0.37.1。Manager 按镜像 label 和
+实际 Image ID 校验身份；镜像 tag 只用于本机构建记录，不作为运行时信任依据。
+
+### 可选 X / Scweet
+
+按本节后文的 Cookie 格式，把专用账号配置写入 `.docker/inputs/scweet-cookies.json`，保持
+`0600`，再运行：
+
+```bash
+./docker-init.sh up --with-x
+```
+
+Scweet 镜像只在启用 X 时构建；Cookie 和内部 token 以单独 secret 授予 Scweet，Worker 只获得
+服务 token。启用状态写在非秘密运行状态中，普通 `up` 会沿用。要停止并移除 Scweet 容器但
+保留它的 SQLite 卷，运行 `./docker-init.sh up --without-x`。`status` 和 `down` 总会检查 X
+profile，避免遗漏先前启用的服务。Scweet 启动会真实访问 X；不要用生产 Cookie 做开发 smoke。
+
 ## 2. 凭证清单与获取方式
 
 把所有真实值只写入受限服务器上的 `backend/.env` 或进程环境；不要提交、粘贴到

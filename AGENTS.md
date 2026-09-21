@@ -24,6 +24,7 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 | `architecture/` | C4 DSL 源文件；`html/` 为不提交的本地预览产物 |
 | `docs/` | 部署说明、系统架构及 README 所需素材 |
 | `services/` | 核心进程的 systemd／Caddy 模板及可选 Scweet 服务 |
+| `compose.yaml`、`docker-init.sh` | 完整 Docker 部署拓扑与受限的初始化、升级、停止和状态入口 |
 | `.github/workflows/` | CI 配置，目前包含网页翻译运行时检查 |
 
 根目录导航维护到主要工作区域；模块与关键入口由子目录约定维护，不建立逐文件说明清单。
@@ -70,6 +71,9 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 | `mobile/` | 检查接口快照和前端类型 | `pnpm run test:api-contract` |
 | 仓库根目录 | 校验 C4 模型 | `java -jar /path/to/structurizr.war validate -workspace architecture/workspace.dsl` |
 | 仓库根目录 | 导出可浏览的架构图 | `java -jar /path/to/structurizr.war export -workspace architecture/workspace.dsl -format static -output architecture/html` |
+| 仓库根目录 | 初始化 Docker 私有配置 | `cp .env.docker.example .env.docker && ./docker-init.sh init` |
+| 仓库根目录 | 构建或升级 Docker 服务 | `./docker-init.sh up`；可选 X 使用 `--with-x`，明确关闭使用 `--without-x` |
+| 仓库根目录 | 查看或停止 Docker 服务 | `./docker-init.sh status` / `./docker-init.sh down` |
 
 接口以 FastAPI 路由及请求／响应模型中的声明为编写入口。生成命令通过 `backend/scripts/export_openapi.py` 导出 `contracts/openapi.json`，并从同一份 OpenAPI 生成 `mobile/lib/generated/api.ts`；需要已安装的前端依赖和 `backend/.venv`。两份生成文件均纳入版本控制，不要手改或另写一份协议。路径、参数、响应、认证、错误声明或说明变化后，重新生成、运行契约检查，并将生成变化随实现一起提交。检查命令只校验是否同步，不会修复文件，也不代替兼容性审查与行为测试。
 

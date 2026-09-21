@@ -44,6 +44,20 @@ Reader 是一个自托管信息聚合应用。把博客、社区、网站和视�
 
 最小运行组合为 **Reader API + Worker + PostgreSQL**。注册无需邮箱验证；翻译模型按需配置，服务器和第三方 API 的费用由部署者承担。
 
+使用 Docker 的最短流程如下；详细的升级、网络和密钥边界见[部署指南](docs/deployment.md#docker-compose-部署)：
+
+```bash
+cp .env.docker.example .env.docker
+./docker-init.sh init
+# 将实际使用的模型 key 写入 .docker/inputs/deepseek-api-key 或 openrouter-api-key
+./docker-init.sh up
+./docker-init.sh token
+```
+
+API 默认只监听 `127.0.0.1:8000`。`token` 输出供客户端连接的 token；模型 key、数据库密码
+和 JWT 密钥不会写入镜像或 Git。不配置模型 key 时原文阅读等功能仍可使用，但
+`/worker-ready` 会保持 503，表示翻译循环尚未就绪。
+
 > [!CAUTION]
 > **X / Scweet 风险提示**
 >

@@ -44,6 +44,18 @@ Reader is a self-hosted information aggregation app. Bring blogs, communities, w
 
 The minimum deployment consists of **Reader API + Worker + PostgreSQL**. Registration does not require email verification. Translation models are optional; the service operator is responsible for server and third-party API costs.
 
+The shortest Docker workflow is below. See the [deployment guide](docs/deployment.md#docker-compose-部署) for upgrades, networks, and secret boundaries.
+
+```bash
+cp .env.docker.example .env.docker
+./docker-init.sh init
+# Put the provider key you use in .docker/inputs/deepseek-api-key or openrouter-api-key.
+./docker-init.sh up
+./docker-init.sh token
+```
+
+The API listens on `127.0.0.1:8000` by default. `token` prints the connection token for the client. Provider keys, the database password, and the JWT signing secret are never added to an image or Git. Without a provider key, original-content features remain available while `/worker-ready` stays at 503 to report that translation loops are unavailable.
+
 > [!CAUTION]
 > **X / Scweet risk notice**
 >
