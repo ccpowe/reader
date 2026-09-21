@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -29,7 +29,7 @@ import { useChromeStyle, useCollapsingChrome } from '../hooks/useCollapsingChrom
 import { prefetchInboxFeed, useInboxFeed } from '../hooks/useInboxFeed';
 import { useSources } from '../hooks/useSources';
 import { useTranslationPreference } from '../hooks/useTranslationPreference';
-import { folderFeedScope, sourceFeedScope, type FeedScope } from '../domain/feed';
+import { feedScopeCacheKey, folderFeedScope, sourceFeedScope, type FeedScope } from '../domain/feed';
 import { folderLabel, sourceFolder } from '../domain/folders';
 import { useSourceFolders } from '../hooks/useSourceFolders';
 import { sourceDisplayName, sourceHealthLabel, sourceSecondaryLabel } from '../domain/source';
@@ -40,6 +40,10 @@ import { colors, radii, spacing } from '../ui/tokens';
 import { PAGE_HEADER_HEIGHT, SCREEN_HORIZONTAL_PADDING, SCREEN_LIST_BOTTOM_PADDING } from '../ui/layout';
 import { useReaderRuntime } from '../lib/connection/react';
 import { i18n, useTranslation } from '../i18n';
+import type { ListPositionRegistry } from '../domain/listMemory';
+import { useListPositionMemory } from '../hooks/useListPositionMemory';
+import { readerQueryKeys } from '../state/queryClient';
+import { protectsQueryKeys, removeObsoleteQueries, trimInactiveInfiniteQueryWhenIdle } from '../state/queryLifecycle';
 
 const HOME_FILTER_BAR_HEIGHT = 46;
 const HOME_CHROME_HEIGHT = PAGE_HEADER_HEIGHT + HOME_FILTER_BAR_HEIGHT;
@@ -63,8 +67,50 @@ export function HomeScreen({
   selectedSourceId: string | null;
   session: Session;
 }) {
-  const { t } = useTranslation('feed');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const positionRegistry = useRef<ListPositionRegistry>(new Map()).current;
+  if (!active) return null;
+  return <HomeScreenContent
+    active
+    chromeProgress={chromeProgress}
+    onClearSource={onClearSource}
+    onOpenArticle={onOpenArticle}
+    onProfile={onProfile}
+    onSelectFolder={setSelectedFolder}
+    onSelectSourceId={onSelectSourceId}
+    positionRegistry={positionRegistry}
+    selectedFolder={selectedFolder}
+    selectedSourceId={selectedSourceId}
+    session={session}
+  />;
+}
+
+function HomeScreenContent({
+  active,
+  chromeProgress,
+  onClearSource,
+  onOpenArticle,
+  onProfile,
+  onSelectFolder,
+  onSelectSourceId,
+  positionRegistry,
+  selectedFolder,
+  selectedSourceId,
+  session,
+}: {
+  onProfile?: () => void;
+  active: boolean;
+  chromeProgress: SharedValue<number>;
+  onClearSource: () => void;
+  onOpenArticle: (item: FeedItem) => void;
+  onSelectFolder: (folder: string | null) => void;
+  onSelectSourceId: (sourceId: string | null) => void;
+  positionRegistry: ListPositionRegistry;
+  selectedFolder: string | null;
+  selectedSourceId: string | null;
+  session: Session;
+}) {
+  const { t } = useTranslation('feed');
   const [showChannelPicker, setShowChannelPicker] = useState(false);
   const readerClient = useQueryClient();
   const runtime = useReaderRuntime();
@@ -77,6 +123,45 @@ export function HomeScreen({
     () => sources.find((source) => source.source_id === selectedSourceId) ?? null,
     [selectedSourceId, sources],
   );
+  const protectedFeedKeys = useMemo(() => {
+    if (translationPreference.isPending) return [];
+    const scopes = selectedSource
+      ? [sourceFeedScope(selectedSource.source_id)]
+      : folderOptions
+          .filter((_, index) => Math.abs(index - folderOptions.indexOf(selectedFolder)) <= 1)
+          .map(folderFeedScope);
+    return scopes.map((scope) => readerQueryKeys.feed(
+      session.user.id,
+      feedScopeCacheKey(scope),
+      translationPreference.targetLocale,
+      runtime?.identity.server_id,
+    ));
+  }, [folderOptions, runtime?.identity.server_id, selectedFolder, selectedSource, session.user.id, translationPreference.isPending, translationPreference.targetLocale]);
+
+  useEffect(() => {
+    if (!protectedFeedKeys.length) return;
+    void removeObsoleteQueries({
+      isProtected: protectsQueryKeys(protectedFeedKeys),
+      prefix: readerQueryKeys.feedPrefix(session.user.id, runtime?.identity.server_id),
+      queryClient: readerClient,
+    });
+    return () => {
+      const currentScope = selectedSource
+        ? sourceFeedScope(selectedSource.source_id)
+        : folderFeedScope(selectedFolder);
+      const currentKey = readerQueryKeys.feed(
+        session.user.id,
+        feedScopeCacheKey(currentScope),
+        translationPreference.targetLocale,
+        runtime?.identity.server_id,
+      );
+      queueMicrotask(() => void removeObsoleteQueries({
+        isProtected: protectsQueryKeys([currentKey]),
+        prefix: readerQueryKeys.feedPrefix(session.user.id, runtime?.identity.server_id),
+        queryClient: readerClient,
+      }));
+    };
+  }, [protectedFeedKeys, readerClient, runtime?.identity.server_id, selectedFolder, selectedSource, session.user.id, translationPreference.targetLocale]);
 
   const toggleSaved = useCallback(async (item: FeedItem) => {
     const context = captureRuntimeContext(runtime);
@@ -102,8 +187,8 @@ export function HomeScreen({
   }, [readerClient, runtime, session]);
 
   useEffect(() => {
-    if (selectedFolder !== null && !folders.includes(selectedFolder)) setSelectedFolder(null);
-  }, [folders, selectedFolder]);
+    if (selectedFolder !== null && !folders.includes(selectedFolder)) onSelectFolder(null);
+  }, [folders, onSelectFolder, selectedFolder]);
 
   useEffect(() => {
     if (sourcesQuery.isSuccess && selectedSourceId !== null && selectedSource === null) {
@@ -157,13 +242,13 @@ export function HomeScreen({
               showsHorizontalScrollIndicator={false}
               style={styles.chipScroller}
             >
-              <Chip active={selectedFolder === null} label={t('all')} onPress={() => { revealChrome(); setSelectedFolder(null); }} />
+              <Chip active={selectedFolder === null} label={t('all')} onPress={() => { revealChrome(); onSelectFolder(null); }} />
               {folders.map((folder) => (
                 <Chip
                   active={selectedFolder === folder}
                   key={folder}
                   label={folderLabel(folder)}
-                  onPress={() => { revealChrome(); setSelectedFolder(folder); }}
+                  onPress={() => { revealChrome(); onSelectFolder(folder); }}
                 />
               ))}
             </ScrollView>
@@ -185,17 +270,19 @@ export function HomeScreen({
           onOpenArticle={onOpenArticle}
           onScroll={onScroll}
           onToggleSave={toggleSaved}
+          positionRegistry={positionRegistry}
           scope={sourceFeedScope(selectedSource.source_id)}
           session={session}
           source={selectedSource}
           translationEngineId={translationPreference.effectiveEngineId}
+          translationEngineFingerprint={translationPreference.effectiveEngineFingerprint}
           translationEnabled={translationPreference.enabled}
           translationLocale={translationPreference.targetLocale}
         />
       ) : (
         <CategoryPager
           onPageTransitionStart={revealChrome}
-          onSelect={(folder) => { revealChrome(); setSelectedFolder(folder); }}
+          onSelect={(folder) => { revealChrome(); onSelectFolder(folder); }}
           options={folderOptions}
           pageStyle={styles.categoryPage}
           renderPage={(folder) => (
@@ -205,10 +292,12 @@ export function HomeScreen({
               onOpenArticle={onOpenArticle}
               onScroll={onScroll}
               onToggleSave={toggleSaved}
+              positionRegistry={positionRegistry}
               scope={folderFeedScope(folder)}
               session={session}
               source={null}
               translationEngineId={translationPreference.effectiveEngineId}
+              translationEngineFingerprint={translationPreference.effectiveEngineFingerprint}
               translationEnabled={translationPreference.enabled}
               translationLocale={translationPreference.targetLocale}
             />
@@ -236,10 +325,12 @@ function InboxFeedPage({
   onOpenArticle,
   onScroll,
   onToggleSave,
+  positionRegistry,
   scope,
   session,
   source,
   translationEngineId,
+  translationEngineFingerprint,
   translationEnabled,
   translationLocale,
 }: {
@@ -248,10 +339,12 @@ function InboxFeedPage({
   onOpenArticle: (item: FeedItem) => void;
   onScroll: ScrollHandlerProcessed;
   onToggleSave: (item: FeedItem) => Promise<void>;
+  positionRegistry: ListPositionRegistry;
   scope: FeedScope;
   session: Session;
   source: SourceListItem | null;
   translationEngineId: string | null;
+  translationEngineFingerprint: string | null;
   translationEnabled: boolean;
   translationLocale: string;
 }) {
@@ -263,7 +356,31 @@ function InboxFeedPage({
     translationLocale,
     translationEngineId,
     translationEnabled,
+    translationEngineFingerprint,
   );
+  const memoryKey = feedScopeCacheKey(scope);
+  const position = useListPositionMemory({
+    active,
+    itemId: feedItemId,
+    items: feed.items,
+    memoryKey,
+    onScroll,
+    registry: positionRegistry,
+  });
+  const readerClient = useQueryClient();
+  const runtime = useReaderRuntime();
+  const queryKey = useMemo(
+    () => readerQueryKeys.feed(session.user.id, memoryKey, translationLocale, runtime?.identity.server_id),
+    [memoryKey, runtime?.identity.server_id, session.user.id, translationLocale],
+  );
+  useEffect(() => () => {
+    queueMicrotask(() => trimInactiveInfiniteQueryWhenIdle<FeedItem>({
+        anchorId: positionRegistry.get(memoryKey)?.firstVisibleId ?? null,
+        getItemId: feedItemId,
+        queryClient: readerClient,
+        queryKey,
+      }));
+  }, [memoryKey, positionRegistry, queryKey, readerClient]);
   return (
     <Reanimated.FlatList
       contentContainerStyle={[styles.inboxList, feed.items.length === 0 && listFeedbackStyles.content]}
@@ -271,12 +388,18 @@ function InboxFeedPage({
       initialNumToRender={8}
       keyExtractor={(item) => item.content_id}
       maxToRenderPerBatch={8}
+      onMomentumScrollEnd={position.onMomentumScrollEnd}
       onEndReached={() => { if (active && feed.hasNextPage && !feed.isFetchingNextPage) void feed.fetchNextPage(); }}
       onEndReachedThreshold={0.5}
       onRefresh={() => {
         if (!feed.refreshing && !feed.loading) void feed.refetch();
       }}
-      onScroll={active ? onScroll : undefined}
+      onScroll={active ? position.onScroll : undefined}
+      onScrollBeginDrag={position.onScrollBeginDrag}
+      onScrollEndDrag={position.onScrollEndDrag}
+      onScrollToIndexFailed={position.onScrollToIndexFailed}
+      onViewableItemsChanged={position.onViewableItemsChanged}
+      ref={position.listRef}
       refreshing={feed.refreshing}
       renderItem={({ item }) => <FeedCardRow
         avatarAccessToken={session.access_token}
@@ -328,6 +451,8 @@ function InboxFeedPage({
     />
   );
 }
+
+const feedItemId = (item: FeedItem) => item.content_id;
 
 function HomeHeader({ session, onProfile }: { session: Session; onProfile?: () => void }) {
   const { t } = useTranslation('feed');

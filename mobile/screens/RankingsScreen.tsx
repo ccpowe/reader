@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -11,6 +11,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Session } from '../lib/readerAuth';
 import { useQueryClient } from '@tanstack/react-query';
 import Reanimated, {
+  type ScrollHandlerProcessed,
   type SharedValue,
 } from 'react-native-reanimated';
 
@@ -20,6 +21,7 @@ import { PageHeaderContent } from '../components/PageHeader';
 import { RankingTitle } from '../components/RankingTitle';
 import {
   prefetchRanking,
+  rankingVariantKey,
   useRanking,
   type RankingOptions,
 } from '../hooks/useRanking';
@@ -38,6 +40,10 @@ import { colors, radii } from '../ui/tokens';
 import { PAGE_HEADER_HEIGHT, SCREEN_HORIZONTAL_PADDING, SCREEN_LIST_BOTTOM_PADDING } from '../ui/layout';
 import { listFeedbackStyles } from '../components/FeedbackState';
 import { useTranslation } from '../i18n';
+import type { ListPositionRegistry } from '../domain/listMemory';
+import { useListPositionMemory } from '../hooks/useListPositionMemory';
+import { readerQueryKeys } from '../state/queryClient';
+import { protectsQueryKeys, removeObsoleteQueries } from '../state/queryLifecycle';
 
 const RANKING_CHROME_HEIGHT = PAGE_HEADER_HEIGHT + 46;
 const RANKING_KINDS: RankingKind[] = ['hacker_news', 'reddit', 'github'];
@@ -55,14 +61,75 @@ export function RankingsScreen({
   onProfile?: () => void;
   session: Session;
 }) {
-  const { t } = useTranslation('feed');
   const [kind, setKind] = useState<RankingKind>('hacker_news');
   const [redditCommunity, setRedditCommunity] = useState<string | null>(null);
   const [redditSort, setRedditSort] = useState<RedditRankingSort>('hot');
+  const [visibleCounts, setVisibleCounts] = useState<ReadonlyMap<string, number>>(new Map());
+  const positionRegistry = useRef<ListPositionRegistry>(new Map()).current;
+  if (!active) return null;
+  const currentVariant = rankingVariantKey(kind, kind === 'reddit' && redditCommunity
+    ? { subreddit: redditCommunity, sort: redditSort }
+    : undefined);
+  return <RankingsScreenContent
+    active
+    chromeProgress={chromeProgress}
+    kind={kind}
+    onChangeKind={setKind}
+    onChangeRedditCommunity={setRedditCommunity}
+    onChangeRedditSort={setRedditSort}
+    onChangeVisibleCount={(count) => setVisibleCounts((current) => {
+      if ((current.get(currentVariant) ?? 20) === count) return current;
+      const next = new Map(current);
+      next.delete(currentVariant);
+      next.set(currentVariant, count);
+      while (next.size > 8) next.delete(next.keys().next().value as string);
+      return next;
+    })}
+    onOpenItem={onOpenItem}
+    onProfile={onProfile}
+    positionRegistry={positionRegistry}
+    redditCommunity={redditCommunity}
+    redditSort={redditSort}
+    session={session}
+    visibleCount={visibleCounts.get(currentVariant) ?? 20}
+  />;
+}
+
+function RankingsScreenContent({
+  onProfile,
+  active,
+  chromeProgress,
+  kind,
+  onChangeKind,
+  onChangeRedditCommunity,
+  onChangeRedditSort,
+  onChangeVisibleCount,
+  onOpenItem,
+  positionRegistry,
+  redditCommunity,
+  redditSort,
+  session,
+  visibleCount,
+}: {
+  active: boolean;
+  chromeProgress: SharedValue<number>;
+  kind: RankingKind;
+  onChangeKind: (kind: RankingKind) => void;
+  onChangeRedditCommunity: (community: string | null) => void;
+  onChangeRedditSort: (sort: RedditRankingSort) => void;
+  onChangeVisibleCount: (count: number) => void;
+  onOpenItem: (item: RankingItem) => void;
+  onProfile?: () => void;
+  positionRegistry: ListPositionRegistry;
+  redditCommunity: string | null;
+  redditSort: RedditRankingSort;
+  session: Session;
+  visibleCount: number;
+}) {
+  const { t } = useTranslation('feed');
   const [showCommunityPicker, setShowCommunityPicker] = useState(false);
   const [draftCommunity, setDraftCommunity] = useState<string | null>(null);
   const [draftSort, setDraftSort] = useState<RedditRankingSort>('hot');
-  const [visibleCount, setVisibleCount] = useState(20);
   const readerClient = useQueryClient();
   const runtime = useReaderRuntime();
   const sourcesQuery = useSources(session, active);
@@ -110,15 +177,44 @@ export function RankingsScreen({
     translation.effectiveEngineFingerprint,
   );
   const rankingQueries = { hacker_news: hackerQuery, reddit: redditQuery, github: githubQuery };
+  const rankingKeys = useMemo(() => RANKING_KINDS.map((targetKind) => readerQueryKeys.rankings(
+    session.user.id,
+    rankingVariantKey(targetKind, targetKind === 'reddit' ? redditOptions : undefined),
+    translation.targetLocale,
+    translation.enabled,
+    translation.effectiveEngineFingerprint,
+    runtime?.identity.server_id,
+  )), [redditOptions, runtime?.identity.server_id, session.user.id, translation.effectiveEngineFingerprint, translation.enabled, translation.targetLocale]);
 
   useEffect(() => {
-    setRedditCommunity((current) =>
-      current && redditCommunities.includes(current) ? current : redditCommunities[0] ?? null,
-    );
-  }, [redditCommunities]);
+    void removeObsoleteQueries({
+      isProtected: protectsQueryKeys(rankingKeys),
+      prefix: readerQueryKeys.rankingsPrefix(session.user.id, runtime?.identity.server_id),
+      queryClient: readerClient,
+    });
+    return () => {
+      const currentKey = readerQueryKeys.rankings(
+        session.user.id,
+        rankingVariantKey(kind, kind === 'reddit' ? redditOptions : undefined),
+        translation.targetLocale,
+        translation.enabled,
+        translation.effectiveEngineFingerprint,
+        runtime?.identity.server_id,
+      );
+      queueMicrotask(() => void removeObsoleteQueries({
+        isProtected: protectsQueryKeys([currentKey]),
+        prefix: readerQueryKeys.rankingsPrefix(session.user.id, runtime?.identity.server_id),
+        queryClient: readerClient,
+      }));
+    };
+  }, [kind, rankingKeys, readerClient, redditOptions, runtime?.identity.server_id, session.user.id, translation.effectiveEngineFingerprint, translation.enabled, translation.targetLocale]);
+
   useEffect(() => {
-    setVisibleCount(20);
-  }, [kind, redditCommunity, redditSort]);
+    const next = redditCommunity && redditCommunities.includes(redditCommunity)
+      ? redditCommunity
+      : redditCommunities[0] ?? null;
+    if (next !== redditCommunity) onChangeRedditCommunity(next);
+  }, [onChangeRedditCommunity, redditCommunities, redditCommunity]);
 
   useEffect(() => {
     if (!active) return;
@@ -162,58 +258,27 @@ export function RankingsScreen({
   function loadMoreIfNeeded(targetKind: RankingKind) {
     const count = rankingQueries[targetKind].ranking?.items.length ?? 0;
     if (targetKind === kind && visibleCount < count) {
-      setVisibleCount((current) => Math.min(current + 20, count));
+      onChangeVisibleCount(Math.min(visibleCount + 20, count));
     }
   }
 
   function renderRankingPage(targetKind: RankingKind) {
-    const query = rankingQueries[targetKind];
-    const ranking = query.ranking;
-    const items = ranking?.items ?? [];
-    const noRedditSubscription = targetKind === 'reddit' && redditCommunitiesResolved && !redditCommunity;
-    const message = noRedditSubscription
-      ? t('redditSubscriptionRequired')
-      : targetKind === 'reddit' && sourcesQuery.error
-        ? sourcesQuery.message
-        : query.message;
-    const feedback = query.loading || (targetKind === 'reddit' && sourcesQuery.isPending)
-      ? <LoadingBlock />
-      : message ? <EmptyState icon="chart-box-outline" message={message} /> : null;
-    return (
-      <Reanimated.FlatList
-        contentContainerStyle={[styles.rankingList, items.length === 0 && listFeedbackStyles.content]}
-        data={items.slice(0, targetKind === kind ? visibleCount : 20)}
-        keyExtractor={(item) => `${targetKind}-${item.rank}-${item.url}`}
-        onEndReached={() => loadMoreIfNeeded(targetKind)}
-        onEndReachedThreshold={0.5}
-        onScroll={active && targetKind === kind ? onScroll : undefined}
-        renderItem={({ item }) => (
-          <RankingCard
-            item={item}
-            kind={targetKind}
-            onOpen={() => onOpenItem({ ...item, ranking_context: { kind: targetKind, ...(targetKind === 'reddit' ? { subreddit: redditCommunity ?? undefined, sort: redditSort, time_filter: 'week' as const } : {}) } })}
-            onRetryTitle={() => { void query.retryTitleTranslation(item); }}
-            titleRetrying={query.isTitleRetrying(item)}
-            titleTimedOut={query.timedOutSegmentIds.has(`${item.translation_key}:title`)}
-          />
-        )}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={(
-          <>
-            {targetKind === 'reddit' && redditCommunity ? (
-              <Pressable accessibilityLabel={t('switchRedditChannel')} accessibilityRole="button" onPress={() => { setDraftCommunity(redditCommunity); setDraftSort(redditSort); setShowCommunityPicker(true); }} style={styles.rankingIntro}>
-                <Text numberOfLines={1} style={styles.rankingTitle}>r / {redditCommunity}</Text>
-                <Text style={styles.rankingSubtitle}>· {t(redditSort === 'top' ? 'sortTop' : redditSort === 'rising' ? 'sortRising' : 'sortHot')}</Text>
-                <Feather color={colors.textMuted} name="sliders" size={18} />
-              </Pressable>
-            ) : null}
-            {items.length > 0 ? feedback : null}
-          </>
-        )}
-        ListEmptyComponent={<View style={listFeedbackStyles.state}>{feedback}</View>}
-      />
-    );
+    return <RankingPage
+      active={active && targetKind === kind}
+      kind={targetKind}
+      onLoadMore={() => loadMoreIfNeeded(targetKind)}
+      onOpenItem={onOpenItem}
+      onOpenRedditFilters={() => { setDraftCommunity(redditCommunity); setDraftSort(redditSort); setShowCommunityPicker(true); }}
+      onScroll={onScroll}
+      positionRegistry={positionRegistry}
+      query={rankingQueries[targetKind]}
+      redditCommunity={redditCommunity}
+      redditOptions={redditOptions}
+      redditSort={redditSort}
+      sourcesError={sourcesQuery.error ? sourcesQuery.message : ''}
+      sourcesPending={sourcesQuery.isPending}
+      visibleCount={targetKind === kind ? visibleCount : 20}
+    />;
   }
 
   function refreshCurrentRanking() {
@@ -245,14 +310,14 @@ export function RankingsScreen({
           />
         </View>
         <View style={styles.rankingTabs}>
-          <RankingTab active={kind === 'hacker_news'} label="Hacker News" onPress={() => { revealChrome(); setKind('hacker_news'); }} />
-          <RankingTab active={kind === 'reddit'} label="Reddit" onPress={() => { revealChrome(); setKind('reddit'); }} />
-          <RankingTab active={kind === 'github'} label="GitHub" onPress={() => { revealChrome(); setKind('github'); }} />
+          <RankingTab active={kind === 'hacker_news'} label="Hacker News" onPress={() => { revealChrome(); onChangeKind('hacker_news'); }} />
+          <RankingTab active={kind === 'reddit'} label="Reddit" onPress={() => { revealChrome(); onChangeKind('reddit'); }} />
+          <RankingTab active={kind === 'github'} label="GitHub" onPress={() => { revealChrome(); onChangeKind('github'); }} />
         </View>
       </Reanimated.View>
       <CategoryPager
         onPageTransitionStart={revealChrome}
-        onSelect={(nextKind) => { revealChrome(); setKind(nextKind); }}
+        onSelect={(nextKind) => { revealChrome(); onChangeKind(nextKind); }}
         options={RANKING_KINDS}
         pageStyle={styles.categoryPage}
         renderPage={renderRankingPage}
@@ -269,10 +334,98 @@ export function RankingsScreen({
         {(['hot', 'top', 'rising'] as const).map((sort) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: draftSort === sort }} key={sort} onPress={() => setDraftSort(sort)} style={styles.communityChoice}>
           <Text style={styles.communityChoiceText}>{t(sort === 'hot' ? 'sortHotChoice' : sort === 'top' ? 'sortTopChoice' : 'sortRisingChoice')}</Text><View style={[styles.radio, draftSort === sort && styles.radioSelected]} />
         </Pressable>)}
-        <Pressable accessibilityRole="button" disabled={!draftCommunity || !redditCommunities.includes(draftCommunity)} onPress={() => { if (!draftCommunity || !redditCommunities.includes(draftCommunity)) return; setRedditCommunity(draftCommunity); setRedditSort(draftSort); setShowCommunityPicker(false); }} style={styles.applyButton}><Text style={styles.applyText}>{t('viewRankings')}</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={!draftCommunity || !redditCommunities.includes(draftCommunity)} onPress={() => { if (!draftCommunity || !redditCommunities.includes(draftCommunity)) return; onChangeRedditCommunity(draftCommunity); onChangeRedditSort(draftSort); setShowCommunityPicker(false); }} style={styles.applyButton}><Text style={styles.applyText}>{t('viewRankings')}</Text></Pressable>
       </BottomSheetModal>
     </View>
   );
+}
+
+const rankingItemId = (item: RankingItem) => item.translation_key;
+
+function RankingPage({
+  active,
+  kind,
+  onLoadMore,
+  onOpenItem,
+  onOpenRedditFilters,
+  onScroll,
+  positionRegistry,
+  query,
+  redditCommunity,
+  redditOptions,
+  redditSort,
+  sourcesError,
+  sourcesPending,
+  visibleCount,
+}: {
+  active: boolean;
+  kind: RankingKind;
+  onLoadMore: () => void;
+  onOpenItem: (item: RankingItem) => void;
+  onOpenRedditFilters: () => void;
+  onScroll: ScrollHandlerProcessed;
+  positionRegistry: ListPositionRegistry;
+  query: ReturnType<typeof useRanking>;
+  redditCommunity: string | null;
+  redditOptions: RankingOptions | undefined;
+  redditSort: RedditRankingSort;
+  sourcesError: string;
+  sourcesPending: boolean;
+  visibleCount: number;
+}) {
+  const { t } = useTranslation('feed');
+  const items = query.ranking?.items ?? [];
+  const shownItems = items.slice(0, visibleCount);
+  const memoryKey = rankingVariantKey(kind, kind === 'reddit' ? redditOptions : undefined);
+  const position = useListPositionMemory({
+    active,
+    itemId: rankingItemId,
+    items: shownItems,
+    memoryKey,
+    onScroll,
+    registry: positionRegistry,
+  });
+  const message = kind === 'reddit' && !redditCommunity
+    ? t('redditSubscriptionRequired')
+    : kind === 'reddit' && sourcesError
+      ? sourcesError
+      : query.message;
+  const feedback = query.loading || (kind === 'reddit' && sourcesPending)
+    ? <LoadingBlock />
+    : message ? <EmptyState icon="chart-box-outline" message={message} /> : null;
+  return <Reanimated.FlatList
+    contentContainerStyle={[styles.rankingList, items.length === 0 && listFeedbackStyles.content]}
+    data={shownItems}
+    keyExtractor={(item) => `${kind}-${item.rank}-${item.url}`}
+    onEndReached={onLoadMore}
+    onEndReachedThreshold={0.5}
+    onMomentumScrollEnd={position.onMomentumScrollEnd}
+    onScroll={active ? position.onScroll : undefined}
+    onScrollBeginDrag={position.onScrollBeginDrag}
+    onScrollEndDrag={position.onScrollEndDrag}
+    onScrollToIndexFailed={position.onScrollToIndexFailed}
+    onViewableItemsChanged={position.onViewableItemsChanged}
+    ref={position.listRef}
+    renderItem={({ item }) => <RankingCard
+      item={item}
+      kind={kind}
+      onOpen={() => onOpenItem({ ...item, ranking_context: { kind, ...(kind === 'reddit' ? { subreddit: redditCommunity ?? undefined, sort: redditSort, time_filter: 'week' as const } : {}) } })}
+      onRetryTitle={() => { void query.retryTitleTranslation(item); }}
+      titleRetrying={query.isTitleRetrying(item)}
+      titleTimedOut={query.timedOutSegmentIds.has(`${item.translation_key}:title`)}
+    />}
+    scrollEventThrottle={16}
+    showsVerticalScrollIndicator={false}
+    ListHeaderComponent={<>
+      {kind === 'reddit' && redditCommunity ? <Pressable accessibilityLabel={t('switchRedditChannel')} accessibilityRole="button" onPress={onOpenRedditFilters} style={styles.rankingIntro}>
+        <Text numberOfLines={1} style={styles.rankingTitle}>r / {redditCommunity}</Text>
+        <Text style={styles.rankingSubtitle}>· {t(redditSort === 'top' ? 'sortTop' : redditSort === 'rising' ? 'sortRising' : 'sortHot')}</Text>
+        <Feather color={colors.textMuted} name="sliders" size={18} />
+      </Pressable> : null}
+      {items.length > 0 ? feedback : null}
+    </>}
+    ListEmptyComponent={<View style={listFeedbackStyles.state}>{feedback}</View>}
+  />;
 }
 
 function RankingCard({

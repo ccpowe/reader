@@ -102,6 +102,6 @@ const homeSource = readFileSync(fileURLToPath(new URL('../screens/HomeScreen.tsx
 const hookSource = readFileSync(fileURLToPath(new URL('../hooks/useXFeedTranslation.ts', import.meta.url)), 'utf8');
 assert.match(homeSource, /translationEnabled=\{translationPreference\.enabled\}/, 'the authenticated translation preference gates X translation');
 assert.match(homeSource, /xTranslation=\{feed\.xTranslation\.byContentId\.get\(item\.content_id\)\}/, 'each X card receives only its own translation');
-assert.match(hookSource, /\[enabled, engineId, runtimeGeneration, scopeKey, session\.user\.id, targetLocale\]/, 'preference, identity, connection, and scope changes discard old display results');
+assert.match(hookSource, /\[enabled, engineFingerprint, engineId, runtimeGeneration, scopeKey, session\.user\.id, targetLocale\]/, 'preference, engine fingerprint, identity, connection, and scope changes discard old display results');
 
 console.log('X feed translation covers body, quote, repost, fallback, retry, and identity boundaries');

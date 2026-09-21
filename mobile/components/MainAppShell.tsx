@@ -102,6 +102,7 @@ export function MainAppShell({
         : tab === 'saved'
           ? savedChromeProgress
           : profileChromeProgress;
+  const mainSurfaceActive = selectedItem === null && selectedRankingItem === null;
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -141,11 +142,11 @@ export function MainAppShell({
   return (
     <View style={styles.shell}>
       <View style={styles.screen}>
-        {visitedTabs.has('inbox') ? <View style={tab === 'inbox' ? styles.tabScreen : styles.tabScreenHidden}><HomeScreen onProfile={() => selectTab('settings')} active={tab === 'inbox'} chromeProgress={inboxChromeProgress} onClearSource={closeSourceFeed} onOpenArticle={openArticle} onSelectSourceId={(sourceId) => dispatchNavigation(sourceId === null ? { type: 'clear_source_filter' } : { sourceId, type: 'set_source_id' })} selectedSourceId={selectedInboxSourceId} session={session} /></View> : null}
-        {visitedTabs.has('explore') ? <View style={tab === 'explore' ? styles.tabScreen : styles.tabScreenHidden}><RankingsScreen onProfile={() => selectTab('settings')} active={tab === 'explore'} chromeProgress={rankingsChromeProgress} onOpenItem={openRankingItem} session={session} /></View> : null}
-        {visitedTabs.has('sources') ? <View style={tab === 'sources' ? styles.tabScreen : styles.tabScreenHidden}><SourcesScreen onProfile={() => selectTab('settings')} active={tab === 'sources'} chromeProgress={sourcesChromeProgress} onOpenSource={openSource} session={session} /></View> : null}
-        {visitedTabs.has('saved') ? <View style={tab === 'saved' ? styles.tabScreen : styles.tabScreenHidden}><SavedScreen onProfile={() => selectTab('settings')} active={tab === 'saved'} chromeProgress={savedChromeProgress} onOpenArticle={openArticle} session={session} /></View> : null}
-        {visitedTabs.has('settings') ? <View style={tab === 'settings' ? styles.tabScreen : styles.tabScreenHidden}><ProfileScreen active={tab === 'settings'} chromeProgress={profileChromeProgress} onChangeServer={onChangeServer} onLogout={onLogout} session={session} authClient={authClient} /></View> : null}
+        {visitedTabs.has('inbox') ? <View style={tab === 'inbox' ? styles.tabScreen : styles.tabScreenHidden}><HomeScreen onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'inbox'} chromeProgress={inboxChromeProgress} onClearSource={closeSourceFeed} onOpenArticle={openArticle} onSelectSourceId={(sourceId) => dispatchNavigation(sourceId === null ? { type: 'clear_source_filter' } : { sourceId, type: 'set_source_id' })} selectedSourceId={selectedInboxSourceId} session={session} /></View> : null}
+        {visitedTabs.has('explore') ? <View style={tab === 'explore' ? styles.tabScreen : styles.tabScreenHidden}><RankingsScreen onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'explore'} chromeProgress={rankingsChromeProgress} onOpenItem={openRankingItem} session={session} /></View> : null}
+        {visitedTabs.has('sources') ? <View style={tab === 'sources' ? styles.tabScreen : styles.tabScreenHidden}><SourcesScreen onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'sources'} chromeProgress={sourcesChromeProgress} onOpenSource={openSource} session={session} /></View> : null}
+        {visitedTabs.has('saved') ? <View style={tab === 'saved' ? styles.tabScreen : styles.tabScreenHidden}><SavedScreen onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'saved'} chromeProgress={savedChromeProgress} onOpenArticle={openArticle} session={session} /></View> : null}
+        {visitedTabs.has('settings') ? <View style={tab === 'settings' ? styles.tabScreen : styles.tabScreenHidden}><ProfileScreen active={mainSurfaceActive && tab === 'settings'} chromeProgress={profileChromeProgress} onChangeServer={onChangeServer} onLogout={onLogout} session={session} authClient={authClient} /></View> : null}
       </View>
       {!selectedItem && !selectedRankingItem ? <MotionReaderTabBar activeTab={tab} onChange={selectTab} progress={activeChromeProgress} /> : null}
       {selectedItem ? <View style={styles.readerOverlay}><ArticleReaderScreen item={selectedItem} onBack={() => dispatchNavigation({ type: 'close_article' })} renderReaderHtml={buildReaderHtml} session={session} /></View> : null}

@@ -50,6 +50,8 @@ import {
 } from '../domain/source';
 import { PAGE_HEADER_HEIGHT, READER_TAB_BAR_HEIGHT, SCREEN_HORIZONTAL_PADDING, SCREEN_LIST_BOTTOM_PADDING } from '../ui/layout';
 import { i18n, useTranslation } from '../i18n';
+import type { ListPositionRegistry } from '../domain/listMemory';
+import { useListPositionMemory } from '../hooks/useListPositionMemory';
 
 const SOURCES_HEADER_HEIGHT = PAGE_HEADER_HEIGHT;
 const SOURCES_CONTROLS_HEIGHT = 110;
@@ -77,14 +79,53 @@ export function SourcesScreen({
   onProfile?: () => void;
   session: Session;
 }) {
+  const [query, setQuery] = useState('');
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const positionRegistry = useRef<ListPositionRegistry>(new Map()).current;
+  if (!active) return null;
+  return <SourcesScreenContent
+    active
+    chromeProgress={chromeProgress}
+    onChangeQuery={setQuery}
+    onOpenSource={onOpenSource}
+    onProfile={onProfile}
+    onSelectFolder={setSelectedFolder}
+    positionRegistry={positionRegistry}
+    query={query}
+    selectedFolder={selectedFolder}
+    session={session}
+  />;
+}
+
+function SourcesScreenContent({
+  active,
+  chromeProgress,
+  onChangeQuery,
+  onOpenSource,
+  onProfile,
+  onSelectFolder,
+  positionRegistry,
+  query,
+  selectedFolder,
+  session,
+}: {
+  active: boolean;
+  chromeProgress: SharedValue<number>;
+  onChangeQuery: (query: string) => void;
+  onOpenSource: (source: SourceListItem) => void;
+  onProfile?: () => void;
+  onSelectFolder: (folder: string | null) => void;
+  positionRegistry: ListPositionRegistry;
+  query: string;
+  selectedFolder: string | null;
+  session: Session;
+}) {
   const { t } = useTranslation('feed');
   const language = i18n.resolvedLanguage ?? i18n.language;
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [addSheetKey, setAddSheetKey] = useState(0);
   const [deletingSubscriptionId, setDeletingSubscriptionId] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [menuSource, setMenuSource] = useState<SourceListItem | null>(null);
   const [editingSource, setEditingSource] = useState<SourceListItem | null>(null);
   const [editFolder, setEditFolder] = useState(UNCATEGORIZED_FOLDER);
@@ -135,9 +176,9 @@ export function SourcesScreen({
 
   useEffect(() => {
     if (selectedFolder !== null && !folders.includes(selectedFolder)) {
-      setSelectedFolder(null);
+      onSelectFolder(null);
     }
-  }, [folders, selectedFolder]);
+  }, [folders, onSelectFolder, selectedFolder]);
 
   const rows = useMemo<SourceRow[]>(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -228,9 +269,9 @@ export function SourcesScreen({
         </View>
         <View style={styles.sourcesControlsLayer}>
           <View style={styles.sourceControls}>
-            <SearchField active={active} onFocusChange={setSearchFocused} label={t('searchSources')} placeholder={t('searchSources')} value={query} onChangeText={(value) => { revealChrome(); setQuery(value); }} />
+            <SearchField active={active} onFocusChange={setSearchFocused} label={t('searchSources')} placeholder={t('searchSources')} value={query} onChangeText={(value) => { revealChrome(); onChangeQuery(value); }} />
             <View style={styles.categoryHeading}>
-              {selectedFolder !== null && !query.trim() ? <Pressable accessibilityRole="button" accessibilityLabel={t('backToFolders')} onPress={() => { revealChrome(); setSelectedFolder(null); }} style={styles.categoryBack}><Feather name="chevron-left" size={16} color="#555555" /><Text style={styles.categoryBackText}>{t('allFolders')}</Text></Pressable> : <Text style={styles.categoryHeadingText}>{t(query.trim() ? 'searchResults' : 'myFolders')}</Text>}
+              {selectedFolder !== null && !query.trim() ? <Pressable accessibilityRole="button" accessibilityLabel={t('backToFolders')} onPress={() => { revealChrome(); onSelectFolder(null); }} style={styles.categoryBack}><Feather name="chevron-left" size={16} color="#555555" /><Text style={styles.categoryBackText}>{t('allFolders')}</Text></Pressable> : <Text style={styles.categoryHeadingText}>{t(query.trim() ? 'searchResults' : 'myFolders')}</Text>}
               <Text style={styles.categoryHeadingCount}>{selectedFolder !== null && !query.trim() ? `${folderLabel(selectedFolder)} · ${visibleSourceCount}` : t('sourceCount', { count: visibleSourceCount })}</Text>
             </View>
           </View>
@@ -243,12 +284,14 @@ export function SourcesScreen({
         empty={!items.length}
         errorMessage={sourcesQuery.message}
         loading={loading}
+        memoryKey={`sources:${query.trim()}\u0000${selectedFolder ?? ''}`}
         noMatches={Boolean(query.trim()) && !rows.length}
         onMore={openSourceMenu}
         onOpen={onOpenSource}
-        onOpenFolder={(folder) => { revealChrome(); setSelectedFolder(folder); }}
+        onOpenFolder={(folder) => { revealChrome(); onSelectFolder(folder); }}
         onRetry={retrySources}
         onScroll={active ? onScroll : undefined}
+        positionRegistry={positionRegistry}
         removeTriggerId={removeTriggerId}
         removeTriggerRef={removeTriggerRef}
         rows={rows}
@@ -347,12 +390,14 @@ const SourceListPage = memo(function SourceListPage({
   empty,
   errorMessage,
   loading,
+  memoryKey,
   noMatches,
   onMore,
   onOpen,
   onRetry,
   onOpenFolder,
   onScroll,
+  positionRegistry,
   removeTriggerId,
   removeTriggerRef,
   rows,
@@ -362,17 +407,27 @@ const SourceListPage = memo(function SourceListPage({
   empty: boolean;
   errorMessage: string;
   loading: boolean;
+  memoryKey: string;
   noMatches: boolean;
   onMore: (item: SourceListItem) => void;
   onOpen: (item: SourceListItem) => void;
   onRetry: () => void | Promise<unknown>;
   onOpenFolder: (folder: string) => void;
   onScroll?: ScrollHandlerProcessed;
+  positionRegistry: ListPositionRegistry;
   removeTriggerId: string | null;
   removeTriggerRef: RefObject<View | null>;
   rows: SourceRow[];
 }) {
   const { t } = useTranslation('feed');
+  const position = useListPositionMemory({
+    active: Boolean(onScroll),
+    itemId: sourceRowKey,
+    items: rows,
+    memoryKey,
+    onScroll,
+    registry: positionRegistry,
+  });
   const renderSourceRow = useCallback(({ item: row }: ListRenderItemInfo<SourceRow>) => row.kind === 'category' ? (
     <SourceCategoryCard row={row} accessToken={avatarAccessToken} onOpen={onOpenFolder} />
   ) : (
@@ -394,7 +449,13 @@ const SourceListPage = memo(function SourceListPage({
       initialNumToRender={8}
       keyExtractor={sourceRowKey}
       maxToRenderPerBatch={8}
-      onScroll={onScroll}
+      onMomentumScrollEnd={position.onMomentumScrollEnd}
+      onScroll={position.onScroll}
+      onScrollBeginDrag={position.onScrollBeginDrag}
+      onScrollEndDrag={position.onScrollEndDrag}
+      onScrollToIndexFailed={position.onScrollToIndexFailed}
+      onViewableItemsChanged={position.onViewableItemsChanged}
+      ref={position.listRef}
       renderItem={renderSourceRow}
       scrollEventThrottle={16}
       showsVerticalScrollIndicator={false}

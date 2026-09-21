@@ -104,6 +104,7 @@ const mocks = {
   './components/MainAppShell': { MainAppShell },
   './ui/tokens': { colors: {} },
   './domain/translationDiagnostics': { clearTranslationDiagnostics() {}, recordTranslationDiagnostic() {} },
+  './domain/xFeedTranslationMemory': { clearXFeedTranslationMemory() {} },
   './app.json': { expo: { version: 'test' } },
   './i18n': localization,
   './i18n/message': localization,

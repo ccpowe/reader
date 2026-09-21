@@ -38,6 +38,7 @@ import {
 } from './lib/connection';
 import { ActionConfirm } from './components/ActionConfirm';
 import { EmailAuthScreen } from './screens/EmailAuthScreen';
+import { clearXFeedTranslationMemory } from './domain/xFeedTranslationMemory';
 import { HomeUiDraftPreview } from './screens/HomeUiDraftPreview';
 import { MainAppShell } from './components/MainAppShell';
 import { RedirectConfirm } from './components/RedirectConfirm';
@@ -101,6 +102,7 @@ function ReaderApp() {
   const identityConfirmationRef = useRef<PendingIdentityConfirmation | null>(null);
 
   useEffect(() => {
+    clearXFeedTranslationMemory();
     clearTranslationDiagnostics();
     recordTranslationDiagnostic('session_boundary', {
       stage: 'lifecycle', appVersion: appConfig.expo.version,

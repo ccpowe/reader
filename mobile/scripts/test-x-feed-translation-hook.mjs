@@ -103,6 +103,7 @@ try {
       'zh-CN',
       props.engineId,
       props.scopeKey,
+      props.engineFingerprint ?? null,
     );
     return null;
   }
@@ -173,12 +174,20 @@ try {
   requests.splice(0);
   runtimeGeneration = 1;
   runtime = { generation: runtimeGeneration, identity: { server_id: 'x-feed-test' } };
-  let resetProps = { engineId: 'engine-a', items: [item('reset', 'reset source')], scopeKey: 'all', session: sessionA };
+  let resetProps = { engineFingerprint: 'fp-a', engineId: 'engine-a', items: [item('reset', 'reset source')], scopeKey: 'all', session: sessionA };
   tree = await mount(resetProps);
   const scopeRequest = requests.at(-1);
   resetProps = { ...resetProps, scopeKey: 'folder:news' };
   await update(tree, resetProps);
   assert.equal(scopeRequest.signal.aborted, true, 'scope changes abort old work');
+  const fingerprintRequest = requests.at(-1);
+  resetProps = { ...resetProps, engineFingerprint: 'fp-b' };
+  await update(tree, resetProps);
+  assert.equal(fingerprintRequest.signal.aborted, true, 'effective engine fingerprint changes abort old work even when engine id is unchanged');
+  const fingerprintFallbackRequest = requests.at(-1);
+  resetProps = { ...resetProps, engineFingerprint: null };
+  await update(tree, resetProps);
+  assert.equal(fingerprintFallbackRequest.signal.aborted, true, 'removing an effective fingerprint switches back to the engine-id route');
   const engineRequest = requests.at(-1);
   resetProps = { ...resetProps, engineId: 'engine-b' };
   await update(tree, resetProps);

@@ -23,6 +23,7 @@ export function inboxFeedQueryOptions(session: Session, scope: FeedScope, transl
     initialPageParam: null,
     queryFn: ({ pageParam }) => getFeedPage(session, { ...feedScopeRequest(scope), cursor: pageParam, limit: FEED_PAGE_SIZE }, runtime ?? undefined),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    gcTime: Infinity,
   });
 }
 
@@ -37,6 +38,7 @@ export function useInboxFeed(
   translationLocale = 'zh-CN',
   engineId: string | null = null,
   translationEnabled = false,
+  engineFingerprint: string | null = null,
 ) {
   const { t } = useTranslation('errors');
   const runtime = useReaderRuntime();
@@ -59,7 +61,7 @@ export function useInboxFeed(
     items,
     active,
     translationLocale,
-    engineId,
+    engineFingerprint ?? engineId,
     `feed:${feedScopeCacheKey(scope)}`,
   );
   const xTranslation = useXFeedTranslation(
@@ -70,6 +72,7 @@ export function useInboxFeed(
     translationLocale,
     engineId,
     `feed:${feedScopeCacheKey(scope)}`,
+    engineFingerprint,
   );
 
   const message = query.error

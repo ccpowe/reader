@@ -79,7 +79,7 @@
     "test:http-response": "node ./scripts/test-http-response.mjs && node ./scripts/test-api-body-lifecycle.mjs",
     "test:reddit-web-reader": "node ./scripts/test-reddit-web-reader.mjs",
     "test:social-web-reader": "node ./scripts/test-social-web-reader.mjs && node ./scripts/test-article-body-fallback.mjs",
-    "test:ui-regressions": "node ./scripts/test-ui-regressions.mjs && node ./scripts/test-saved-profile-pager.cjs && node ./scripts/test-feedback-state.mjs",
+    "test:ui-regressions": "node ./scripts/test-ui-regressions.mjs && node ./scripts/test-saved-profile-pager.cjs && node ./scripts/test-page-memory-lifecycle.cjs && node ./scripts/test-feedback-state.mjs",
     "test:video-reader-layout": "node ./scripts/test-video-reader-layout.mjs",
     "web": "expo start --web",
     "test:translation-runtime": "node ./scripts/test-translation-diagnostic-buffer.mjs && node ./scripts/test-web-translation-commit-queue.mjs && node ./scripts/generate-translation-runtime-sources.mjs --check && node ./scripts/test-web-translation-rules.mjs && node ./scripts/test-translation-runtime-serialization.mjs && node ./scripts/test-web-translation-diagnostics.mjs && pnpm run test:web-translation-browser",

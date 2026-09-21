@@ -30,7 +30,7 @@ Module._extensions['.ts'] = Module._extensions['.tsx'] = (mod, filename) => {
 };
 Module._load = function(request, parent, isMain) {
   if (request === 'react-native') return { ScrollView, ActivityIndicator: host('ActivityIndicator'), Alert: { alert() {} }, Image: host('Image'), Pressable: host('Pressable'), StyleSheet: { create: x => x }, Switch: host('Switch'), Text: host('Text'), TextInput: host('TextInput'), View: host('View') };
-  if (request === 'react-native-reanimated') return { __esModule: true, default: { FlatList: host('FlatList'), ScrollView: host('ScrollView'), View: host('AnimatedView') } };
+  if (request === 'react-native-reanimated') return { __esModule: true, default: { FlatList: host('FlatList'), ScrollView: host('ScrollView'), View: host('AnimatedView') }, useSharedValue: value => ({ value }) };
   if (request === '@expo/vector-icons') return { Feather: host('Feather'), MaterialCommunityIcons: host('Icon') };
   if (request === 'expo-image-picker') return { launchImageLibraryAsync: () => pickImage() };
   if (request === '../components/PageHeader') return { PageHeaderContent: host('PageHeaderContent') };
@@ -82,7 +82,7 @@ Module._load = function(request, parent, isMain) {
   const session = { access_token: 'a', user: { id: 'user' } };
   let saved;
   function SavedHarness() { saved = useSavedContent(session, false); return null; }
-  const homeProps = { active: false, chromeProgress: { value: 0 }, onClearSource() {}, onOpenArticle() {}, onSelectSourceId() {}, selectedSourceId: null, session };
+  const homeProps = { active: true, chromeProgress: { value: 0 }, onClearSource() {}, onOpenArticle() {}, onSelectSourceId() {}, selectedSourceId: null, session };
   let mutationTree;
   await act(async () => { mutationTree = create(React.createElement(QueryClientProvider, { client }, React.createElement(SavedHarness), React.createElement(HomeScreen, homeProps))); });
   const toggle = item => mutationTree.root.find(node => typeof node.type === 'function' && node.type.name === 'InboxFeedPage').props.onToggleSave(item);
@@ -131,7 +131,7 @@ Module._load = function(request, parent, isMain) {
   let savedTree;
   const originalCompare = String.prototype.localeCompare;
   try {
-    await act(async () => { savedTree = create(React.createElement(QueryClientProvider, { client }, React.createElement(SavedScreen, { active: false, chromeProgress: { value: 0 }, onOpenArticle() {}, session }))); });
+    await act(async () => { savedTree = create(React.createElement(QueryClientProvider, { client }, React.createElement(SavedScreen, { active: true, chromeProgress: { value: 0 }, onOpenArticle() {}, session }))); });
     const categoryPager = () => savedTree.root.find(node => typeof node.type === 'function' && node.type.name === 'CategoryPager');
     const originalOptions = [...categoryPager().props.options];
     await act(async () => categoryPager().props.onSelect('阿尔法'));
@@ -142,10 +142,10 @@ Module._load = function(request, parent, isMain) {
     assert.deepEqual(categoryPager().props.options, originalOptions, 'OS-language changes retain mounted Saved category indices');
     assert.equal(categoryPager().props.selected, '阿尔法', 'the selected category survives the language change');
     sourceItems = sourceItems.map(item => ({ ...item, sync_phase: 'scanning' }));
-    await act(async () => savedTree.update(React.createElement(QueryClientProvider, { client }, React.createElement(SavedScreen, { active: false, chromeProgress: { value: 0 }, onOpenArticle() {}, session }))));
+    await act(async () => savedTree.update(React.createElement(QueryClientProvider, { client }, React.createElement(SavedScreen, { active: true, chromeProgress: { value: 0 }, onOpenArticle() {}, session }))));
     assert.deepEqual(categoryPager().props.options, originalOptions, 'source-status refreshes cannot undo the stable category order');
     sourceItems = [...sourceItems, { source_id: 'new', folder_name: 'New category' }];
-    await act(async () => savedTree.update(React.createElement(QueryClientProvider, { client }, React.createElement(SavedScreen, { active: false, chromeProgress: { value: 0 }, onOpenArticle() {}, session }))));
+    await act(async () => savedTree.update(React.createElement(QueryClientProvider, { client }, React.createElement(SavedScreen, { active: true, chromeProgress: { value: 0 }, onOpenArticle() {}, session }))));
     assert.ok(categoryPager().props.options.includes('New category'), 'actual category additions still update the pager');
   } finally {
     String.prototype.localeCompare = originalCompare;

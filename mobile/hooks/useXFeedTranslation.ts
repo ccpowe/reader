@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import type { FeedItem, TranslationSegmentResult } from '../lib/api';
 import type { Session } from '../lib/readerAuth';
-import { useReaderRuntimeGeneration } from '../lib/connection/react';
+import { useReaderRuntime, useReaderRuntimeGeneration } from '../lib/connection/react';
 import {
   xFeedCardTranslation,
   xFeedTranslationSegments,
@@ -10,6 +10,12 @@ import {
   type XFeedTranslationRecord,
 } from '../domain/xFeedTranslation';
 import { useSegmentTranslationQueue } from './useSegmentTranslationQueue';
+import {
+  activateXFeedTranslationMemory,
+  readXFeedTranslationMemory,
+  writeXFeedTranslationMemory,
+  type XFeedTranslationMemoryRoute,
+} from '../domain/xFeedTranslationMemory';
 
 export type XFeedTranslationResult = {
   byContentId: ReadonlyMap<string, XFeedCardTranslation>;
@@ -45,7 +51,9 @@ export function useXFeedTranslation(
   targetLocale: string,
   engineId: string | null,
   scopeKey: string,
+  engineFingerprint: string | null = null,
 ): XFeedTranslationResult {
+  const runtime = useReaderRuntime();
   const runtimeGeneration = useReaderRuntimeGeneration();
   const scopeKeyRef = useRef(scopeKey);
   const projectedTranslationsRef = useRef<ReadonlyMap<string, XFeedCardTranslation>>(new Map());
@@ -55,11 +63,36 @@ export function useXFeedTranslation(
     () => new Map(segments.map((segment) => [segment.segment_id, segment])),
     [segments],
   );
+  const memoryRoute = useMemo<XFeedTranslationMemoryRoute>(() => ({
+    engineFingerprint,
+    serverId: runtime?.identity.server_id ?? 'unconfigured',
+    targetLocale,
+    userId: session.user.id,
+  }), [engineFingerprint, runtime?.identity.server_id, session.user.id, targetLocale]);
+  activateXFeedTranslationMemory(memoryRoute);
+  const memoryRecords = useMemo(() => {
+    const cached = new Map<string, XFeedTranslationRecord>();
+    for (const segment of segments) {
+      const record = readXFeedTranslationMemory(memoryRoute, segment.segment_id, segment.text);
+      if (record) cached.set(segment.segment_id, record);
+    }
+    return cached;
+  }, [memoryRoute, segments]);
+  const effectiveRecords = useMemo(() => {
+    if (!memoryRecords.size) return records;
+    const merged = new Map(memoryRecords);
+    records.forEach((record, id) => merged.set(id, record));
+    return merged;
+  }, [memoryRecords, records]);
   const mergeResults = useCallback((results: TranslationSegmentResult[]) => {
     setRecords((current) => {
       const next = new Map(current);
       let changed = false;
       for (const result of results) {
+        if (
+          engineFingerprint !== null &&
+          result.effective_engine_fingerprint !== engineFingerprint
+        ) continue;
         const segment = segmentsById.get(result.segment_id);
         if (!segment) continue;
         const existing = current.get(result.segment_id);
@@ -68,14 +101,15 @@ export function useXFeedTranslation(
           sameTranslationResult(existing.result, result)
         ) continue;
         next.set(result.segment_id, { result, sourceText: segment.text });
+        writeXFeedTranslationMemory(memoryRoute, segment.text, result);
         changed = true;
       }
       return changed ? next : current;
     });
-  }, [segmentsById]);
+  }, [engineFingerprint, memoryRoute, segmentsById]);
   const queue = useSegmentTranslationQueue({
     enabled: active && enabled,
-    engineId,
+    engineId: engineFingerprint ?? engineId,
     onResults: mergeResults,
     session,
     targetLocale,
@@ -89,10 +123,10 @@ export function useXFeedTranslation(
   }, [resetQueue, scopeKey]);
 
   const pendingSegments = useMemo(() => segments.filter((segment) => {
-    const record = records.get(segment.segment_id);
+    const record = effectiveRecords.get(segment.segment_id);
     if (!record || record.sourceText !== segment.text) return true;
     return record.result.translation_status === 'pending' || record.result.translation_status === 'running';
-  }), [records, segments]);
+  }), [effectiveRecords, segments]);
 
   useEffect(() => {
     if (active && enabled) enqueueSegments(pendingSegments);
@@ -102,7 +136,7 @@ export function useXFeedTranslation(
   // old requests for preference, account, and connection identity changes.
   useLayoutEffect(() => {
     setRecords(new Map());
-  }, [enabled, engineId, runtimeGeneration, scopeKey, session.user.id, targetLocale]);
+  }, [enabled, engineFingerprint, engineId, runtimeGeneration, scopeKey, session.user.id, targetLocale]);
 
   const retry = useCallback((item: FeedItem) => {
     const itemSegments = xFeedTranslationSegments(item);
@@ -128,7 +162,7 @@ export function useXFeedTranslation(
     for (const item of items) {
       const translation = xFeedCardTranslation(
         item,
-        records,
+        effectiveRecords,
         queue.timedOutSegmentIds,
         xFeedTranslationSegments(item).some((segment) => queue.failedSegmentIds.has(segment.segment_id)),
       );
@@ -142,7 +176,7 @@ export function useXFeedTranslation(
     }
     projectedTranslationsRef.current = next;
     return next;
-  }, [active, enabled, items, queue.failedSegmentIds, queue.timedOutSegmentIds, records]);
+  }, [active, effectiveRecords, enabled, items, queue.failedSegmentIds, queue.timedOutSegmentIds]);
 
   return { byContentId, retry };
 }

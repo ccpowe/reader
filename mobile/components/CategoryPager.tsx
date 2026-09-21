@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import PagerView from 'react-native-pager-view';
 
@@ -23,10 +23,12 @@ export function CategoryPager<T>({
   const pagerRef = useRef<PagerView>(null);
   const selectedIndex = Math.max(0, options.indexOf(selected));
   const nativePageIndex = useRef(selectedIndex);
+  const [renderCenter, setRenderCenter] = useState(selectedIndex);
 
   useEffect(() => {
     if (nativePageIndex.current === selectedIndex) return;
     nativePageIndex.current = selectedIndex;
+    setRenderCenter(selectedIndex);
     pagerRef.current?.setPage(selectedIndex);
   }, [selectedIndex]);
 
@@ -38,6 +40,7 @@ export function CategoryPager<T>({
     }}
     onPageSelected={(event) => {
       const nextIndex = event.nativeEvent.position;
+      setRenderCenter(nextIndex);
       if (nativePageIndex.current === nextIndex) return;
       nativePageIndex.current = nextIndex;
       const option = options[nextIndex];
@@ -46,6 +49,8 @@ export function CategoryPager<T>({
     ref={pagerRef}
     style={style}
   >
-    {options.map((option, index) => <View collapsable={false} key={`category-${index}`} style={pageStyle}>{renderPage(option)}</View>)}
+    {options.map((option, index) => <View collapsable={false} key={`category-${index}`} style={pageStyle}>
+      {Math.abs(index - renderCenter) <= 1 ? renderPage(option) : null}
+    </View>)}
   </PagerView>;
 }

@@ -93,7 +93,7 @@ try {
       };
     }
     if (request === '@expo/vector-icons') return { Feather: host('Feather'), MaterialCommunityIcons: host('MaterialCommunityIcons') };
-    if (request === 'react-native-reanimated') return { default: Reanimated, ...Reanimated, useAnimatedStyle: () => ({}) };
+    if (request === 'react-native-reanimated') return { default: Reanimated, ...Reanimated, useAnimatedStyle: () => ({}), useSharedValue: value => ({ value }) };
     if (request === '@tanstack/react-query') return { useQueryClient: () => ({}) };
     if (request === 'expo-web-browser') return { openBrowserAsync: async () => {} };
     if (request === '../components/TitleTranslationNotice') return originalLoad.call(this, request, parent, isMain);
@@ -160,7 +160,17 @@ try {
     };
     if (request === '../state/invalidation') return { invalidateAfterSavedMutation: async () => {} };
     if (request === '../state/cacheUpdates') return { setCachedFeedSavedState: () => {} };
-    if (request === '../state/queryClient') return { readerQueryKeys: { feed: (...args) => ['feed', ...args], saved: (...args) => ['saved', ...args] } };
+    if (request === '../state/queryClient') return { readerQueryKeys: {
+      feed: (...args) => ['feed', ...args],
+      feedPrefix: (...args) => ['feed-prefix', ...args],
+      saved: (...args) => ['saved', ...args],
+      savedPrefix: (...args) => ['saved-prefix', ...args],
+    } };
+    if (request === '../state/queryLifecycle') return {
+      protectsQueryKeys: () => () => false,
+      removeObsoleteQueries: async () => {},
+      trimInactiveInfiniteQueryWhenIdle: () => {},
+    };
     if (request === '../lib/api') return {
       displayTitle: (item) => item.title,
       getArticle: async () => null,

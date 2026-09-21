@@ -32,12 +32,17 @@ export function useSavedContent(session: Session, active: boolean, query = '') {
   const runtime = useReaderRuntime();
   const sourcesQuery = useSources(session, active);
   const translationPreference = useTranslationPreference(session, active);
+  const queryKey = useMemo(
+    () => readerQueryKeys.saved(session.user.id, translationPreference.targetLocale, query, runtime?.identity.server_id),
+    [query, runtime?.identity.server_id, session.user.id, translationPreference.targetLocale],
+  );
   const savedQuery = useInfiniteQuery({
-    queryKey: readerQueryKeys.saved(session.user.id, translationPreference.targetLocale, query, runtime?.identity.server_id),
+    queryKey,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => getSavedContentPage(session, { cursor: pageParam, query }, runtime ?? undefined),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     enabled: active && (translationPreference.isSuccess || translationPreference.isError),
+    gcTime: Infinity,
   });
   const items = useMemo(() => {
     const seen = new Set<string>();
@@ -87,5 +92,5 @@ export function useSavedContent(session: Session, active: boolean, query = '') {
       release();
     }
   }
-  return { items, loading: savedQuery.isLoading, message, removeSaved, savedQuery, sources: sourcesQuery.items, titleTranslation };
+  return { items, loading: savedQuery.isLoading, message, queryKey, removeSaved, savedQuery, sources: sourcesQuery.items, titleTranslation };
 }

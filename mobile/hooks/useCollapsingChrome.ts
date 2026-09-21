@@ -14,7 +14,7 @@ export function useCollapsingChrome(
   active: boolean,
   progress: SharedValue<number>,
   pageKey?: string | null,
-  { height = 150, locked = false }: { height?: number; locked?: boolean } = {},
+  { height = 150, locked = false, scrollOffset }: { height?: number; locked?: boolean; scrollOffset?: SharedValue<number> } = {},
 ) {
   const previousY = useSharedValue(-1);
   const scrolling = useSharedValue(false);
@@ -46,6 +46,7 @@ export function useCollapsingChrome(
       if (!active) return;
       const maximumY = Math.max(0, event.contentSize.height - event.layoutMeasurement.height);
       const nextY = Math.max(0, Math.min(maximumY, event.contentOffset.y));
+      if (scrollOffset) scrollOffset.value = nextY;
       const previous = previousY.value;
       previousY.value = nextY;
       canCollapse.value = maximumY > travel;
@@ -74,7 +75,7 @@ export function useCollapsingChrome(
       scrolling.value = false;
       settle();
     },
-  }, [active, locked, travel]);
+  }, [active, locked, scrollOffset, travel]);
   return { onScroll, revealChrome };
 }
 

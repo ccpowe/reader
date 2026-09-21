@@ -114,7 +114,7 @@ try {
       View,
     };
     if (request === '@expo/vector-icons') return { MaterialCommunityIcons: host('MaterialCommunityIcons'), Feather: host('Feather') };
-    if (request === 'react-native-reanimated') return { default: Reanimated, ...Reanimated };
+    if (request === 'react-native-reanimated') return { default: Reanimated, ...Reanimated, useSharedValue: value => ({ value }) };
     if (request === 'expo-web-browser') return { openBrowserAsync: async () => {} };
     if (request === '@tanstack/react-query') return { useQueryClient: () => ({ fetchQuery: async ({ queryFn }) => queryFn(), setQueryData: () => {} }) };
     if (request === '../components/BottomSheetModal') return { BottomSheetModal: ({ visible, children }) => visible ? React.createElement(View, null, children) : null };
@@ -161,6 +161,7 @@ try {
     if (request === '../hooks/useRanking') {
       return {
         prefetchRanking: async () => {},
+        rankingVariantKey: (kind, options) => kind === 'reddit' ? `reddit:${options?.subreddit ?? ''}:${options?.sort ?? ''}` : kind,
         useRanking: () => {
           const [status, setStatus] = React.useState('failed');
           return {
@@ -185,6 +186,11 @@ try {
     if (request === '../lib/connection/react') return { useReaderRuntime: () => runtime };
     if (request === '../lib/connection') return { captureRuntimeContext: () => ({ runtime, serverId: 'ranking-surface-test' }), isRuntimeContextCurrent: () => true };
     if (request === '../state/invalidation') return { invalidateAfterSavedMutation: async () => {} };
+    if (request === '../state/queryClient') return { readerQueryKeys: {
+      rankings: (...parts) => ['reader', 'ranking-surface-test', ...parts],
+      rankingsPrefix: (userId) => ['reader', 'ranking-surface-test', userId, 'rankings'],
+    } };
+    if (request === '../state/queryLifecycle') return { protectsQueryKeys: () => () => false, removeObsoleteQueries: async () => {} };
     if (request === '../lib/api') return {
       getRankingSavedState: async () => ({ ...savedState }),
       saveRankingContent: async (_session, body) => {

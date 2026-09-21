@@ -232,6 +232,9 @@ export function ProfileScreen({ active, chromeProgress, onChangeServer, onLogout
       ? t('switchingEngine')
       : translation.engineAvailable ? engineName : t('unavailableEngineLabel', { engine: engineName });
 
+  const hasOpenEditor = showAppLanguagePicker || showLanguagePicker || showEnginePicker || showPasswordChange || showProfileEditor;
+  if (!active && !hasOpenEditor) return null;
+
   return <View style={styles.page}>
     <Animated.View pointerEvents="box-none" style={[styles.header, chromeStyle]}>
       <PageHeaderContent

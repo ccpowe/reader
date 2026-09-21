@@ -31,12 +31,14 @@ export function CategoryPager<T>({
   const positionedWidth = useRef(0);
   const [pageWidth, setPageWidth] = useState(0);
   const selectedIndex = Math.max(0, options.indexOf(selected));
+  const [renderCenter, setRenderCenter] = useState(selectedIndex);
 
   useEffect(() => {
     if (pageWidth <= 0) return;
     const widthChanged = positionedWidth.current !== pageWidth;
     if (!widthChanged && nativePageIndex.current === selectedIndex) return;
     nativePageIndex.current = selectedIndex;
+    setRenderCenter(selectedIndex);
     positionedWidth.current = pageWidth;
     pagerRef.current?.scrollTo({ animated: !widthChanged, x: selectedIndex * pageWidth });
   }, [pageWidth, selectedIndex]);
@@ -47,6 +49,7 @@ export function CategoryPager<T>({
       options.length - 1,
       Math.max(0, Math.round(event.nativeEvent.contentOffset.x / pageWidth)),
     );
+    setRenderCenter(nextIndex);
     if (nativePageIndex.current === nextIndex) return;
     nativePageIndex.current = nextIndex;
     const option = options[nextIndex];
@@ -62,6 +65,15 @@ export function CategoryPager<T>({
         if (nextWidth > 0 && nextWidth !== pageWidth) setPageWidth(nextWidth);
       }}
       onMomentumScrollEnd={handleScrollEnd}
+      onScroll={(event) => {
+        if (pageWidth <= 0 || !options.length) return;
+        const center = Math.min(
+          options.length - 1,
+          Math.max(0, Math.round(event.nativeEvent.contentOffset.x / pageWidth)),
+        );
+        setRenderCenter((current) => current === center ? current : center);
+      }}
+      scrollEventThrottle={16}
       onScrollBeginDrag={onPageTransitionStart}
       pagingEnabled
       ref={pagerRef}
@@ -74,7 +86,7 @@ export function CategoryPager<T>({
           key={`category-${index}`}
           style={[pageStyle, { width: pageWidth || '100%' }]}
         >
-          {renderPage(option)}
+          {Math.abs(index - renderCenter) <= 1 ? renderPage(option) : null}
         </View>
       ))}
     </ScrollView>

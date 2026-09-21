@@ -30,7 +30,7 @@ export type RankingOptions = {
  * The query-key variant identifies one logical ranking view. React Query owns
  * the cache; this function only serialises the selected Reddit filters.
  */
-function rankingVariantKey(kind: RankingKind, options?: RankingOptions): string {
+export function rankingVariantKey(kind: RankingKind, options?: RankingOptions): string {
   if (kind !== 'reddit') return kind;
   return `reddit:${(options?.subreddit ?? 'MachineLearning').toLowerCase()}:${options?.sort ?? 'hot'}:${options?.timeFilter ?? 'week'}`;
 }
@@ -55,6 +55,7 @@ export function rankingQueryOptions(
       serverId,
     ),
     queryFn: () => getRanking(session, kind, options, false, runtime ?? undefined),
+    gcTime: Infinity,
     structuralSharing: (previous, incoming) => (
       mergeRankingTranslationProjection(
         previous as Ranking | undefined,

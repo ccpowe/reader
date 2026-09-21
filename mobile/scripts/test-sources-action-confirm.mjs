@@ -106,7 +106,7 @@ try {
     }
     if (request === 'react-native-reanimated') {
       const reanimated = { FlatList, View: host('ReanimatedView') };
-      return { ...reanimated, default: reanimated, useAnimatedStyle: () => ({}) };
+      return { ...reanimated, default: reanimated, useAnimatedStyle: () => ({}), useSharedValue: value => ({ value }) };
     }
     if (request === '@tanstack/react-query') {
       return { useQueryClient: () => ({ setQueryData: () => {} }) };
