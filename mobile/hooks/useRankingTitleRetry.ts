@@ -13,7 +13,11 @@ export type RankingTitleRetryItem = Pick<RankingItem, 'title' | 'translation_key
 
 type RankingTitleRetryOptions = {
   onFailure?: (item: RankingTitleRetryItem, cause: unknown) => void;
-  onResults: (results: TranslationSegmentResult[]) => void;
+  onResults: (
+    results: TranslationSegmentResult[],
+    item: RankingTitleRetryItem,
+    scopeKey: string,
+  ) => void;
   session: Session;
   scopeKey?: string;
 };
@@ -74,7 +78,7 @@ export function useRankingTitleRetry({
         operationGeneration !== operationGenerationRef.current ||
         !isRuntimeContextCurrent(context)
       ) return;
-      onResultsRef.current(results);
+      onResultsRef.current(results, item, scopeKey);
     } catch (cause) {
       if (
         operationGeneration !== operationGenerationRef.current ||
@@ -90,7 +94,7 @@ export function useRankingTitleRetry({
         setRetryingIds(new Set(retryingRef.current));
       }
     }
-  }, [runtime, session]);
+  }, [runtime, scopeKey, session]);
 
   const isTitleRetrying = useCallback(
     (item: RankingTitleRetryItem) => retryingIds.has(titleSegmentId(item)),

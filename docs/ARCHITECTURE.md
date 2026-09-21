@@ -80,7 +80,7 @@ RSS／网站、YouTube、X 供应商、排行提供方和模型提供方是外�
 
 信息流查询以当前用户的启用订阅为范围，再应用来源和分组筛选；文章访问检查订阅或已有收藏等允许路径。原文和翻译投影分开返回，客户端可在展示原文后继续查询已加载标题的翻译状态。入口为 [feed.py](../backend/src/app/api/feed.py) 和 [translations.py](../backend/src/app/api/translations.py)。
 
-排行数据经 [ranking_snapshots.py](../backend/src/app/services/ranking_snapshots.py) 管理快照，API 与 Worker 均可参与刷新。用户显式收藏榜单条目时，[ranking_saved.py](../backend/src/app/services/ranking_saved.py) 先复用可访问内容，必要时再持久化条目并创建 `UserSavedContent`；Reddit 沿用其来源归属，其他榜单使用不参与订阅扫描的归档来源。
+排行数据经 [ranking_snapshots.py](../backend/src/app/services/ranking_snapshots.py) 管理快照，API 与 Worker 均可参与刷新。榜单响应按当前账户的语言与引擎只读投影已有成功译文，并携带实际引擎指纹，不为缺失项创建工作或等待模型；客户端只采用与已加载语言、启用状态和引擎指纹一致的响应译文，继续显示其他缺失项原文，并仅将缺失字段交给显式片段路径。显式片段产生的成功 Artifact 与榜单响应共用同一身份和存储，后续榜单请求可以直接命中。用户显式收藏榜单条目时，[ranking_saved.py](../backend/src/app/services/ranking_saved.py) 先复用可访问内容，必要时再持久化条目并创建 `UserSavedContent`；Reddit 沿用其来源归属，其他榜单使用不参与订阅扫描的归档来源。
 
 Reddit 订阅的首页内容由 `hot` 快照发布时送入同一候选队列，再经候选处理器入库；这条来源更新路径由排行快照驱动，普通来源扫描器不负责抓取 Reddit。
 
@@ -101,7 +101,7 @@ Reddit 订阅的首页内容由 `hot` 快照发布时送入同一候选队列，
 | 路径 | 触发与执行 | 状态归属 |
 | --- | --- | --- |
 | 持久翻译工作 | 入库标题预热、内容读取产生的缺失需求，以及普通片段的适用回退；Worker 按前台／后台优先级领取批次执行 | PostgreSQL 中的 Work、租约与成功 Artifact；NOTIFY 用于唤醒，轮询作为补充 |
-| 普通显式片段 | 排行等界面先展示原文，再请求片段翻译；命中缓存直接返回，适合直接执行的缺失项在 API 内调用模型，成功结果随后持久化 | [interactive.py](../backend/src/app/translation/interactive.py) 管理直接执行及适用的持久工作回退 |
+| 普通显式片段 | 排行响应先附带已有成功译文；仍缺失的字段显示原文并请求片段翻译。片段请求命中缓存直接返回，适合直接执行的缺失项在 API 内调用模型，成功结果随后持久化并供榜单响应复用 | [interactive.py](../backend/src/app/translation/interactive.py) 管理直接执行及适用的持久工作回退 |
 | 实时片段 | 网页片段、字幕及特定富文本片段由 API 进程中的协调器合并相同需求、限制并发并处理结果 | [RealtimeCoordinator](../backend/src/app/translation/realtime.py) 管理进程内在途任务，成功结果写入数据库；这条路径不承诺重启后恢复在途任务 |
 
 实际路由选择在 [resolve_translation_segments](../backend/src/app/api/translations.py)。翻译偏好与配额由后端读取和执行；用户不能通过片段 ID 指定另一个用户的缓存归属。网页片段和字幕的结果绑定用户、引擎与偏好代次，偏好变更时拒绝旧结果并清理对应临时缓存。

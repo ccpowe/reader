@@ -85,6 +85,7 @@ export function RankingsScreen({
     translation.enabled,
     translation.targetLocale,
     translation.effectiveEngineId,
+    translation.effectiveEngineFingerprint,
   );
   const redditQuery = useRanking(
     session,
@@ -95,6 +96,7 @@ export function RankingsScreen({
     translation.enabled,
     translation.targetLocale,
     translation.effectiveEngineId,
+    translation.effectiveEngineFingerprint,
   );
   const githubQuery = useRanking(
     session,
@@ -105,6 +107,7 @@ export function RankingsScreen({
     translation.enabled,
     translation.targetLocale,
     translation.effectiveEngineId,
+    translation.effectiveEngineFingerprint,
   );
   const rankingQueries = { hacker_news: hackerQuery, reddit: redditQuery, github: githubQuery };
 
@@ -134,6 +137,9 @@ export function RankingsScreen({
           targetKind === 'reddit' ? redditOptions : undefined,
           runtime?.identity.server_id,
           runtime,
+          translation.targetLocale,
+          translation.enabled,
+          translation.effectiveEngineFingerprint,
         ),
       );
   }, [
@@ -145,6 +151,9 @@ export function RankingsScreen({
     redditOptions,
     runtime,
     session,
+    translation.effectiveEngineFingerprint,
+    translation.enabled,
+    translation.targetLocale,
   ]);
 
   const { onScroll, revealChrome } = useCollapsingChrome(active, chromeProgress, kind, { height: RANKING_CHROME_HEIGHT });

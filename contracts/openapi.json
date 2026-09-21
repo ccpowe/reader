@@ -926,6 +926,17 @@
       },
       "RankingResponse": {
         "properties": {
+          "effective_engine_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Engine Fingerprint"
+          },
           "fetched_at": {
             "format": "date-time",
             "title": "Fetched At",
@@ -960,6 +971,7 @@
           "kind",
           "title",
           "subtitle",
+          "effective_engine_fingerprint",
           "items",
           "fetched_at"
         ],
@@ -3392,6 +3404,7 @@
     },
     "/v1/rankings/{kind}": {
       "get": {
+        "description": "Return ranking originals together with any existing successful translations.\n\nThe response identifies the effective translation engine. Cache misses stay\nempty so clients can render the original text and request only those missing\nsegments through the interactive translation endpoint.",
         "operationId": "get_ranking_v1_rankings__kind__get",
         "parameters": [
           {

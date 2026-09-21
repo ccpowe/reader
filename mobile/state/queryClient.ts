@@ -34,5 +34,21 @@ export const readerQueryKeys = {
     serverId?: string,
   ) => ['reader', readerServerNamespace(serverId), userId, 'title-translations', translationLocale, engineId, contentIds] as const,
   rankingsPrefix: (userId: string, serverId?: string) => ['reader', readerServerNamespace(serverId), userId, 'rankings'] as const,
-  rankings: (userId: string, key: string, serverId?: string) => ['reader', readerServerNamespace(serverId), userId, 'rankings', key] as const,
+  rankings: (
+    userId: string,
+    key: string,
+    translationLocale: string,
+    translationEnabled: boolean,
+    engineFingerprint: string | null,
+    serverId?: string,
+  ) => [
+    'reader',
+    readerServerNamespace(serverId),
+    userId,
+    'rankings',
+    key,
+    translationLocale,
+    translationEnabled,
+    engineFingerprint,
+  ] as const,
 };

@@ -2,14 +2,20 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from fastapi import BackgroundTasks
 from sqlalchemy import delete, select, update
 from test_content_retention import _database
 
+from app.api import rankings, translations
+from app.core.auth import AuthenticatedUser
 from app.core.settings import Settings
 from app.domain.enums import TranslationPurpose, TranslationScope
+from app.services.ranking_snapshots import RankingData
+from app.services.rankings import RankingItem
 from app.storage.models import (
     Content,
     RankingSnapshot,
@@ -18,7 +24,7 @@ from app.storage.models import (
     TranslationWork,
 )
 from app.translation.demand import default_translation_engine
-from app.translation.domain import TranslationDemand
+from app.translation.domain import TranslationDemand, TranslationResult
 from app.translation.lifecycle import (
     clear_user_ephemeral_cache,
     current_ephemeral_context,
@@ -55,6 +61,7 @@ async def test_shared_model_and_purpose_fallback_prefers_exact_and_does_not_enqu
         async with factory() as session:
             session.add(Content(authority_source_id=source, kind="article", title=title))
             await session.commit()
+
             assert (
                 await persist_translation_artifacts(
                     session, [demand], {"title": "旧标题"}, engine=old_engine
@@ -94,6 +101,115 @@ async def test_shared_model_and_purpose_fallback_prefers_exact_and_does_not_enqu
                 )
             )
             await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_ranking_reads_artifact_created_by_segment_endpoint(monkeypatch):
+    engine = _configure(monkeypatch)
+
+    class Provider:
+        name = engine.provider_name
+        model_name = engine.model_name
+
+        async def translate_batch(self, items, *, source_locale, target_locale):
+            assert source_locale is None
+            assert target_locale == "zh-CN"
+            return [
+                TranslationResult(
+                    item_id=item.item_id,
+                    translated_text=f"译文：{item.text}",
+                )
+                for item in items
+            ]
+
+    async with _database() as (factory, _source, users):
+        title = f"Segment ranking title {uuid4()}"
+        description = f"Segment ranking description {uuid4()}"
+        now = datetime.now(UTC)
+        ranking_item = RankingItem(
+            rank=1,
+            title=title,
+            description=description,
+            native_id=f"story-{uuid4()}",
+            url="https://example.com/ranking-cache",
+        )
+        async with factory() as session:
+            session.add(
+                RankingSnapshot(
+                    cache_key=f"ranking-cache:{uuid4()}",
+                    kind="hacker_news",
+                    parameters={},
+                    payload={
+                        "items": [
+                            {
+                                "title": title,
+                                "description": description,
+                                "url": ranking_item.url,
+                            }
+                        ]
+                    },
+                    fetched_at=now,
+                    next_refresh_at=now,
+                )
+            )
+            await session.commit()
+
+            background_tasks = BackgroundTasks()
+            segment_response = await translations.resolve_translation_segments(
+                translations.ResolveTranslationSegmentsRequest(
+                    segments=[
+                        translations.TranslationSegmentRequest(
+                            segment_id="ranking-title",
+                            text=title,
+                            purpose="ranking_title",
+                        ),
+                        translations.TranslationSegmentRequest(
+                            segment_id="ranking-description",
+                            text=description,
+                            purpose="ranking_description",
+                        ),
+                    ]
+                ),
+                request=SimpleNamespace(
+                    headers={},
+                    app=SimpleNamespace(
+                        state=SimpleNamespace(
+                            session_factory=factory,
+                            translation_providers={engine.engine_id: Provider()},
+                        )
+                    ),
+                ),
+                background_tasks=background_tasks,
+                current_user=AuthenticatedUser(id=users[0], email=None, claims={}),
+                session=session,
+            )
+            assert [result.translation_status for result in segment_response] == [
+                "succeeded",
+                "succeeded",
+            ]
+
+        await background_tasks()
+
+        async with factory() as session:
+            response = await rankings._ranking_response(
+                session,
+                users[0],
+                RankingData(
+                    kind="hacker_news",
+                    title="Hacker News",
+                    subtitle="Top stories",
+                    items=[ranking_item],
+                    fetched_at=now,
+                ),
+                limit=100,
+            )
+
+        assert response.items[0].translated_title == f"译文：{title}"
+        assert response.items[0].translated_description == f"译文：{description}"
+        assert response.items[0].title_translation_status == "succeeded"
+        assert response.items[0].description_translation_status == "succeeded"
+        assert response.items[0].translation_locale == "zh-CN"
+        assert response.effective_engine_fingerprint == engine.fingerprint
 
 
 @pytest.mark.asyncio

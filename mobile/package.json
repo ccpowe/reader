@@ -68,7 +68,7 @@
     "test:account-auth": "node ./scripts/test-account-auth.mjs",
     "test:profile-account": "node ./scripts/test-profile-account.mjs",
     "test:action-confirm": "node ./scripts/test-action-confirm.mjs && node ./scripts/test-sources-action-confirm.mjs && node ./scripts/test-source-status-refresh.mjs",
-    "test:ranking-title": "node ./scripts/test-ranking-title.mjs && node ./scripts/test-ranking-surfaces.mjs",
+    "test:ranking-title": "node ./scripts/test-ranking-title.mjs && node ./scripts/test-ranking-surfaces.mjs && node ./scripts/test-ranking-translation-projection.mjs",
     "test:title-translation-convergence": "node ./scripts/test-title-translation-convergence.mjs && node ./scripts/test-title-translation-surfaces.mjs",
     "test:youtube-epoch": "node ./scripts/test-youtube-epoch.mjs",
     "test:segment-translation-convergence": "node ./scripts/test-segment-translation-convergence.mjs && node ./scripts/test-realtime-translation-scheduler.mjs && node ./scripts/test-realtime-translation-recovery.mjs && node ./scripts/test-translation-request-recovery-api.mjs",

@@ -461,6 +461,10 @@ export type RankingItemResponse = {
  */
 export type RankingResponse = {
     /**
+     * Effective Engine Fingerprint
+     */
+    effective_engine_fingerprint: string | null;
+    /**
      * Fetched At
      */
     fetched_at: string;

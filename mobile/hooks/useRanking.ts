@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '../lib/readerAuth';
 import { queryOptions, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
@@ -7,7 +7,6 @@ import {
   type Ranking,
   type RankingKind,
   type RedditRankingSort,
-  type TranslationSegment,
   type TranslationSegmentResult,
 } from '../lib/api';
 import { readerQueryKeys } from '../state/queryClient';
@@ -15,6 +14,11 @@ import { useSegmentTranslationQueue } from './useSegmentTranslationQueue';
 import { useRankingTitleRetry, type RankingTitleRetryItem } from './useRankingTitleRetry';
 import { useReaderRuntime } from '../lib/connection/react';
 import { captureRuntimeContext, isRuntimeContextCurrent } from '../lib/connection';
+import {
+  mergeRankingTranslationProjection,
+  missingRankingTranslationSegments,
+  translationResultMatchesRankingRoute,
+} from '../domain/rankingTranslationProjection';
 
 export type RankingOptions = {
   subreddit?: string;
@@ -31,15 +35,59 @@ function rankingVariantKey(kind: RankingKind, options?: RankingOptions): string 
   return `reddit:${(options?.subreddit ?? 'MachineLearning').toLowerCase()}:${options?.sort ?? 'hot'}:${options?.timeFilter ?? 'week'}`;
 }
 
-export function rankingQueryOptions(session: Session, kind: RankingKind, options?: RankingOptions, serverId?: string, runtime?: import('../lib/connection').ActiveReaderRuntime | null) {
+export function rankingQueryOptions(
+  session: Session,
+  kind: RankingKind,
+  options: RankingOptions | undefined,
+  serverId: string | undefined,
+  runtime: import('../lib/connection').ActiveReaderRuntime | null | undefined,
+  targetLocale: string,
+  translationEnabled: boolean,
+  engineFingerprint: string | null,
+) {
   return queryOptions<Ranking, Error, Ranking, ReturnType<typeof readerQueryKeys.rankings>>({
-    queryKey: readerQueryKeys.rankings(session.user.id, rankingVariantKey(kind, options), serverId),
+    queryKey: readerQueryKeys.rankings(
+      session.user.id,
+      rankingVariantKey(kind, options),
+      targetLocale,
+      translationEnabled,
+      engineFingerprint,
+      serverId,
+    ),
     queryFn: () => getRanking(session, kind, options, false, runtime ?? undefined),
+    structuralSharing: (previous, incoming) => (
+      mergeRankingTranslationProjection(
+        previous as Ranking | undefined,
+        incoming as Ranking,
+        targetLocale,
+        translationEnabled,
+        engineFingerprint,
+      )
+    ),
   });
 }
 
-export function prefetchRanking(queryClient: QueryClient, session: Session, kind: RankingKind, options?: RankingOptions, serverId?: string, runtime?: import('../lib/connection').ActiveReaderRuntime | null): Promise<void> {
-  return queryClient.prefetchQuery(rankingQueryOptions(session, kind, options, serverId, runtime));
+export function prefetchRanking(
+  queryClient: QueryClient,
+  session: Session,
+  kind: RankingKind,
+  options: RankingOptions | undefined,
+  serverId: string | undefined,
+  runtime: import('../lib/connection').ActiveReaderRuntime | null | undefined,
+  targetLocale: string,
+  translationEnabled: boolean,
+  engineFingerprint: string | null,
+): Promise<void> {
+  return queryClient.prefetchQuery(rankingQueryOptions(
+    session,
+    kind,
+    options,
+    serverId,
+    runtime,
+    targetLocale,
+    translationEnabled,
+    engineFingerprint,
+  ));
 }
 
 export function useRanking(
@@ -51,48 +99,93 @@ export function useRanking(
   translationEnabled: boolean,
   targetLocale: string,
   engineId: string | null,
+  engineFingerprint: string | null,
 ) {
   const queryClient = useQueryClient();
   const runtime = useReaderRuntime();
-  const queryKey = readerQueryKeys.rankings(session.user.id, rankingVariantKey(kind, options), runtime?.identity.server_id);
+  const queryKey = readerQueryKeys.rankings(
+    session.user.id,
+    rankingVariantKey(kind, options),
+    targetLocale,
+    translationEnabled,
+    engineFingerprint,
+    runtime?.identity.server_id,
+  );
   const query = useQuery({
-    ...rankingQueryOptions(session, kind, options, runtime?.identity.server_id, runtime),
+    ...rankingQueryOptions(
+      session,
+      kind,
+      options,
+      runtime?.identity.server_id,
+      runtime,
+      targetLocale,
+      translationEnabled,
+      engineFingerprint,
+    ),
     enabled: active && (kind !== 'reddit' || Boolean(options?.subreddit)),
   });
-  const mergeTranslationResults = useCallback((results: TranslationSegmentResult[]) => {
-    if (!results.length) return;
+  const queuedSourcesRef = useRef(new Map<string, string>());
+  const queuedRouteRef = useRef('');
+  const routeIdentity = `${targetLocale}\u0000${translationEnabled}\u0000${engineFingerprint ?? engineId ?? ''}`;
+  const translationResultMatchesRoute = useCallback((result: TranslationSegmentResult) => (
+    translationResultMatchesRankingRoute(
+      result,
+      targetLocale,
+      translationEnabled,
+      engineFingerprint,
+    )
+  ), [engineFingerprint, targetLocale, translationEnabled]);
+  const mergeTranslationResults = useCallback((
+    results: TranslationSegmentResult[],
+    expectedSources: ReadonlyMap<string, string>,
+    expectedRouteIdentity: string,
+  ) => {
+    if (!translationEnabled || !results.length || expectedRouteIdentity !== routeIdentity) return;
     const context = captureRuntimeContext(runtime);
     if (!context || !isRuntimeContextCurrent(context)) return;
-    const byId = new Map(results.map((result) => [result.segment_id, result]));
+    const matchedResults = results.filter(translationResultMatchesRoute);
+    if (!matchedResults.length) return;
+    const byId = new Map(matchedResults.map((result) => [result.segment_id, result]));
     queryClient.setQueryData<Ranking>(queryKey, (current) => {
       if (!current) return current;
       let changed = false;
       const items = current.items.map((item) => {
         const title = byId.get(`${item.translation_key}:title`);
         const description = byId.get(`${item.translation_key}:description`);
-        if (!title && !description) return item;
+        const freshTitle = title
+          && expectedSources.get(title.segment_id) === item.title
+          ? title
+          : null;
+        const freshDescription = description
+          && expectedSources.get(description.segment_id) === item.description
+          ? description
+          : null;
+        if (!freshTitle && !freshDescription) return item;
         changed = true;
         return {
           ...item,
-          ...(title ? {
-            translated_title: title.translated_text,
-            title_translation_status: title.translation_status,
-            translation_locale: title.translation_locale ?? item.translation_locale,
+          ...(freshTitle ? {
+            translated_title: freshTitle.translated_text,
+            title_translation_status: freshTitle.translation_status,
+            translation_locale: freshTitle.translation_locale ?? item.translation_locale,
           } : {}),
-          ...(description ? {
-            translated_description: description.translated_text,
-            description_translation_status: description.translation_status,
-            translation_locale: description.translation_locale ?? item.translation_locale,
+          ...(freshDescription ? {
+            translated_description: freshDescription.translated_text,
+            description_translation_status: freshDescription.translation_status,
+            translation_locale: freshDescription.translation_locale ?? item.translation_locale,
           } : {}),
         };
       });
-      return changed ? { ...current, items } : current;
+      return changed ? { ...current, effective_engine_fingerprint: engineFingerprint, items } : current;
     });
-  }, [queryClient, queryKey, runtime]);
+  }, [engineFingerprint, queryClient, queryKey, routeIdentity, runtime, translationEnabled, translationResultMatchesRoute]);
+  const mergeQueuedTranslationResults = useCallback((results: TranslationSegmentResult[]) => {
+    mergeTranslationResults(results, queuedSourcesRef.current, queuedRouteRef.current);
+  }, [mergeTranslationResults]);
   const translationQueue = useSegmentTranslationQueue({
     enabled: active && translationEnabled,
-    engineId,
-    onResults: mergeTranslationResults,
+    engineId: engineFingerprint ?? engineId,
+    onResults: mergeQueuedTranslationResults,
     session,
     targetLocale,
   });
@@ -113,12 +206,24 @@ export function useRanking(
       return { ...current, items };
     });
   }, [clearTimedOutSegments, queryClient, queryKey, runtime]);
-  const handleTitleRetryResults = useCallback((results: TranslationSegmentResult[]) => {
-    const segmentIds = results.map((result) => result.segment_id);
+  const retryScopeKey = queryKey.join('\u0000');
+  const handleTitleRetryResults = useCallback((
+    results: TranslationSegmentResult[],
+    item: RankingTitleRetryItem,
+    requestScopeKey: string,
+  ) => {
+    if (requestScopeKey !== retryScopeKey) return;
+    const matchedResults = results.filter(translationResultMatchesRoute);
+    if (!matchedResults.length) return;
+    const segmentIds = matchedResults.map((result) => result.segment_id);
     clearFailedSegments(segmentIds);
     clearTimedOutSegments(segmentIds);
-    mergeTranslationResults(results);
-  }, [clearFailedSegments, clearTimedOutSegments, mergeTranslationResults]);
+    mergeTranslationResults(
+      matchedResults,
+      new Map([[`${item.translation_key}:title`, item.title]]),
+      routeIdentity,
+    );
+  }, [clearFailedSegments, clearTimedOutSegments, mergeTranslationResults, retryScopeKey, routeIdentity, translationResultMatchesRoute]);
   const {
     isTitleRetrying,
     retryTitleTranslation,
@@ -126,40 +231,26 @@ export function useRanking(
     onFailure: markTitleRetryFailure,
     onResults: handleTitleRetryResults,
     session,
-    scopeKey: queryKey.join('\u0000'),
+    scopeKey: retryScopeKey,
   });
-  const pendingSegments = useMemo(() => {
-    const segments: TranslationSegment[] = [];
-    for (const item of (query.data?.items ?? []).slice(0, translationItemLimit)) {
-      if (
-        !item.translated_title &&
-        item.title_translation_status !== 'failed' &&
-        item.title_translation_status !== 'succeeded'
-      ) {
-        segments.push({
-          purpose: 'ranking_title',
-          segment_id: `${item.translation_key}:title`,
-          text: item.title,
-        });
-      }
-      if (
-        item.description &&
-        !item.translated_description &&
-        item.description_translation_status !== 'failed' &&
-        item.description_translation_status !== 'succeeded'
-      ) {
-        segments.push({
-          purpose: 'ranking_description',
-          segment_id: `${item.translation_key}:description`,
-          text: item.description,
-        });
-      }
-    }
-    return segments;
-  }, [query.data, translationItemLimit]);
+  const pendingSegments = useMemo(
+    () => missingRankingTranslationSegments(
+      query.data,
+      translationItemLimit,
+      targetLocale,
+      translationEnabled,
+      engineFingerprint,
+    ),
+    [engineFingerprint, query.data, targetLocale, translationEnabled, translationItemLimit],
+  );
   useEffect(() => {
-    if (active && translationEnabled) enqueueSegments(pendingSegments);
-  }, [active, enqueueSegments, pendingSegments, targetLocale, translationEnabled]);
+    if (!active || !translationEnabled) return;
+    queuedSourcesRef.current = new Map(
+      pendingSegments.map((segment) => [segment.segment_id, segment.text]),
+    );
+    queuedRouteRef.current = routeIdentity;
+    enqueueSegments(pendingSegments);
+  }, [active, enqueueSegments, pendingSegments, routeIdentity, translationEnabled]);
   const [refreshing, setRefreshing] = useState(false);
   const refresh = useCallback(async () => {
     const context = captureRuntimeContext(runtime);
@@ -167,14 +258,23 @@ export function useRanking(
     setRefreshing(true);
     try {
       return await queryClient.fetchQuery({
-        ...rankingQueryOptions(session, kind, options, runtime?.identity.server_id, runtime),
+        ...rankingQueryOptions(
+          session,
+          kind,
+          options,
+          runtime?.identity.server_id,
+          runtime,
+          targetLocale,
+          translationEnabled,
+          engineFingerprint,
+        ),
         staleTime: 0,
         queryFn: () => getRanking(session, kind, options, true, runtime ?? undefined),
       });
     } finally {
       if (context && isRuntimeContextCurrent(context)) setRefreshing(false);
     }
-  }, [kind, options, queryClient, runtime, session]);
+  }, [engineFingerprint, kind, options, queryClient, runtime, session, targetLocale, translationEnabled]);
 
   return {
     ...query,
