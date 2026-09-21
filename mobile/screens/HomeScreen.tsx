@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -20,7 +20,7 @@ import { captureRuntimeContext, isRuntimeContextCurrent } from '../lib/connectio
 import { ChannelPickerModal } from '../components/ChannelPickerModal';
 import { Chip } from '../components/Chip';
 import { CategoryPager } from '../components/CategoryPager';
-import { ArticleCard } from '../components/FeedCards';
+import { FeedCardRow } from '../components/FeedCardRow';
 import { EmptyState, ErrorState, listFeedbackStyles, LoadingBlock } from '../components/FeedbackState';
 import { PageHeaderContent } from '../components/PageHeader';
 import { SourceAvatar } from '../components/SourceAvatar';
@@ -78,7 +78,7 @@ export function HomeScreen({
     [selectedSourceId, sources],
   );
 
-  async function toggleSaved(item: FeedItem) {
+  const toggleSaved = useCallback(async (item: FeedItem) => {
     const context = captureRuntimeContext(runtime);
     if (!context) return;
     const release = beginSavedMutation(readerClient, session.user.id, context.serverId, item.content_id);
@@ -99,7 +99,7 @@ export function HomeScreen({
     } finally {
       release();
     }
-  }
+  }, [readerClient, runtime, session]);
 
   useEffect(() => {
     if (selectedFolder !== null && !folders.includes(selectedFolder)) setSelectedFolder(null);
@@ -278,12 +278,12 @@ function InboxFeedPage({
       }}
       onScroll={active ? onScroll : undefined}
       refreshing={feed.refreshing}
-      renderItem={({ item }) => <ArticleCard
+      renderItem={({ item }) => <FeedCardRow
         avatarAccessToken={session.access_token}
         item={item}
-        onPress={() => onOpenArticle(item)}
-        onRetryXTranslation={() => feed.xTranslation.retry(item)}
-        onToggleSave={() => void onToggleSave(item)}
+        onOpenArticle={onOpenArticle}
+        onRetryXTranslation={feed.xTranslation.retry}
+        onToggleSave={onToggleSave}
         xTranslation={feed.xTranslation.byContentId.get(item.content_id)}
       />}
       scrollEventThrottle={16}

@@ -16,6 +16,27 @@ export type XFeedTranslationResult = {
   retry: (item: FeedItem) => void;
 };
 
+function sameTranslationResult(left: TranslationSegmentResult, right: TranslationSegmentResult): boolean {
+  return left.cache_expires_at === right.cache_expires_at &&
+    left.effective_engine_fingerprint === right.effective_engine_fingerprint &&
+    left.engine_id === right.engine_id &&
+    left.engine_label === right.engine_label &&
+    left.error_code === right.error_code &&
+    left.error_retryable === right.error_retryable &&
+    left.purpose === right.purpose &&
+    left.retry_after_ms === right.retry_after_ms &&
+    left.segment_id === right.segment_id &&
+    left.translated_text === right.translated_text &&
+    left.translation_locale === right.translation_locale &&
+    left.translation_status === right.translation_status;
+}
+
+function sameCardTranslation(left: XFeedCardTranslation, right: XFeedCardTranslation): boolean {
+  return left.bodyText === right.bodyText &&
+    left.referenceText === right.referenceText &&
+    left.retryable === right.retryable;
+}
+
 export function useXFeedTranslation(
   session: Session,
   items: FeedItem[],
@@ -27,6 +48,7 @@ export function useXFeedTranslation(
 ): XFeedTranslationResult {
   const runtimeGeneration = useReaderRuntimeGeneration();
   const scopeKeyRef = useRef(scopeKey);
+  const projectedTranslationsRef = useRef<ReadonlyMap<string, XFeedCardTranslation>>(new Map());
   const [records, setRecords] = useState<ReadonlyMap<string, XFeedTranslationRecord>>(new Map());
   const segments = useMemo(() => items.flatMap(xFeedTranslationSegments), [items]);
   const segmentsById = useMemo(
@@ -40,6 +62,11 @@ export function useXFeedTranslation(
       for (const result of results) {
         const segment = segmentsById.get(result.segment_id);
         if (!segment) continue;
+        const existing = current.get(result.segment_id);
+        if (
+          existing?.sourceText === segment.text &&
+          sameTranslationResult(existing.result, result)
+        ) continue;
         next.set(result.segment_id, { result, sourceText: segment.text });
         changed = true;
       }
@@ -83,14 +110,20 @@ export function useXFeedTranslation(
     const ids = new Set(itemSegments.map((segment) => segment.segment_id));
     setRecords((current) => {
       const next = new Map(current);
-      ids.forEach((id) => next.delete(id));
-      return next;
+      let changed = false;
+      ids.forEach((id) => { changed = next.delete(id) || changed; });
+      return changed ? next : current;
     });
     retrySegments(itemSegments);
   }, [retrySegments]);
 
   const byContentId = useMemo(() => {
-    if (!active || !enabled) return new Map<string, XFeedCardTranslation>();
+    if (!active || !enabled) {
+      const empty = new Map<string, XFeedCardTranslation>();
+      projectedTranslationsRef.current = empty;
+      return empty;
+    }
+    const previous = projectedTranslationsRef.current;
     const next = new Map<string, XFeedCardTranslation>();
     for (const item of items) {
       const translation = xFeedCardTranslation(
@@ -99,8 +132,15 @@ export function useXFeedTranslation(
         queue.timedOutSegmentIds,
         xFeedTranslationSegments(item).some((segment) => queue.failedSegmentIds.has(segment.segment_id)),
       );
-      if (translation) next.set(item.content_id, translation);
+      if (translation) {
+        const existing = previous.get(item.content_id);
+        next.set(
+          item.content_id,
+          existing && sameCardTranslation(existing, translation) ? existing : translation,
+        );
+      }
     }
+    projectedTranslationsRef.current = next;
     return next;
   }, [active, enabled, items, queue.failedSegmentIds, queue.timedOutSegmentIds, records]);
 

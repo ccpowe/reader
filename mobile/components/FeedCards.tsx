@@ -1,5 +1,5 @@
 import { useAvatarImageSource } from '../hooks/useAvatarImageSource';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -26,7 +26,7 @@ import {
   sourceIcon,
 } from '../domain/source';
 
-export function ArticleCard({
+export const ArticleCard = memo(function ArticleCard({
   avatarAccessToken,
   item,
   onPress,
@@ -130,7 +130,7 @@ export function ArticleCard({
       </View>
     </Pressable>
   );
-}
+});
 
 export function SavedCard({
   avatarAccessToken,
