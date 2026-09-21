@@ -92,6 +92,7 @@ try {
   for (const sourceKind of ['web', 'rss']) {
     await mount({ ...item, source_kind: sourceKind });
     assert.equal(source().uri, item.external_url, 'Web and RSS open the original page immediately');
+    assert.equal(views()[0].props.setSupportMultipleWindows, false, 'ordinary webpages do not open OAuth popup windows');
     assert.equal(requests.length, 0, 'Web and RSS do not request stored article bodies');
     const original = views()[0];
     let receive;
@@ -167,11 +168,15 @@ try {
 
   await mount({ ...item, source_kind: 'x' });
   assert.equal(source().uri, item.external_url, 'X opens web immediately');
+  assert.equal(views()[0].props.setSupportMultipleWindows, true, 'X enables the OAuth popup window used by Google sign-in');
   await resolve(article('one', '<p>Post</p>'));
   assert.equal(source().uri, item.external_url);
+  await switchMode();
+  assert.equal(views()[0].props.setSupportMultipleWindows, false, 'X reader mode does not enable webpage popup windows');
   await unmount();
   await mount({ ...item, source_kind: 'reddit' });
   assert.equal(source().uri, item.external_url);
+  assert.equal(views()[0].props.setSupportMultipleWindows, true, 'Reddit keeps its OAuth popup window behavior');
   assert.equal(requests.length, 0, 'Reddit skips article fetching');
   assert.equal(tree.root.findByType('FloatingReaderTools').props.onSwitchMode, undefined);
   await unmount();

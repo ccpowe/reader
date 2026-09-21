@@ -671,7 +671,7 @@ export function ArticleReaderScreen({
             onTranslationStateChange={setTranslationState}
             originWhitelist={['*']}
             session={session}
-            setSupportMultipleWindows={isReddit}
+            setSupportMultipleWindows={effectiveMode === 'web' && (isReddit || isX)}
             source={contentSource}
             style={styles.webView}
             targetLocale={translation.targetLocale}

@@ -31,7 +31,7 @@ Reader is a self-hosted information aggregation app. Bring blogs, communities, w
 > Reader is currently a development preview, not a production release. Known issues remain, and parts of the experience are still being refined.
 
 - **Web extraction:** The web extraction rules Agent still needs improvement to recognize and parse a wider range of pages. Some websites may not return article lists or content correctly.
-- **X sign-in:** Using Google sign-in from an X page may result in a blank screen and fail to return to the original page.
+- **X sign-in:** The Android client now uses the same OAuth popup mechanism as Reddit; whether completing or cancelling Google sign-in reliably returns to the original X page still requires real-device verification.
 - **Interaction quality:** Page interactions, transition animations, and loading feedback still need further refinement.
 
 ## Getting started
