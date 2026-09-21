@@ -378,7 +378,7 @@ class CLIBrowserSession:
                             if self.stack is not None:
                                 await self.stack.aclose()
 
-    async def aclose(self) -> None:
+    async def aclose(self, reason=None) -> None:
         if self._close_task is None:
             self._close_task = asyncio.create_task(self._close())
         await _settle(self._close_task)

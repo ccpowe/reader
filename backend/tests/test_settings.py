@@ -9,6 +9,7 @@ def test_web_browser_defaults_to_lightpanda_without_requiring_installation():
     settings = Settings(_env_file=None)
     assert settings.ingestion_browser_engine == "lightpanda"
     assert settings.ingestion_lightpanda_executable_path is None
+    assert settings.browser_task_heartbeat_seconds == 15
 
 
 @pytest.mark.parametrize("legacy", [False, True])
@@ -231,3 +232,42 @@ def test_cli_configuration_snapshot_never_reads_local_binaries(monkeypatch):
         descriptor,
     )
     assert changed["config_fingerprint"] != snapshot["config_fingerprint"]
+
+
+def test_remote_browser_snapshot_excludes_local_paths_and_controller_secret() -> None:
+    from app.translation.engines import engine_descriptor
+    from app.web_rule_agent.configuration import rule_agent_snapshot
+
+    settings = Settings(
+        _env_file=None,
+        browser_controller_url="http://reader-browser-manager:8091",
+        browser_controller_token="manager-secret-that-must-not-be-snapshotted",
+        ingestion_lightpanda_executable_path="/local/lightpanda",
+        web_rule_agent_cli_executable_path="/local/agent-browser",
+    )
+    snapshot = rule_agent_snapshot(settings, engine_descriptor(settings, "deepseek-v4-flash"))
+
+    assert snapshot["browser_runtime"] == "container-task-v1"
+    assert "ingestion_lightpanda_executable_path" not in snapshot
+    assert "cli_executable_path" not in snapshot["execution_options"]
+    assert "browser_controller_token" not in settings.model_dump()
+    assert "manager-secret" not in repr(settings.model_dump())
+
+
+def test_browser_controller_token_sources_are_mutually_exclusive() -> None:
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        Settings(
+            _env_file=None,
+            browser_controller_token="direct-secret",
+            browser_controller_token_file="/run/secrets/browser-token",
+        )
+
+
+def test_browser_controller_token_file_is_excluded_from_settings_dump() -> None:
+    settings = Settings(
+        _env_file=None,
+        browser_controller_token_file="/run/secrets/browser-token",
+    )
+
+    assert "browser_controller_token_file" not in settings.model_dump()
+    assert "/run/secrets/browser-token" not in repr(settings.model_dump())

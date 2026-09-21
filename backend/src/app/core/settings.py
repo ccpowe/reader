@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import AliasChoices, AnyHttpUrl, Field, SecretStr, field_validator, model_validator
@@ -85,6 +86,14 @@ class Settings(BaseSettings):
             "web_rule_agent_lightpanda_executable_path",
         ),
     )
+    browser_controller_url: AnyHttpUrl | None = None
+    browser_controller_token: SecretStr | None = Field(default=None, exclude=True)
+    browser_controller_token_file: Path | None = Field(default=None, exclude=True)
+    browser_controller_control_timeout_seconds: float = Field(default=45.0, ge=5.0, le=120.0)
+    browser_adapter_request_timeout_seconds: float = Field(default=70.0, ge=10.0, le=180.0)
+    browser_task_close_timeout_seconds: float = Field(default=15.0, ge=3.0, le=60.0)
+    browser_task_heartbeat_seconds: float = Field(default=15.0, ge=5.0, le=60.0)
+    browser_task_startup_shutdown_margin_seconds: int = Field(default=120, ge=60, le=300)
     ingestion_dns_timeout_seconds: float = Field(default=3.0, ge=0.5, le=10.0)
     ingestion_connect_attempt_timeout_seconds: float = Field(default=1.5, ge=0.25, le=5.0)
     ingestion_source_timeout_seconds: int = Field(default=120, ge=10, le=600)
@@ -115,6 +124,17 @@ class Settings(BaseSettings):
     web_rule_agent_lease_seconds: int = Field(default=120, ge=10, le=900)
     web_rule_agent_heartbeat_seconds: float = Field(default=15.0, ge=1.0, le=120.0)
     web_rule_agent_validation_ttl_seconds: int = Field(default=300, ge=10, le=900)
+
+    @model_validator(mode="after")
+    def validate_browser_controller_token_source(self) -> Settings:
+        if (
+            self.browser_controller_token is not None
+            and self.browser_controller_token_file is not None
+        ):
+            raise ValueError(
+                "browser_controller_token and browser_controller_token_file are mutually exclusive"
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_web_rule_lease(self) -> Settings:

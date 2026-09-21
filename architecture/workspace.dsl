@@ -167,15 +167,45 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                         "sources" "backend/src/app/web_rule_agent/runtime.py; backend/src/app/web_rule_agent/context.py; backend/src/app/web_rule_agent/tools.py; backend/src/app/web_rule_agent/memory.py; backend/src/app/web_rule_agent/store.py; backend/src/app/ingestion/web_rules.py; backend/src/app/llm/factory.py"
                     }
                 }
-                ruleBrowser = component "受控网页执行" "Agent 通过持久 CLI／Lightpanda 会话探索，任务结束或失去租约回收；真实试跑和周期动态扫描另用 Lightpanda，静态规则走 HTTP。" "Crawl4AI / Lightpanda / HTTP" {
+                ruleBrowser = component "受控网页执行客户端" "本机模式直接管理受隔离的 Lightpanda；容器模式申请 explore/render 任务并通过类型化内部接口执行，静态规则仍走 HTTP。" "Python / HTTPX / Crawl4AI" {
                     properties {
-                        "sources" "backend/src/app/web_rule_agent/cli_browser.py; backend/src/app/web_rule_agent/cli_process.py; backend/src/app/web_rule_agent/cli_bridge.py; backend/src/app/ingestion/browser_runtime.py; backend/src/app/ingestion/web_crawl.py; backend/src/app/ingestion/url_safety.py"
+                        "sources" "backend/src/app/browser_tasks/client.py; backend/src/app/web_rule_agent/cli_browser.py; backend/src/app/web_rule_agent/cli_process.py; backend/src/app/web_rule_agent/cli_bridge.py; backend/src/app/ingestion/browser_runtime.py; backend/src/app/ingestion/web_crawl.py; backend/src/app/ingestion/url_safety.py"
                     }
                 }
                 cleanup = component "保留与清理" "清理孤立来源、过量未收藏内容和过期翻译，保护收藏及仍有效的引用。" "Python / SQLAlchemy" {
                     properties {
                         "sources" "backend/src/app/workers/cleanup.py; backend/src/app/workers/content_retention.py; backend/src/app/translation/lifecycle.py"
                     }
+                }
+            }
+
+            browserManager = container "浏览器任务管理器" "可选容器部署的可信控制面；核验固定镜像身份，持久化任务状态并创建、续租、关闭任务资源。" "Python / FastAPI / Docker Engine API" "Optional" {
+                properties {
+                    "sources" "backend/src/app/browser_tasks/manager_app.py; backend/src/app/browser_tasks/controller.py; backend/src/app/browser_tasks/docker_runtime.py; backend/src/app/browser_tasks/state.py"
+                    "deployment" "仅控制网络；持有 Docker socket、控制令牌与 capability HMAC key，并与 Reaper 共享状态目录。"
+                }
+            }
+            browserReaper = container "浏览器任务回收器" "独立监督过期租约、硬期限和残留资源；原子领取清理权后回收本部署的两个任务容器与任务控制卷。" "Python / Docker Engine API" "Optional" {
+                properties {
+                    "sources" "backend/src/app/browser_tasks/reaper.py; backend/src/app/browser_tasks/docker_runtime.py; backend/src/app/browser_tasks/state.py"
+                    "deployment" "没有控制或 capability 密钥；持有 Docker socket并与 Manager 共享任务状态目录。"
+                }
+            }
+            browserState = container "浏览器任务状态" "保存请求幂等、nonce、租约、硬期限、资源身份与清理状态；Manager 和 Reaper 通过原子状态转换协调。" "SQLite" "Database,Optional" {
+                properties {
+                    "sources" "backend/src/app/browser_tasks/state.py"
+                }
+            }
+            browserAdapter = container "浏览器任务 Adapter" "每任务短期数据面；校验 task capability，通过 safe_get/robots/预算获取公网页面，并经专属 Unix socket 驱动浏览器。" "Python / FastAPI / Crawl4AI" "Optional,Ephemeral" {
+                properties {
+                    "sources" "backend/src/app/browser_tasks/adapter_app.py; backend/src/app/browser_tasks/adapter_runtime.py; backend/src/app/browser_tasks/protocol.py"
+                    "deployment" "仅任务 data 与受控 egress 网络；没有 Docker socket、Manager 令牌、数据库或模型凭据。"
+                }
+            }
+            browserSandbox = container "无网络浏览器任务" "每任务运行固定版 Lightpanda 与 agent-browser；只通过任务 Unix socket 接收 adapter 控制，不能发起 IP 网络连接。" "Lightpanda 0.4.0 / agent-browser 0.37.1" "Optional,Ephemeral" {
+                properties {
+                    "sources" "services/browser_runtime/Dockerfile.browser; services/browser_runtime/browser-entrypoint.sh; services/browser_runtime/agent-browser.json"
+                    "deployment" "network none、非 root、只读文件系统、cap_drop ALL、no-new-privileges；不挂载 Reader 源码或凭据。"
                 }
             }
 
@@ -238,6 +268,16 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.worker -> hackerNews "刷新榜单" "HTTPS / Firebase JSON API" "ContainerRelationship"
         system.worker -> github "刷新榜单" "HTTPS / HTML" "ContainerRelationship"
         system.worker -> models "持久翻译；启用时编写网页规则" "HTTPS / 模型 API" "ContainerRelationship"
+        system.worker -> system.browserManager "申请、续租和关闭浏览器任务（容器模式）" "内部 HTTP / Bearer" "ContainerRelationship"
+        system.worker -> system.browserAdapter "执行 explore CLI 或一次性 render（容器模式）" "内部 HTTP / Task capability" "ContainerRelationship"
+        system.browserManager -> system.browserAdapter "创建、核验健康并回收任务容器" "Docker Engine" "ContainerRelationship"
+        system.browserManager -> system.browserSandbox "创建、核验健康并回收无网络浏览器" "Docker Engine" "ContainerRelationship"
+        system.browserManager -> system.browserState "记录创建、租约、幂等与清理状态" "SQLite" "ContainerRelationship"
+        system.browserReaper -> system.browserState "原子领取过期任务并记录清理结果" "SQLite" "ContainerRelationship"
+        system.browserReaper -> system.browserAdapter "回收过期或残留 adapter" "Docker Engine" "ContainerRelationship"
+        system.browserReaper -> system.browserSandbox "回收过期或残留 browser 与任务控制卷" "Docker Engine" "ContainerRelationship"
+        system.browserAdapter -> system.browserSandbox "经任务专属 Unix socket 提供 CDP 与 CLI 控制" "Unix sockets" "ContainerRelationship"
+        system.browserAdapter -> websites "以受控公网传输获取页面" "HTTPS / safe_get" "ContainerRelationship"
         system.admin -> system.database "管理用户、配额及规则任务" "SQL" "ContainerRelationship"
         system.scweet -> x "请求上游内容" "HTTPS / GraphQL" "ContainerRelationship"
         system.scweet -> system.scweetState "管理采集账号与状态" "SQLite" "ContainerRelationship"
@@ -321,6 +361,8 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.worker.ruleAgent -> system.worker.ruleJobs "记录预算、发现、执行事实与模型判断及凭据，提交激活交接" "Python / JobStore"
         system.worker.ruleAgent -> system.worker.ruleBrowser "执行单条 CLI 命令并读取有界真实结果" "Python / async"
         system.worker.ruleBrowser -> websites "安全传输获取页面并执行有界动作" "HTTPS / safe_get / Crawl4AI"
+        system.worker.ruleBrowser -> system.browserManager "申请、续租和关闭任务（容器模式）" "内部 HTTP / Bearer"
+        system.worker.ruleBrowser -> system.browserAdapter "执行类型化 CLI/render 请求（容器模式）" "内部 HTTP / Task capability"
         system.worker.ruleAgent -> websites "用真实执行器取得列表及续读事实" "HTTPS / Crawl4AI / Lightpanda（动态）"
         system.worker.ruleAgent -> models "生成结构化候选规则（启用时）" "HTTPS / 模型 API"
         system.worker.cleanup -> system.database "清理孤立状态并保护有效引用" "SQL"
@@ -334,12 +376,12 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         }
         container system "C2-Containers" {
             title "C2 · Reader 运行单元与数据存储"
-            include reader operator system.client system.localState system.api system.worker system.database system.admin system.scweet system.scweetState
+            include reader operator system.client system.localState system.api system.worker system.browserManager system.browserReaper system.browserState system.browserAdapter system.browserSandbox system.database system.admin system.scweet system.scweetState
             autoLayout lr 350 80
         }
         container system "C2-ExternalDependencies" {
             title "C2 · Reader 外部依赖"
-            include system.client system.api system.worker system.scweet websites youtube x apify reddit hackerNews github models
+            include system.client system.api system.worker system.browserManager system.browserReaper system.browserAdapter system.browserSandbox system.scweet websites youtube x apify reddit hackerNews github models
             autoLayout lr 350 80
         }
         component system.client "C3-Client" {

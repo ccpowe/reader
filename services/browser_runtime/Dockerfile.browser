@@ -1,0 +1,39 @@
+FROM lightpanda/browser@sha256:8a4cbf4cbf7863eeeb417177bdf5fc0bfbc35ba222c165402af5edf0f6e4f97b
+
+ARG AGENT_BROWSER_URL=https://registry.npmjs.org/agent-browser/-/agent-browser-0.37.1.tgz
+ARG AGENT_BROWSER_ARCHIVE_SHA256=d875c51ecee47ed8aa65b570c27021a96eacdf25399a621d689797346c33da2a
+ARG AGENT_BROWSER_SHA256=f8e5f9294bd0da70dda61854f12004fd61c668cd682bfb600cdf6d0df73dea69
+
+LABEL io.reader.browser-runtime.component="browser" \
+      io.reader.browser-runtime.protocol-version="1" \
+      io.reader.browser-runtime.lightpanda.version="0.4.0" \
+      io.reader.browser-runtime.lightpanda.sha256="bfcf9bd7e80939b87232aa114a49d8f397f51af0c2632d9fc58d4a6d4386624f" \
+      io.reader.browser-runtime.agent-browser.version="0.37.1" \
+      io.reader.browser-runtime.agent-browser.sha256="f8e5f9294bd0da70dda61854f12004fd61c668cd682bfb600cdf6d0df73dea69"
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates python3 socat \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY services/browser_runtime/fetch_agent_browser.py /tmp/fetch_agent_browser.py
+RUN mkdir -p /reader \
+    && python3 /tmp/fetch_agent_browser.py \
+      "$AGENT_BROWSER_URL" "$AGENT_BROWSER_ARCHIVE_SHA256" "$AGENT_BROWSER_SHA256" \
+      /reader/agent-browser \
+    && rm /tmp/fetch_agent_browser.py \
+    && chmod 0555 /reader/agent-browser
+
+COPY services/browser_runtime/agent-browser.json /reader/agent-browser.json
+COPY services/browser_runtime/browser-entrypoint.sh /reader/browser-entrypoint.sh
+COPY services/browser_runtime/browser-healthcheck.py /reader/browser-healthcheck.py
+COPY backend/src/app/web_rule_agent/cli_runner.py /reader/cli_runner.py
+RUN mv /bin/lightpanda /reader/lightpanda \
+    && chown -R 999:999 /reader \
+    && chmod 0444 /reader/agent-browser.json /reader/cli_runner.py \
+    && chmod 0555 /reader/lightpanda /reader/browser-entrypoint.sh /reader/browser-healthcheck.py
+
+USER 999:20000
+ENTRYPOINT ["/usr/bin/tini", "--", "/reader/browser-entrypoint.sh"]
+HEALTHCHECK --interval=1s --timeout=2s --start-period=2s --retries=20 \
+  CMD ["/usr/bin/python3", "/reader/browser-healthcheck.py"]

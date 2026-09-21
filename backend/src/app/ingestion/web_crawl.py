@@ -169,7 +169,9 @@ async def crawl_page(
     browser_engine: str | None = None,
     lightpanda_executable_path: str | None = None,
     browser_identity: dict | None = None,
+    browser_endpoint_factory: Callable | None = None,
 ) -> CrawledPage:
+    settings = None
     if recipe.render_js:
         if browser_engine not in {None, "lightpanda"}:
             raise SourceScanError(
@@ -180,6 +182,27 @@ async def crawl_page(
             browser_engine = browser_engine or settings.ingestion_browser_engine
             lightpanda_executable_path = (
                 lightpanda_executable_path or settings.ingestion_lightpanda_executable_path
+            )
+        runtime_settings = settings or get_settings()
+        if browser_endpoint_factory is None and runtime_settings.browser_controller_url is not None:
+            from app.browser_tasks.client import render_page_with_browser_task
+
+            rendered = await render_page_with_browser_task(
+                runtime_settings,
+                source_url=url,
+                url=url,
+                recipe=recipe,
+                maximum_bytes=maximum_bytes,
+                expected_runtime_identity=browser_identity,
+            )
+            return CrawledPage(
+                response=httpx.Response(
+                    status_code=rendered.status_code,
+                    headers=rendered.safe_headers,
+                    text=rendered.rendered_html,
+                    request=httpx.Request("GET", str(rendered.final_url)),
+                ),
+                rows=rendered.rows,
             )
     # Import lazily: other providers and API startup do not load a browser engine.
     from crawl4ai import (
@@ -257,7 +280,7 @@ async def crawl_page(
     async with (
         _slot(),
         (
-            browser_endpoint(
+            (browser_endpoint_factory or browser_endpoint)(
                 browser_engine,
                 lightpanda_executable_path,
                 expected_identity=browser_identity,

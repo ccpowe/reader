@@ -1,0 +1,829 @@
+{
+  "components": {
+    "schemas": {
+      "BrowserAction": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "click",
+              "wait",
+              "scroll"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "min_count": {
+            "default": 1,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Min Count",
+            "type": "integer"
+          },
+          "selector": {
+            "anyOf": [
+              {
+                "maxLength": 400,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selector"
+          },
+          "steps": {
+            "default": 1,
+            "maximum": 8.0,
+            "minimum": 1.0,
+            "title": "Steps",
+            "type": "integer"
+          },
+          "timeout_ms": {
+            "default": 4000,
+            "maximum": 8000.0,
+            "minimum": 100.0,
+            "title": "Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "BrowserAction",
+        "type": "object"
+      },
+      "CLICommandRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "argv": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Argv",
+            "type": "array"
+          },
+          "observed_urls": {
+            "items": {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 128,
+            "title": "Observed Urls",
+            "type": "array"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "task_id",
+          "argv"
+        ],
+        "title": "CLICommandRequest",
+        "type": "object"
+      },
+      "CLIError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "enum": [
+              "wrapper",
+              "cli"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "CLIError",
+        "type": "object"
+      },
+      "CLIReport": {
+        "additionalProperties": false,
+        "properties": {
+          "cli_warning": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "command_timed_out": {
+            "default": false,
+            "title": "Command Timed Out",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CLIError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "format": {
+            "enum": [
+              "text",
+              "snapshot",
+              "html",
+              "json"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "network_errors": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkError"
+            },
+            "maxItems": 3,
+            "title": "Network Errors",
+            "type": "array"
+          },
+          "output": {
+            "default": "",
+            "maxLength": 262144,
+            "title": "Output",
+            "type": "string"
+          },
+          "page_revision": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Revision"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "stderr": {
+            "default": "",
+            "maxLength": 262144,
+            "title": "Stderr",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "truncated_fields": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Truncated Fields",
+            "type": "array"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "status",
+          "format"
+        ],
+        "title": "CLIReport",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "title": "Evidence",
+            "type": "object"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ErrorKind",
+            "default": "protocol"
+          },
+          "long_lived": {
+            "default": false,
+            "title": "Long Lived",
+            "type": "boolean"
+          },
+          "message": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "retry_after_seconds": {
+            "anyOf": [
+              {
+                "maximum": 86400.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry After Seconds"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "ErrorKind": {
+        "enum": [
+          "source_scan",
+          "network",
+          "timeout",
+          "protocol",
+          "capacity",
+          "lifecycle"
+        ],
+        "title": "ErrorKind",
+        "type": "string"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": [
+              "starting",
+              "ready",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "NativeField": {
+        "additionalProperties": false,
+        "properties": {
+          "attribute": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attribute"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NativeField"
+                },
+                "maxItems": 12,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields"
+          },
+          "name": {
+            "description": "Output key. Reader consumes top-level url, title, published_at, author, excerpt or summary, and image_url from listing recipes. Legacy article recipes remain parseable but are not executed. Use published_at for dates; date is not consumed. Nested helper fields may use other names.",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "selector": {
+            "anyOf": [
+              {
+                "maxLength": 400,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selector"
+          },
+          "type": {
+            "enum": [
+              "text",
+              "html",
+              "attribute",
+              "nested",
+              "nested_list"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "title": "NativeField",
+        "type": "object"
+      },
+      "NativeSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "baseFields": {
+            "items": {
+              "$ref": "#/components/schemas/NativeField"
+            },
+            "maxItems": 12,
+            "title": "Basefields",
+            "type": "array"
+          },
+          "baseSelector": {
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Baseselector",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/NativeField"
+            },
+            "maxItems": 12,
+            "title": "Fields",
+            "type": "array"
+          },
+          "name": {
+            "default": "Reader listing",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseSelector"
+        ],
+        "title": "NativeSchema",
+        "type": "object"
+      },
+      "NetworkError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "maxLength": 2000,
+            "title": "Message",
+            "type": "string"
+          },
+          "resource_type": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Type"
+          },
+          "url": {
+            "maxLength": 4096,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "message"
+        ],
+        "title": "NetworkError",
+        "type": "object"
+      },
+      "PageRecipe": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserAction"
+            },
+            "maxItems": 8,
+            "title": "Actions",
+            "type": "array"
+          },
+          "extraction": {
+            "$ref": "#/components/schemas/NativeSchema"
+          },
+          "render_js": {
+            "default": false,
+            "title": "Render Js",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "extraction"
+        ],
+        "title": "PageRecipe",
+        "type": "object"
+      },
+      "RenderPageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "max_response_bytes": {
+            "maximum": 20971520.0,
+            "minimum": 262144.0,
+            "title": "Max Response Bytes",
+            "type": "integer"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/PageRecipe"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "url": {
+            "format": "uri",
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "task_id",
+          "url",
+          "recipe",
+          "max_response_bytes"
+        ],
+        "title": "RenderPageRequest",
+        "type": "object"
+      },
+      "RenderedPageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "final_url": {
+            "format": "uri",
+            "minLength": 1,
+            "title": "Final Url",
+            "type": "string"
+          },
+          "rendered_html": {
+            "title": "Rendered Html",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 1000,
+            "title": "Rows",
+            "type": "array"
+          },
+          "safe_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Safe Headers",
+            "type": "object"
+          },
+          "status_code": {
+            "maximum": 599.0,
+            "minimum": 100.0,
+            "title": "Status Code",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "final_url",
+          "status_code",
+          "rendered_html"
+        ],
+        "title": "RenderedPageResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Reader Browser Adapter",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "adapter_health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/v1/cli-command": {
+      "post": {
+        "operationId": "run_cli_command",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Reader-Task-Capability",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Reader-Task-Capability"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CLICommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CLIReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Task capability is invalid."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Task state or request conflicts."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request violates the internal protocol."
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Controlled page retrieval failed."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Controlled page retrieval timed out."
+          }
+        },
+        "summary": "Cli Command"
+      }
+    },
+    "/v1/render-page": {
+      "post": {
+        "operationId": "render_page",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Reader-Task-Capability",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Reader-Task-Capability"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenderPageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenderedPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Task capability is invalid."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Task state or request conflicts."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request violates the internal protocol."
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Controlled page retrieval failed."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Controlled page retrieval timed out."
+          }
+        },
+        "summary": "Render Page"
+      }
+    }
+  }
+}

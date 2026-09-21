@@ -136,23 +136,42 @@ class RuleAgentContext:
 
     async def close(self) -> None:
         if self.browser is not None:
-            await self.browser.aclose()
+            if self.settings.browser_controller_url is None:
+                await self.browser.aclose()
+            else:
+                from app.browser_tasks.protocol import CloseReason
+
+                await self.browser.aclose(
+                    reason=CloseReason.LEASE_LOST if self.lost_lease else CloseReason.NORMAL
+                )
 
     def get_browser(self):
         if self.browser is None:
-            from .cli_browser import CLIBrowserSession
+            if self.settings.browser_controller_url is None:
+                from .cli_browser import CLIBrowserSession
 
-            self.browser = CLIBrowserSession(
-                self.settings,
-                self.claim.source_url,
-                cli_executable=self.settings.web_rule_agent_cli_executable_path,
-                cli_identity=getattr(self.claim, "engine_snapshot", {}).get(
-                    "cli_execution_identity"
-                ),
-                browser_identity=getattr(self.claim, "engine_snapshot", {}).get(
-                    "browser_execution_identity"
-                ),
-            )
+                self.browser = CLIBrowserSession(
+                    self.settings,
+                    self.claim.source_url,
+                    cli_executable=self.settings.web_rule_agent_cli_executable_path,
+                    cli_identity=getattr(self.claim, "engine_snapshot", {}).get(
+                        "cli_execution_identity"
+                    ),
+                    browser_identity=getattr(self.claim, "engine_snapshot", {}).get(
+                        "browser_execution_identity"
+                    ),
+                )
+            else:
+                from app.browser_tasks.client import RemoteCLIBrowserSession
+
+                self.browser = RemoteCLIBrowserSession(
+                    self.settings,
+                    self.claim.source_url,
+                    owner_job_id=str(self.claim.job_id),
+                    expected_runtime_identity=getattr(self.claim, "engine_snapshot", {}).get(
+                        "browser_execution_identity"
+                    ),
+                )
         return self.browser
 
     async def refresh_progress(self, request_bytes: int) -> dict:

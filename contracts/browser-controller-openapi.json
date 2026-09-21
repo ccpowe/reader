@@ -1,0 +1,1059 @@
+{
+  "components": {
+    "schemas": {
+      "CloseReason": {
+        "enum": [
+          "normal",
+          "cancelled",
+          "timeout",
+          "lease_lost",
+          "client_error"
+        ],
+        "title": "CloseReason",
+        "type": "string"
+      },
+      "CloseTaskRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/CloseReason"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "reason"
+        ],
+        "title": "CloseTaskRequest",
+        "type": "object"
+      },
+      "CreateTaskRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_runtime_fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Runtime Fingerprint",
+            "type": "string"
+          },
+          "owner_job_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Owner Job Id",
+            "type": "string"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/TaskPurpose"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "source_url": {
+            "format": "uri",
+            "minLength": 1,
+            "title": "Source Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "owner_job_id",
+          "purpose",
+          "source_url",
+          "expected_runtime_fingerprint"
+        ],
+        "title": "CreateTaskRequest",
+        "type": "object"
+      },
+      "CreateTaskResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_endpoint": {
+            "format": "uri",
+            "minLength": 1,
+            "title": "Adapter Endpoint",
+            "type": "string"
+          },
+          "capability": {
+            "maxLength": 128,
+            "minLength": 43,
+            "readOnly": true,
+            "sensitive": true,
+            "title": "Capability",
+            "type": "string"
+          },
+          "hard_expires_at": {
+            "format": "date-time",
+            "title": "Hard Expires At",
+            "type": "string"
+          },
+          "lease_expires_at": {
+            "format": "date-time",
+            "title": "Lease Expires At",
+            "type": "string"
+          },
+          "runtime_identity": {
+            "$ref": "#/components/schemas/RuntimeIdentity"
+          },
+          "state": {
+            "const": "running",
+            "title": "State",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "state",
+          "capability",
+          "adapter_endpoint",
+          "lease_expires_at",
+          "hard_expires_at",
+          "runtime_identity"
+        ],
+        "title": "CreateTaskResponse",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "title": "Evidence",
+            "type": "object"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ErrorKind",
+            "default": "protocol"
+          },
+          "long_lived": {
+            "default": false,
+            "title": "Long Lived",
+            "type": "boolean"
+          },
+          "message": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "retry_after_seconds": {
+            "anyOf": [
+              {
+                "maximum": 86400.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry After Seconds"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "ErrorKind": {
+        "enum": [
+          "source_scan",
+          "network",
+          "timeout",
+          "protocol",
+          "capacity",
+          "lifecycle"
+        ],
+        "title": "ErrorKind",
+        "type": "string"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": [
+              "starting",
+              "ready",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "RuntimeDescriptorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "max_explore_tasks": {
+            "default": 1,
+            "maximum": 63.0,
+            "minimum": 1.0,
+            "title": "Max Explore Tasks",
+            "type": "integer"
+          },
+          "runtime_identity": {
+            "$ref": "#/components/schemas/RuntimeIdentity"
+          },
+          "task_slots": {
+            "maximum": 64.0,
+            "minimum": 2.0,
+            "title": "Task Slots",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runtime_identity",
+          "task_slots"
+        ],
+        "title": "RuntimeDescriptorResponse",
+        "type": "object"
+      },
+      "RuntimeIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_image_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Adapter Image Digest",
+            "type": "string"
+          },
+          "agent_browser_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Agent Browser Sha256",
+            "type": "string"
+          },
+          "agent_browser_version": {
+            "const": "0.37.1",
+            "title": "Agent Browser Version",
+            "type": "string"
+          },
+          "browser_image_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Browser Image Digest",
+            "type": "string"
+          },
+          "config_fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Config Fingerprint",
+            "type": "string"
+          },
+          "explore_hard_ttl_seconds": {
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Explore Hard Ttl Seconds",
+            "type": "integer"
+          },
+          "lightpanda_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Lightpanda Sha256",
+            "type": "string"
+          },
+          "lightpanda_version": {
+            "const": "0.4.0",
+            "title": "Lightpanda Version",
+            "type": "string"
+          },
+          "policy_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": "1",
+            "default": "1",
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "render_hard_ttl_seconds": {
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Render Hard Ttl Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "policy_version",
+          "browser_image_digest",
+          "adapter_image_digest",
+          "lightpanda_version",
+          "lightpanda_sha256",
+          "agent_browser_version",
+          "agent_browser_sha256",
+          "config_fingerprint",
+          "explore_hard_ttl_seconds",
+          "render_hard_ttl_seconds"
+        ],
+        "title": "RuntimeIdentity",
+        "type": "object"
+      },
+      "TaskMutationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "title": "TaskMutationRequest",
+        "type": "object"
+      },
+      "TaskPurpose": {
+        "enum": [
+          "explore",
+          "render"
+        ],
+        "title": "TaskPurpose",
+        "type": "string"
+      },
+      "TaskState": {
+        "enum": [
+          "creating",
+          "running",
+          "cleaning",
+          "closed",
+          "failed",
+          "cleanup_failed"
+        ],
+        "title": "TaskState",
+        "type": "string"
+      },
+      "TaskStatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cleanup_error": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cleanup Error"
+          },
+          "hard_expires_at": {
+            "format": "date-time",
+            "title": "Hard Expires At",
+            "type": "string"
+          },
+          "lease_expires_at": {
+            "format": "date-time",
+            "title": "Lease Expires At",
+            "type": "string"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/TaskPurpose"
+          },
+          "runtime_identity": {
+            "$ref": "#/components/schemas/RuntimeIdentity"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TaskState"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "purpose",
+          "state",
+          "lease_expires_at",
+          "hard_expires_at",
+          "runtime_identity"
+        ],
+        "title": "TaskStatusResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Reader Browser Task Controller",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ready"
+      }
+    },
+    "/v1/runtime-descriptor": {
+      "get": {
+        "operationId": "descriptor_v1_runtime_descriptor_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeDescriptorResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Descriptor"
+      }
+    },
+    "/v1/tasks": {
+      "post": {
+        "operationId": "create_task_v1_tasks_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Create Task"
+      }
+    },
+    "/v1/tasks/{task_id}": {
+      "get": {
+        "operationId": "task_status_v1_tasks__task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Reader-Task-Capability",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Reader-Task-Capability"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Task Status"
+      }
+    },
+    "/v1/tasks/{task_id}/close": {
+      "post": {
+        "operationId": "close_task_v1_tasks__task_id__close_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Reader-Task-Capability",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Reader-Task-Capability"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Close Task"
+      }
+    },
+    "/v1/tasks/{task_id}/renew": {
+      "post": {
+        "operationId": "renew_task_v1_tasks__task_id__renew_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Reader-Task-Capability",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Reader-Task-Capability"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskMutationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Renew Task"
+      }
+    }
+  }
+}

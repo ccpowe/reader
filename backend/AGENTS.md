@@ -17,6 +17,7 @@
 | `src/app/workers/` | 后台循环，入口为 `main.py`；`sync.py` 扫描来源，`candidates.py` 处理候选，`health.py` 维护健康状态 |
 | `src/app/ingestion/` | 内容源接入、抓取与提取；`sources/` 为来源适配，`web_rules.py` 为规则 schema 与真实执行反馈，`feed_discovery.py` 为 feed 探测，`browser_runtime.py` 为可选浏览器进程与隔离入口 |
 | `src/app/web_rule_agent/`、`src/app/workers/web_rules.py` | 网页规则 Agent 与 Worker 交接；`runtime.py` 为执行入口，`cli_browser.py` 运行任务内持久 CLI 探索，`memory.py` 管理工作证据、执行结果与读取进度 |
+| `src/app/browser_tasks/` | 可选容器浏览器任务的内部协议、Worker 客户端、adapter、控制器和回收器；公共 DTO 入口为 `protocol.py` |
 | `src/app/translation/`、`src/app/llm/` | 翻译需求、缓存与执行，以及模型客户端构造；实时入口为 `translation/realtime.py`，公共模型入口为 `llm/factory.py` |
 | `src/app/admin/cli.py`、`src/app/ingestion/web_rule_cli.py` | 管理与网页规则诊断命令 |
 | `migrations/` | Alembic 迁移，版本位于 `versions/` |
@@ -40,6 +41,8 @@
 | 常规后端测试 | `PYTHON_DOTENV_DISABLED=1 uv run pytest -q -m 'not postgres and not live_provider'` |
 | lint | `uv run ruff check src tests` |
 | 格式化本次修改的 Python 文件 | `uv run ruff format <文件路径>` |
+| 生成容器浏览器内部契约 | `uv run python scripts/export_browser_openapi.py` |
+| 检查容器浏览器内部契约 | `uv run python scripts/export_browser_openapi.py --check` |
 | 临时 PostgreSQL 集成检查 | `bash scripts/test-postgres-migrations.sh` |
 
 接口快照与前端类型的生成、检查统一见[根目录接口规则](../AGENTS.md#环境与常用命令)，从仓库的 `mobile/` 执行对应命令，不手改生成文件。
@@ -52,6 +55,7 @@
 - 修改后台任务时检查领取条件、事务、租约、重试与重启恢复，以及 Worker 心跳和错误传播；不要只验证正常执行一次。外部调用涉及连接或锁占用时，核对等待期间的资源生命周期。
 - 修改来源抓取、网页规则或模型工具时，同时核对 URL／传输限制、规则验证和 Worker 激活路径；复用现有抓取、真实 scanner 和版本／租约交接入口，依据见[必须保持的边界](../docs/ARCHITECTURE.md#必须保持的边界)。
 - 修改浏览器路径时同时核对 Agent 探索、规则试跑和 Worker 周期扫描共用的 Lightpanda 传输、进程清理及环境身份；保留静态 HTTP，正常路径不回退 Chromium。引擎安装及配置见[部署说明](../docs/deployment.md#6-后端-web-规则-agent)，执行遵守根目录的[共享资源调度](../AGENTS.md#验证与资源调度)。
+- 修改容器浏览器任务的控制或数据接口时，以 `browser_tasks/protocol.py` 和两个 FastAPI app 为单一来源，重新生成 `contracts/browser-controller-openapi.json` 与 `contracts/browser-adapter-openapi.json`；它们是 Reader 内部部署接口，不并入公开 Reader API。
 - `inspect_web_page(argv)` 使用 `web_rule_agent/cli_browser.py` 的任务内持久 CLI 会话；其固定版 CLI 和 Lightpanda 要求见[部署说明](../docs/deployment.md#6-后端-web-规则-agent)。修改该组件时一起检查 namespace 内客户端／daemon、受控 CDP bridge 与 Lightpanda 的回收，以及最终输出限长后的可见链接授权。
 - 新增或修改运行配置时核对 `src/app/core/settings.py`、`.env.example`、使用方及配置测试。模型客户端的公共配置复用 `src/app/llm/factory.py`，调用方的职责与限额仍按架构和实际实现核对。
 

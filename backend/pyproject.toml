@@ -31,6 +31,11 @@ dependencies = [
 reader-worker = "app.workers.main:main"
 reader-admin = "app.admin.cli:main"
 reader-web-rule = "app.ingestion.web_rule_cli:main"
+reader-browser-adapter = "app.browser_tasks.adapter_app:main"
+reader-browser-adapter-healthcheck = "app.browser_tasks.adapter_app:healthcheck_main"
+reader-browser-manager = "app.browser_tasks.manager_app:main"
+reader-browser-reaper = "app.browser_tasks.reaper:main"
+reader-browser-admin = "app.browser_tasks.admin:main"
 
 [dependency-groups]
 dev = [

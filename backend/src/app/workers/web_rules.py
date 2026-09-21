@@ -5,6 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from app.browser_tasks.client import (
+    BrowserTaskClient,
+    BrowserTaskError,
+    validate_runtime_descriptor,
+)
 from app.core.settings import Settings, get_settings
 from app.ingestion import web_rules
 from app.ingestion.browser_runtime import browser_execution_identity
@@ -66,6 +71,30 @@ async def run_web_rule_author_once(
             0, {"mode": "paused", "last_error_code": "unknown_rule_agent_engine"}
         )
     snapshot = rule_agent_snapshot(settings, descriptor)
+    if settings.browser_controller_url is None:
+        browser_identity = browser_execution_identity(
+            settings.ingestion_browser_engine,
+            settings.ingestion_lightpanda_executable_path,
+        )
+        cli_identity = cli_execution_identity(settings.web_rule_agent_cli_executable_path)
+    else:
+        browser_client = None
+        try:
+            browser_client = BrowserTaskClient.from_settings(settings)
+            browser_descriptor = await browser_client.descriptor()
+            validate_runtime_descriptor(settings, browser_descriptor)
+        except BrowserTaskError as exc:
+            logger.warning("Browser runtime unavailable for rule authoring: code=%s", exc.code)
+            return RuleAgentCycleResult(0, {"mode": "paused", "last_error_code": exc.code})
+        finally:
+            if browser_client is not None:
+                await browser_client.aclose()
+        browser_identity = browser_descriptor.runtime_identity.model_dump(mode="json")
+        cli_identity = {
+            "agent_browser_version": browser_identity["agent_browser_version"],
+            "agent_browser_sha256": browser_identity["agent_browser_sha256"],
+            "runtime_fingerprint": browser_descriptor.runtime_identity.fingerprint(),
+        }
     claim = await store._call(
         "claim_web_rule_job",
         engine_snapshot=snapshot,
@@ -73,11 +102,8 @@ async def run_web_rule_author_once(
         prompt_version=PROMPT_VERSION,
         rule_schema_version=RULE_SCHEMA_VERSION,
         validator_version=VALIDATOR_VERSION,
-        cli_execution_identity=cli_execution_identity(settings.web_rule_agent_cli_executable_path),
-        browser_execution_identity=browser_execution_identity(
-            settings.ingestion_browser_engine,
-            settings.ingestion_lightpanda_executable_path,
-        ),
+        cli_execution_identity=cli_identity,
+        browser_execution_identity=browser_identity,
     )
     if claim is None:
         metrics = await store._call("web_rule_agent_status", engine_snapshot=snapshot)

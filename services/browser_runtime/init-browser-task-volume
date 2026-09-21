@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+browser_uid=
+adapter_uid=
+shared_gid=
+while test "$#" -gt 0; do
+  case "$1" in
+    --browser-uid) browser_uid=${2-}; shift 2 ;;
+    --adapter-uid) adapter_uid=${2-}; shift 2 ;;
+    --shared-gid) shared_gid=${2-}; shift 2 ;;
+    *) echo "unsupported task-volume initializer argument" >&2; exit 2 ;;
+  esac
+done
+case "$browser_uid:$adapter_uid:$shared_gid" in
+  *[!0-9:]*|:*|*::*) echo "invalid task-volume ownership" >&2; exit 2 ;;
+esac
+
+root=/run/reader-browser-task
+test -d "$root" && test ! -L "$root"
+test -z "$(find "$root" -mindepth 1 -maxdepth 1 -print -quit)"
+mkdir -- "$root/browser" "$root/adapter"
+chmod 0711 "$root/browser" "$root/adapter"
+chown "$browser_uid:$shared_gid" "$root/browser"
+chown "$adapter_uid:$shared_gid" "$root/adapter"

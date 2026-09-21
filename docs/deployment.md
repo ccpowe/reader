@@ -359,6 +359,46 @@ Worker 将引擎、启动策略和实际二进制 SHA-256 加入任务执行快�
 不是内置的发行文件哈希白名单。API 的配置展示不读取或执行 Worker 本地二进制。
 同一路径更换文件也可能使执行身份变化；运行中的任务不能静默使用新的浏览器。
 
+#### 容器浏览器任务模式
+
+容器部署可以设置 `APP_BROWSER_CONTROLLER_URL` 和控制令牌，使 Worker 通过内部 Browser Task
+Manager 申请浏览器任务；未设置 URL 时仍使用上面的本机 bubblewrap 模式。两种模式的
+`safe_get`、robots、重定向和大小预算一致，静态规则仍由 Worker 直接请求。容器模式不维护
+目标站点域名白名单：新增公开 RSS 或 Web 来源无需修改 Docker 网络配置，adapter 会按通用
+公网目的地规则判断每个请求。
+
+每个任务包含两个短期容器和一个只保存 Unix socket 的任务卷。browser 固定使用
+Lightpanda 0.4.0 与 agent-browser 0.37.1，设置 `network_mode: none`，以非 root、只读文件系统、
+`cap_drop: ALL` 和 no-new-privileges 运行；它不接收 Reader 源码、数据库、模型凭据、X Cookie
+或 Docker socket。adapter 通过任务专属 Unix socket 控制 browser，只能以类型化
+`cli_command` 或一次性 `render_page` 执行操作；页面响应继续由 adapter 的受控传输提供。
+adapter 接入专用 data 与 egress 网络，Worker 接入 control 与 data 网络，Manager 只接入
+control 网络。Manager 和独立 Reaper 持有 Docker socket并共享任务状态目录；Reaper 不持有
+控制令牌或 capability HMAC key。不得把 Docker socket 或 Manager 管理令牌放入 Worker、
+adapter 或 browser。
+
+探索使用 `purpose=explore` 的持久任务；每次动态规则执行使用独立的 `purpose=render` 短任务，
+不会复用或关闭探索页面。默认最多两个浏览器任务，其中最多一个 explore，为 render 保留
+容量。Manager 只有在 browser、Unix socket、adapter 身份与健康检查全部就绪后才返回 endpoint。
+Worker 在模型等待期间独立续租；取消、控制连接丢失、续租失败和正常关闭都会触发有界回收。
+SQLite 状态目录由 Manager 与 Reaper 的共享组以 `2770` 访问，数据库文件使用 `0660`；
+controller-only HMAC key 单独使用 `0600`，仅 Manager 可读写，不能提供给 Reaper；
+任务 capability 只保存在 Worker 内存及目标 adapter，日志和规则快照不得包含它。
+
+Reader 镜像提供 `reader-browser-manager`、`reader-browser-reaper`、`reader-browser-adapter` 和
+`reader-browser-adapter-healthcheck` 入口。browser 镜像由
+`services/browser_runtime/Dockerfile.browser` 构建；Manager 启动时根据镜像 label 和实际
+Image ID 核对固定二进制身份，不能只信任环境变量中的版本声明。内部控制与数据协议分别生成
+为 `contracts/browser-controller-openapi.json` 和 `contracts/browser-adapter-openapi.json`，
+不暴露在 Reader 公共 API。示例配置键及安全的空值见 `backend/.env.example`；部署层应通过
+secret file 注入控制令牌与 HMAC key，并为 Manager 状态、每任务的两个容器和控制卷设置同一
+部署标签，使 reaper 只回收本部署拥有的任务资源。data 与 egress 是部署时预先创建的共享网络，
+不属于单个任务，reaper 不删除它们。
+
+Worker 使用 `APP_BROWSER_CONTROLLER_TOKEN_FILE` 读取同一 Manager bearer；该文件可为
+root 所有、通过 supplemental group 以 `0440` 挂载。不能同时设置
+`APP_BROWSER_CONTROLLER_TOKEN`，也不能让该 secret 对 other 可访问或对 group 可写。
+
 | 错误代码 | 运维含义 |
 | --- | --- |
 | `browser_unavailable` | 二进制、版本、Linux／bubblewrap 条件或启动检查失败；在 Worker 系统用户下核对安装与权限 |
