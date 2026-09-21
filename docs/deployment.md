@@ -77,12 +77,14 @@ cp .env.docker.example .env.docker
 ./docker-init.sh init
 ```
 
-编辑 `.env.docker` 中的公开地址、端口和模型选择。实际秘密不放在这个文件中：把所用的
-模型 key 写入以下一个或两个长期配置源，文件保持 `0600`：
+编辑 `.env.docker` 中的公开地址、端口、模型选择、翻译配额和规则作者限制。实际秘密不放在
+这个文件中：把所用的模型 key 和可选 YouTube Data API key 写入对应长期配置源，文件保持
+`0600`：
 
 ```text
 .docker/inputs/deepseek-api-key
 .docker/inputs/openrouter-api-key
+.docker/inputs/youtube-data-api-key
 ```
 
 然后启动并取得客户端连接 token：
@@ -96,7 +98,9 @@ cp .env.docker.example .env.docker
 `init` 生成数据库密码、连接 token、JWT 密钥、Browser Manager token 和 Scweet 服务 token。
 这些值只保存在被 Git 忽略的 `.docker/secrets/` 中。每次 `up` 都在部署互斥锁内验证
 `.docker/inputs/` 的 owner、普通文件类型与 `0600` 权限，再原子封装为 `0440` 运行时 secret；
-各服务只挂载自己需要的文件。不要删除 `.docker/`，否则已有数据库卷将无法用原密码启动。
+各服务只挂载自己需要的文件。YouTube key 可以留空；配置后仅负责来源同步的 Worker 读取该
+file secret，值不会进入 Compose 镜像配置。不要删除 `.docker/`，否则已有数据库卷将无法用
+原密码启动。
 
 API 默认发布到 `127.0.0.1:8000`。只有在已经配置防火墙、反向代理或可信局域网边界时，
 才修改 `READER_API_BIND_HOST`。其他容器不发布宿主端口。至少一个与默认翻译引擎匹配的 key

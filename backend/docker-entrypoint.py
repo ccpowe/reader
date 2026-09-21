@@ -58,6 +58,7 @@ def main() -> None:
     _export("APP_AUTH_JWT_SECRET")
     _export("APP_DEEPSEEK_API_KEY", allow_empty=True)
     _export("APP_OPENROUTER_API_KEY", allow_empty=True)
+    _export("APP_YOUTUBE_DATA_API_KEY", allow_empty=True)
     _export("APP_SCWEET_SERVICE_TOKEN")
     if len(sys.argv) < 2:
         raise RuntimeError("Reader container command is required")
