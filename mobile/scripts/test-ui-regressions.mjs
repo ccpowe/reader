@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [profile, sources, addSourceSheet, saved, reader, auth, api, startTunnel, connectionForm, redirectConfirm, connectionErrors, authLayout, authMessages] = await Promise.all([
+const [profile, sources, addSourceSheet, bottomSheetModal, saved, reader, auth, api, startTunnel, connectionForm, redirectConfirm, connectionErrors, authLayout, authMessages] = await Promise.all([
   readFile(new URL('../screens/ProfileScreen.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../screens/SourcesScreen.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../components/AddSourceSheet.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../components/BottomSheetModal.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../screens/SavedScreen.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../screens/ArticleReaderScreen.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../screens/EmailAuthScreen.tsx', import.meta.url), 'utf8'),
@@ -24,6 +25,9 @@ assert.doesNotMatch(profile, /targetLocale, isEnabled: true/);
 assert.match(addSourceSheet, /setErrorMessage\(error instanceof Error/);
 assert.match(addSourceSheet, /<BottomSheetModal[\s\S]*\{errorMessage \?/);
 assert.match(sources, /<AddSourceSheet[\s\S]*onClose=\{\(\) => setShowAddSheet\(false\)\}/);
+assert.match(bottomSheetModal, /animationType="fade"/);
+assert.match(bottomSheetModal, /backgroundColor: 'rgba\(17,17,17,0\.14\)'/);
+assert.doesNotMatch(bottomSheetModal, /animationType="slide"/);
 
 assert.match(saved, /useSavedContent\(session, active, debouncedQuery\)/);
 assert.match(saved, /savedQuery\.hasNextPage/);

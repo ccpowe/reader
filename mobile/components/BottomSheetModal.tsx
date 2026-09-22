@@ -28,7 +28,7 @@ export function BottomSheetModal({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardFrame}
@@ -60,7 +60,7 @@ export function BottomSheetModal({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { backgroundColor: 'rgba(17,17,17,0.28)', flex: 1 },
+  backdrop: { backgroundColor: 'rgba(17,17,17,0.14)', flex: 1 },
   keyboardFrame: { flex: 1 },
   scrollContent: { flexGrow: 1, justifyContent: 'flex-end' },
   sheet: {
