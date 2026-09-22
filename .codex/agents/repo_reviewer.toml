@@ -1,5 +1,5 @@
 name = "repo_reviewer"
-model = "gpt-6-astra"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "medium"
 description = "独立只读审查方案的可行性、依据与边界，或审查完整实现是否完成目标并同步文档、架构模型和接口；反馈给规划者。"
 sandbox_mode = "read-only"

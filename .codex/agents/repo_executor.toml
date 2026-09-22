@@ -1,5 +1,5 @@
 name = "repo_executor"
-model = "gpt-6-astra"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "medium"
 description = "在规划者确认的范围内实现代码与文档，按验收条件交付结果和验证证据，并持续负责同一任务的修复。"
 developer_instructions = '''
