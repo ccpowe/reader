@@ -33,6 +33,7 @@ async def upsert_candidates(
     max_changes: int | None,
     baseline_hashes: dict[str, str] | None = None,
     force_feed_sort_at: datetime | None = None,
+    counts_as_update: bool = True,
 ) -> CandidateUpsertResult:
     """Persist only new/materially changed items; exact duplicates are free."""
     changed = 0
@@ -70,6 +71,7 @@ async def upsert_candidates(
                 source_updated_at=item.source_updated_at,
                 observed_at=observed_at,
                 suggested_feed_sort_at=suggested_sort,
+                counts_as_update=counts_as_update,
                 status=CandidateStatus.PENDING,
                 attempt_count=0,
                 available_at=observed_at,
@@ -89,6 +91,9 @@ async def upsert_candidates(
                     # Existing SourceEntry.feed_sort_at remains immutable; this is
                     # used only if the Candidate has never been admitted before.
                     "suggested_feed_sort_at": suggested_sort,
+                    # The first discovery decides whether this was baseline data.
+                    # A later head scan must not turn a pending initial candidate
+                    # into a user-visible update.
                     "status": CandidateStatus.PENDING,
                     "attempt_count": 0,
                     "available_at": observed_at,

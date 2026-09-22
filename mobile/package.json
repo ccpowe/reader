@@ -74,7 +74,7 @@
     "test:segment-translation-convergence": "node ./scripts/test-segment-translation-convergence.mjs && node ./scripts/test-realtime-translation-scheduler.mjs && node ./scripts/test-realtime-translation-recovery.mjs && node ./scripts/test-translation-request-recovery-api.mjs",
     "test:realtime-translation-errors": "node ./scripts/test-realtime-translation-errors.mjs",
     "test:android-fullscreen-layout": "node ./scripts/test-android-fullscreen-layout.mjs",
-    "test:channel-filter-layout": "node ./scripts/test-channel-filter-layout.mjs && node ./scripts/test-collapsing-chrome.mjs",
+    "test:channel-filter-layout": "node ./scripts/test-channel-filter-layout.mjs && node ./scripts/test-channel-updates.mjs && node ./scripts/test-collapsing-chrome.mjs",
     "test:feed-card-layout": "node ./scripts/test-feed-card-layout.mjs && node ./scripts/test-x-feed-translation.mjs && node ./scripts/test-x-feed-translation-hook.mjs && node ./scripts/test-feed-render-isolation.mjs",
     "test:http-response": "node ./scripts/test-http-response.mjs && node ./scripts/test-api-body-lifecycle.mjs",
     "test:reddit-web-reader": "node ./scripts/test-reddit-web-reader.mjs",

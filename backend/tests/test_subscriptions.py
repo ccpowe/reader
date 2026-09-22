@@ -99,6 +99,7 @@ async def test_new_web_subscription_schedules_feed_probe_before_any_rule_job(mon
         config={},
         kind=SourceKind.WEB if web else SourceKind.RSS,
         canonical_url="https://example.com/news",
+        latest_update_sequence=0,
     )
     state = SimpleNamespace(next_scan_at=None)
     subscription = SimpleNamespace(id=uuid4())

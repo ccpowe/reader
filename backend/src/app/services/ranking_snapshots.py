@@ -27,6 +27,7 @@ from app.services.rankings import (
     fetch_hacker_news,
     fetch_reddit_ranking,
 )
+from app.storage.locks import acquire_source_update_transaction_lock
 from app.storage.models import (
     FeedSource,
     RankingProviderBudget,
@@ -1069,6 +1070,13 @@ async def _enqueue_reddit_hot_admissions(
     )
     if source is None:
         return
+    await acquire_source_update_transaction_lock(session, source_id=source.id)
+    source = await session.get(FeedSource, source.id, with_for_update=True)
+    if source is None:
+        return
+    state = await session.get(SourceSyncState, source.id, with_for_update=True)
+    checkpoint = dict(state.committed_checkpoint or {}) if state is not None else {}
+    baseline_received = bool(checkpoint.get("reddit_hot_baseline_received"))
     items = tuple(
         content
         for item in data.items[:10]
@@ -1105,10 +1113,14 @@ async def _enqueue_reddit_hot_admissions(
         observed_at=observed_at,
         max_changes=None,
         force_feed_sort_at=observed_at,
+        counts_as_update=baseline_received,
     )
     source.status = SourceStatus.ACTIVE
-    state = await session.get(SourceSyncState, source.id)
     if state is not None:
+        state.committed_checkpoint = {
+            **checkpoint,
+            "reddit_hot_baseline_received": True,
+        }
         state.phase = SyncPhase.IDLE
         state.provider_mode = "reddit_snapshot"
         state.initial_sync_completed = True

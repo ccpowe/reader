@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import { BackHandler, StyleSheet, View } from 'react-native';
 import type { Session, ReaderAuthClient } from '../lib/readerAuth';
 import { useSharedValue } from 'react-native-reanimated';
@@ -32,6 +32,7 @@ export function MainAppShell({
     undefined,
     createMainNavigationState,
   );
+  const [channelVisitId, setChannelVisitId] = useState(0);
   const {
     selectedInboxSourceId,
     selectedItem,
@@ -56,6 +57,9 @@ export function MainAppShell({
 
   function selectTab(nextTab: ReaderTab) {
     resetMotionChrome();
+    if (nextTab === 'inbox' && tab !== 'inbox' && selectedInboxSourceId !== null) {
+      setChannelVisitId((current) => current + 1);
+    }
     dispatchNavigation({ tab: nextTab, type: 'select_tab' });
   }
 
@@ -83,6 +87,7 @@ export function MainAppShell({
 
   function openSource(source: SourceListItem) {
     resetMotionChrome();
+    setChannelVisitId((current) => current + 1);
     dispatchNavigation({ returnTab: 'sources', sourceId: source.source_id, type: 'open_source' });
   }
 
@@ -129,6 +134,7 @@ export function MainAppShell({
         sourcesChromeProgress.value = 0;
         savedChromeProgress.value = 0;
         profileChromeProgress.value = 0;
+        if (selectedInboxSourceId !== null) setChannelVisitId((current) => current + 1);
         dispatchNavigation({ tab: 'inbox', type: 'select_tab' });
         return true;
       }
@@ -140,7 +146,7 @@ export function MainAppShell({
   return (
     <View style={styles.shell}>
       <View style={styles.screen}>
-        {visitedTabs.has('inbox') ? <View style={tab === 'inbox' ? styles.tabScreen : styles.tabScreenHidden}><HomeScreen onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'inbox'} chromeProgress={inboxChromeProgress} onClearSource={closeSourceFeed} onOpenArticle={openArticle} onSelectSourceId={(sourceId) => dispatchNavigation(sourceId === null ? { type: 'clear_source_filter' } : { sourceId, type: 'set_source_id' })} selectedSourceId={selectedInboxSourceId} session={session} /></View> : null}
+        {visitedTabs.has('inbox') ? <View style={tab === 'inbox' ? styles.tabScreen : styles.tabScreenHidden}><HomeScreen channelVisitId={channelVisitId} onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'inbox'} chromeProgress={inboxChromeProgress} onClearSource={closeSourceFeed} onOpenArticle={openArticle} onSelectSourceId={(sourceId) => { if (sourceId !== null) setChannelVisitId((current) => current + 1); dispatchNavigation(sourceId === null ? { type: 'clear_source_filter' } : { sourceId, type: 'set_source_id' }); }} selectedSourceId={selectedInboxSourceId} session={session} /></View> : null}
         {visitedTabs.has('explore') ? <View style={tab === 'explore' ? styles.tabScreen : styles.tabScreenHidden}><RankingsScreen onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'explore'} chromeProgress={rankingsChromeProgress} onOpenItem={openRankingItem} session={session} /></View> : null}
         {visitedTabs.has('sources') ? <View style={tab === 'sources' ? styles.tabScreen : styles.tabScreenHidden}><SourcesScreen onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'sources'} chromeProgress={sourcesChromeProgress} onOpenSource={openSource} session={session} /></View> : null}
         {visitedTabs.has('saved') ? <View style={tab === 'saved' ? styles.tabScreen : styles.tabScreenHidden}><SavedScreen onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'saved'} chromeProgress={savedChromeProgress} onOpenArticle={openArticle} session={session} /></View> : null}

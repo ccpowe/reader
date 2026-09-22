@@ -27,6 +27,8 @@ export function ChannelPickerModal({
   accessToken,
   onClose,
   onSelect,
+  onToggleHome,
+  pendingHomeSubscriptionIds,
   preferredFolder,
   selectedSourceId,
   sources,
@@ -35,6 +37,8 @@ export function ChannelPickerModal({
   accessToken: string;
   onClose: () => void;
   onSelect: (source: SourceListItem | null) => void;
+  onToggleHome: (source: SourceListItem, includeInHome: boolean) => void;
+  pendingHomeSubscriptionIds: ReadonlySet<string>;
   preferredFolder: string | null;
   selectedSourceId: string | null;
   sources: SourceListItem[];
@@ -138,30 +142,51 @@ export function ChannelPickerModal({
             keyExtractor={(item) => item.source_id}
             renderItem={({ item }) => {
               const selected = selectedSourceId === item.source_id;
+              const includeInHome = item.include_in_home !== false;
+              const newCount = typeof item.new_count === 'number' && item.new_count > 0 ? item.new_count : 0;
+              const updatingHome = pendingHomeSubscriptionIds.has(item.subscription_id);
               const secondaryLabel = sourceSecondaryLabel(item);
               return (
-                <Pressable
-                  accessibilityLabel={t('channelName', { name: sourceDisplayName(item) })}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => select(item)}
-                  style={({ pressed }) => [
+                <View
+                  style={[
                     styles.channelRow,
                     selected && styles.channelRowSelected,
-                    pressed && styles.channelRowPressed,
                   ]}
                 >
-                  <SourceAvatar accessToken={accessToken} source={item} />
-                  <View style={styles.channelCopy}>
-                    <Text numberOfLines={1} style={styles.channelName}>{sourceDisplayName(item)}</Text>
-                    {secondaryLabel ? <Text numberOfLines={1} style={styles.channelHost}>{secondaryLabel}</Text> : null}
-                  </View>
-                  <MaterialCommunityIcons
-                    color={selected ? colors.textStrong : colors.textMuted}
-                    name={selected ? 'check-circle' : 'chevron-right'}
-                    size={21}
-                  />
-                </Pressable>
+                  <Pressable
+                    accessibilityLabel={t(newCount > 0 ? 'channelNameWithUpdates' : 'channelName', { count: newCount, name: sourceDisplayName(item) })}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => select(item)}
+                    style={({ pressed }) => [styles.channelMain, pressed && styles.channelRowPressed]}
+                  >
+                    <SourceAvatar accessToken={accessToken} source={item} />
+                    <View style={styles.channelCopy}>
+                      <Text numberOfLines={1} style={styles.channelName}>{sourceDisplayName(item)}</Text>
+                      {secondaryLabel ? <Text numberOfLines={1} style={styles.channelHost}>{secondaryLabel}</Text> : null}
+                    </View>
+                    {newCount > 0 ? (
+                      <View style={styles.updateBadge}>
+                        <Text numberOfLines={1} style={styles.updateBadgeText}>{newCount > 999 ? '999+' : newCount}</Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel={t(includeInHome ? 'hideChannelFromHome' : 'showChannelOnHome', { name: sourceDisplayName(item) })}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ busy: updatingHome, checked: includeInHome, disabled: updatingHome }}
+                    disabled={updatingHome}
+                    hitSlop={4}
+                    onPress={() => onToggleHome(item, !includeInHome)}
+                    style={({ pressed }) => [styles.homeCheckbox, pressed && styles.channelRowPressed]}
+                  >
+                    <MaterialCommunityIcons
+                      color={includeInHome ? colors.textStrong : colors.textMuted}
+                      name={includeInHome ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                      size={24}
+                    />
+                  </Pressable>
+                </View>
               );
             }}
             renderSectionHeader={({ section }) => (
@@ -233,11 +258,15 @@ const styles = StyleSheet.create({
   allChannelsRow: { alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.md, marginBottom: 4, minHeight: 70, paddingHorizontal: 14, paddingVertical: 12 },
   allChannelsIcon: { alignItems: 'center', backgroundColor: colors.surfaceMuted, borderRadius: 10, height: 42, justifyContent: 'center', width: 42 },
   channelRow: { alignItems: 'center', borderRadius: radii.md, flexDirection: 'row', gap: spacing.md, minHeight: 66, paddingHorizontal: 12, paddingVertical: 10 },
+  channelMain: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.md, minWidth: 0 },
   channelRowSelected: { backgroundColor: colors.surfaceSubtle },
   channelRowPressed: { opacity: 0.7 },
   channelCopy: { flex: 1 },
   channelName: { color: colors.textStrong, fontSize: 15, fontWeight: '600' },
   channelHost: { color: colors.textTertiary, fontSize: 12, marginTop: 3 },
+  updateBadge: { alignItems: 'center', backgroundColor: colors.textStrong, borderRadius: radii.pill, justifyContent: 'center', maxWidth: 54, minHeight: 22, minWidth: 22, paddingHorizontal: 6 },
+  updateBadgeText: { color: colors.surface, fontSize: 11, fontWeight: '700' },
+  homeCheckbox: { alignItems: 'center', height: touchTarget, justifyContent: 'center', marginRight: -8, width: touchTarget },
   emptyState: { alignItems: 'center', gap: spacing.md, justifyContent: 'center', paddingHorizontal: spacing.xl, paddingVertical: 48 },
   emptyText: { color: colors.textTertiary, fontSize: 14, lineHeight: 21, textAlign: 'center' },
 });

@@ -54,7 +54,7 @@ Module._load = function(request, parent, isMain) {
     setSavedContent: (...args) => new Promise((resolve, reject) => requests.push({ args, resolve, reject })),
   };
   if (request === '../state/invalidation') return { invalidateAfterSavedMutation: async () => { if (failInvalidation) throw new Error('refresh failed'); } };
-  if (request.endsWith('/useSources')) return { useSources: () => ({ items: sourceItems, isSuccess: true }) };
+  if (request.endsWith('/useSources')) return { useSources: () => ({ items: sourceItems, isSuccess: true, refetch: async () => {} }) };
   if (request.endsWith('/useTitleTranslationConvergence')) return { useTitleTranslationConvergence: () => ({}) };
   if (request.endsWith('/useInboxFeed')) return { useInboxFeed: () => ({ items: [], titleTranslation: {} }), prefetchInboxFeed() {} };
   if (request === '../components/CategoryPager') return { CategoryPager: ({ options, renderPage }) => React.createElement(React.Fragment, null, options.map((option, i) => React.createElement(React.Fragment, { key: i }, renderPage(option)))) };

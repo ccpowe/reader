@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -21,6 +22,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    Sequence,
     String,
     Text,
     UniqueConstraint,
@@ -50,6 +52,8 @@ from app.domain.enums import (
 )
 
 from .database import Base
+
+source_entry_update_sequence = Sequence("source_entry_update_sequence", metadata=Base.metadata)
 
 
 class Timestamped:
@@ -189,6 +193,7 @@ class FeedSource(Timestamped, Base):
     status: Mapped[SourceStatus] = mapped_column(
         String(16), nullable=False, default=SourceStatus.PENDING
     )
+    latest_update_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     subscriptions: Mapped[list[SourceSubscription]] = relationship(back_populates="source")
     sync_runs: Mapped[list[SourceSyncRun]] = relationship(back_populates="source")
@@ -224,6 +229,8 @@ class SourceSubscription(Timestamped, Base):
     custom_name: Mapped[str | None] = mapped_column(String(300))
     folder_name: Mapped[str | None] = mapped_column(String(120))
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    include_in_home: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    last_viewed_update_sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     user: Mapped[Profile] = relationship(back_populates="subscriptions")
     source: Mapped[FeedSource] = relationship(back_populates="subscriptions")
@@ -419,6 +426,7 @@ class IngestionCandidate(Timestamped, Base):
     suggested_feed_sort_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    counts_as_update: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status: Mapped[CandidateStatus] = mapped_column(
         String(16), nullable=False, default=CandidateStatus.PENDING
     )
@@ -648,6 +656,7 @@ class SourceEntry(Base):
         ),
         Index("ix_source_entries_content_id", "content_id"),
         Index("ix_source_entries_source_feed_sort", "source_id", "feed_sort_at", "id"),
+        Index("ix_source_entries_source_update_sequence", "source_id", "update_sequence"),
     )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -661,6 +670,7 @@ class SourceEntry(Base):
     author_name: Mapped[str | None] = mapped_column(String(300))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     feed_sort_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    update_sequence: Mapped[int | None] = mapped_column(BigInteger)
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

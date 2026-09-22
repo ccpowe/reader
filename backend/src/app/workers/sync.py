@@ -694,6 +694,7 @@ async def _persist_page(
             observed_at=now,
             max_changes=max_changes,
             baseline_hashes=_checkpoint_hashes(baseline_checkpoint),
+            counts_as_update=state.initial_sync_completed,
         )
         if page.web_links:
             await upsert_web_frontier(

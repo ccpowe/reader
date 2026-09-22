@@ -75,6 +75,7 @@ class ArticleResponse(BaseModel):
 class FeedPageResponse(BaseModel):
     items: list[FeedItemResponse]
     next_cursor: str | None
+    channel_update_token: str | None = None
 
 
 @router.get("", response_model=list[FeedItemResponse])
@@ -107,6 +108,11 @@ async def list_feed_page(
     session: AsyncSession = Depends(get_session),
 ) -> FeedPageResponse:
     """Return a stable, deduplicated page of the caller's feed."""
+    channel_update_token = await _channel_update_snapshot(
+        session,
+        user_id=current_user.id,
+        source_id=source_id,
+    )
     items, next_cursor = await _query_feed_page(
         session,
         current_user=current_user,
@@ -115,7 +121,36 @@ async def list_feed_page(
         limit=limit,
         cursor=_decode_feed_cursor(cursor) if cursor else None,
     )
-    return FeedPageResponse(items=items, next_cursor=next_cursor)
+    return FeedPageResponse(
+        items=items,
+        next_cursor=next_cursor,
+        channel_update_token=channel_update_token,
+    )
+
+
+async def _channel_update_snapshot(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    source_id: UUID | None,
+) -> str | None:
+    if source_id is None:
+        return None
+    sequence = await session.scalar(
+        select(FeedSource.latest_update_sequence)
+        .select_from(SourceSubscription)
+        .join(FeedSource, FeedSource.id == SourceSubscription.source_id)
+        .where(
+            SourceSubscription.user_id == user_id,
+            SourceSubscription.source_id == source_id,
+            SourceSubscription.is_enabled.is_(True),
+        )
+    )
+    if sequence is None:
+        return None
+    from app.api.sources import _encode_channel_update_token
+
+    return _encode_channel_update_token(source_id, int(sequence))
 
 
 async def _query_feed_page(
@@ -261,6 +296,8 @@ def _feed_scope_filters(
             filters.append(SourceSubscription.folder_name == folder_name)
     if source_id is not None:
         filters.append(FeedSource.id == source_id)
+    elif folder_name is None:
+        filters.append(SourceSubscription.include_in_home.is_(True))
     return filters
 
 

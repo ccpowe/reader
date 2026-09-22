@@ -479,10 +479,10 @@ async def test_provider_budget_is_shared_across_snapshot_keys(monkeypatch) -> No
 @pytest.mark.asyncio
 async def test_only_hot_top_ten_are_admitted_to_the_home_queue(monkeypatch) -> None:
     source = SimpleNamespace(id="source", status="pending")
-    state = SimpleNamespace()
+    state = SimpleNamespace(committed_checkpoint={})
     session = AsyncMock()
     session.scalar.return_value = source
-    session.get.return_value = state
+    session.get.side_effect = [source, state]
     captured: dict[str, object] = {}
 
     async def capture_candidates(*_args, **kwargs) -> None:
@@ -518,3 +518,5 @@ async def test_only_hot_top_ten_are_admitted_to_the_home_queue(monkeypatch) -> N
     assert [item.native_id for item in queued] == [f"t3_{index}" for index in range(1, 11)]
     assert captured["max_changes"] is None
     assert captured["force_feed_sort_at"] == observed_at
+    assert captured["counts_as_update"] is False
+    assert state.committed_checkpoint == {"reddit_hot_baseline_received": True}

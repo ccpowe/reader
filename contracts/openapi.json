@@ -565,6 +565,17 @@
       },
       "FeedPageResponse": {
         "properties": {
+          "channel_update_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Update Token"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/FeedItemResponse"
@@ -669,6 +680,22 @@
           "unavailable_reason"
         ],
         "title": "ManagedEngineResponse",
+        "type": "object"
+      },
+      "MarkSourceViewedRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "channel_update_token": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Channel Update Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_update_token"
+        ],
+        "title": "MarkSourceViewedRequest",
         "type": "object"
       },
       "ProfileResponse": {
@@ -1474,6 +1501,10 @@
             "title": "Gap Detected",
             "type": "boolean"
           },
+          "include_in_home": {
+            "title": "Include In Home",
+            "type": "boolean"
+          },
           "kind": {
             "title": "Kind",
             "type": "string"
@@ -1501,6 +1532,10 @@
             ],
             "description": "Latest synchronization error or warning. web_rule_partial_parse means usable articles were found but some rows lacked a title or URL; web_rule_missing_fields means no usable articles were found.",
             "title": "Last Error Code"
+          },
+          "new_count": {
+            "title": "New Count",
+            "type": "integer"
           },
           "next_scan_at": {
             "anyOf": [
@@ -1537,6 +1572,8 @@
           "display_name",
           "avatar_url",
           "folder_name",
+          "include_in_home",
+          "new_count",
           "status",
           "sync_phase",
           "last_complete_at",
@@ -2118,6 +2155,17 @@
               }
             ],
             "title": "Folder Name"
+          },
+          "include_in_home": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include In Home"
           }
         },
         "title": "UpdateSourceSubscriptionRequest",
@@ -4276,6 +4324,67 @@
           }
         ],
         "summary": "Update Source Subscription",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/v1/sources/{subscription_id}/viewed": {
+      "post": {
+        "description": "Acknowledge only the source update snapshot returned by a successful feed load.",
+        "operationId": "mark_source_viewed_v1_sources__subscription_id__viewed_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkSourceViewedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceListItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ReaderServerToken": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark Source Viewed",
         "tags": [
           "sources"
         ]

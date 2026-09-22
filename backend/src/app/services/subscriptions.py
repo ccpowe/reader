@@ -160,6 +160,7 @@ async def subscribe_to_shared_source(
 
     subscription = await _find_subscription(session, user_id, source.id)
     if subscription is None:
+        viewed_update_sequence = source.latest_update_sequence
         subscription_id = uuid4()
         inserted_subscription_id = await session.scalar(
             pg_insert(SourceSubscription)
@@ -174,6 +175,8 @@ async def subscribe_to_shared_source(
                 ),
                 folder_name=folder_name,
                 is_enabled=True,
+                include_in_home=True,
+                last_viewed_update_sequence=viewed_update_sequence,
             )
             .on_conflict_do_nothing(
                 index_elements=[SourceSubscription.user_id, SourceSubscription.source_id]

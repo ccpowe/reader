@@ -263,6 +263,7 @@ Module._load = function load(request, parent, isMain) {
   assert.equal(tree.root.findAllByType('HeavyScreen').filter((screen) => screen.props.active).length, 1, 'only the visible tab remains active');
   await act(async () => tree.root.findByType(screenMocks.SourcesScreen).props.onOpenSource({ source_id: 'source' }));
   const home = tree.root.findByType(screenMocks.HomeScreen);
+  assert.equal(home.props.channelVisitId, 1, 'opening a source starts one explicit channel visit');
   const retainedHomeSurface = tree.root.findAllByType('HeavyScreen').find((screen) => screen.props.name === 'HomeScreen');
   home.props.chromeProgress.value = 0.75;
   await act(async () => home.props.onOpenArticle({ content_id: 'item', external_url: 'https://example.test', ranking_kind: null }));
@@ -274,6 +275,10 @@ Module._load = function load(request, parent, isMain) {
   await act(async () => tree.root.findByType('ArticleReaderScreen').props.onBack());
   assert.strictEqual(tree.root.findAllByType('HeavyScreen').find((screen) => screen.props.name === 'HomeScreen'), retainedHomeSurface, 'closing the reader reveals the same home surface instance');
   assert.equal(tree.root.findAllByType('HeavyScreen').filter((screen) => screen.props.active).length, 1, 'closing the reader resumes only the selected tab');
+  assert.equal(tree.root.findByType(screenMocks.HomeScreen).props.channelVisitId, 1, 'returning from an article does not start another channel visit');
+  await act(async () => tree.root.findByType('MotionReaderTabBar').props.onChange('explore'));
+  await act(async () => tree.root.findByType('MotionReaderTabBar').props.onChange('inbox'));
+  assert.equal(tree.root.findByType(screenMocks.HomeScreen).props.channelVisitId, 2, 'returning to an open channel from another tab starts a fresh visit');
   await act(async () => tree.unmount());
 
   const { CategoryPager } = require(path.join(root, 'components/CategoryPager.tsx'));

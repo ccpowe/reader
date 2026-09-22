@@ -17,6 +17,7 @@ import { resolveReaderUrl } from './connection/url';
 import { HttpResponseError, httpResponseError, readJsonResponse } from './http';
 import type {
   ArticleResponse as ApiArticle,
+  FeedPageResponse as ApiFeedPage,
   FeedItemResponse as ApiFeedItem,
   ManagedEngineResponse as ApiManagedTranslationEngine,
   ProfileResponse as ApiProfile,
@@ -101,6 +102,7 @@ export type FeedItem = Omit<ApiFeedItem, 'translation_status'> & {
 };
 
 export type CursorPage<T> = {
+  channel_update_token?: ApiFeedPage['channel_update_token'];
   items: T[];
   next_cursor: string | null;
 };
@@ -488,6 +490,44 @@ export async function updateSourceSubscriptionFolder(session: Session, subscript
   });
   if (!response.ok) {
     throw backendError(payload, response.status);
+  }
+  return withProxiedSourceAvatars([payload as SourceListItem], runtime)[0];
+}
+
+export async function updateSourceSubscriptionHomeInclusion(
+  session: Session,
+  subscriptionId: string,
+  includeInHome: boolean,
+  runtimeOverride?: ActiveReaderRuntime,
+): Promise<SourceListItem> {
+  const runtime = requireApiRuntime(runtimeOverride);
+  const { response, payload } = await fetchJsonWithTimeout(runtimeApiUrl(runtime, `/v1/sources/${encodeURIComponent(subscriptionId)}`), {
+    body: JSON.stringify({ include_in_home: includeInHome }),
+    headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    method: 'PATCH',
+  });
+  if (!response.ok) throw backendError(payload, response.status);
+  if (!payload || typeof payload !== 'object' || (payload as { include_in_home?: unknown }).include_in_home !== includeInHome) {
+    throw localizedApiError(localizedMessage('errors:sourceResponseInvalid'));
+  }
+  return withProxiedSourceAvatars([payload as SourceListItem], runtime)[0];
+}
+
+export async function markSourceSubscriptionViewed(
+  session: Session,
+  subscriptionId: string,
+  channelUpdateToken: string,
+  runtimeOverride?: ActiveReaderRuntime,
+): Promise<SourceListItem> {
+  const runtime = requireApiRuntime(runtimeOverride);
+  const { response, payload } = await fetchJsonWithTimeout(runtimeApiUrl(runtime, `/v1/sources/${encodeURIComponent(subscriptionId)}/viewed`), {
+    body: JSON.stringify({ channel_update_token: channelUpdateToken }),
+    headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    method: 'POST',
+  });
+  if (!response.ok) throw backendError(payload, response.status);
+  if (!payload || typeof payload !== 'object' || typeof (payload as { subscription_id?: unknown }).subscription_id !== 'string') {
+    throw localizedApiError(localizedMessage('errors:sourceResponseInvalid'));
   }
   return withProxiedSourceAvatars([payload as SourceListItem], runtime)[0];
 }

@@ -15,8 +15,14 @@ import Reanimated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { setSavedContent, type FeedItem, type SourceListItem } from '../lib/api';
-import { captureRuntimeContext, isRuntimeContextCurrent } from '../lib/connection';
+import {
+  markSourceSubscriptionViewed,
+  setSavedContent,
+  type FeedItem,
+  type SourceListItem,
+  updateSourceSubscriptionHomeInclusion,
+} from '../lib/api';
+import { captureRuntimeContext, isRuntimeContextCurrent, type ReaderRuntimeContext } from '../lib/connection';
 import { ChannelPickerModal } from '../components/ChannelPickerModal';
 import { Chip } from '../components/Chip';
 import { CategoryPager } from '../components/CategoryPager';
@@ -33,7 +39,7 @@ import { feedScopeCacheKey, folderFeedScope, sourceFeedScope, type FeedScope } f
 import { folderLabel, sourceFolder } from '../domain/folders';
 import { useSourceFolders } from '../hooks/useSourceFolders';
 import { sourceDisplayName, sourceHealthLabel, sourceSecondaryLabel } from '../domain/source';
-import { invalidateAfterSavedMutation } from '../state/invalidation';
+import { invalidateAfterSavedMutation, invalidateAfterSourceMutation } from '../state/invalidation';
 import { beginSavedMutation } from '../state/savedMutation';
 import { setCachedFeedSavedState } from '../state/cacheUpdates';
 import { colors, radii, spacing } from '../ui/tokens';
@@ -50,6 +56,7 @@ const HOME_CHROME_HEIGHT = PAGE_HEADER_HEIGHT + HOME_FILTER_BAR_HEIGHT;
 
 export function HomeScreen({
   active,
+  channelVisitId,
   chromeProgress,
   onClearSource,
   onOpenArticle,
@@ -60,6 +67,7 @@ export function HomeScreen({
 }: {
   onProfile?: () => void;
   active: boolean;
+  channelVisitId: number;
   chromeProgress: SharedValue<number>;
   onClearSource: () => void;
   onOpenArticle: (item: FeedItem) => void;
@@ -71,6 +79,7 @@ export function HomeScreen({
   const positionRegistry = useRef<ListPositionRegistry>(new Map()).current;
   return <HomeScreenContent
     active={active}
+    channelVisitId={channelVisitId}
     chromeProgress={chromeProgress}
     onClearSource={onClearSource}
     onOpenArticle={onOpenArticle}
@@ -86,6 +95,7 @@ export function HomeScreen({
 
 function HomeScreenContent({
   active,
+  channelVisitId,
   chromeProgress,
   onClearSource,
   onOpenArticle,
@@ -99,6 +109,7 @@ function HomeScreenContent({
 }: {
   onProfile?: () => void;
   active: boolean;
+  channelVisitId: number;
   chromeProgress: SharedValue<number>;
   onClearSource: () => void;
   onOpenArticle: (item: FeedItem) => void;
@@ -111,11 +122,20 @@ function HomeScreenContent({
 }) {
   const { t } = useTranslation('feed');
   const [showChannelPicker, setShowChannelPicker] = useState(false);
+  const [pendingHomeSubscriptionIds, setPendingHomeSubscriptionIds] = useState<ReadonlySet<string>>(() => new Set());
+  const homeMutationContexts = useRef(new Map<string, ReturnType<typeof captureRuntimeContext>>());
   const readerClient = useQueryClient();
   const runtime = useReaderRuntime();
   const sourcesQuery = useSources(session, active);
+  const refetchSources = sourcesQuery.refetch;
   const translationPreference = useTranslationPreference(session, active);
   const sources = sourcesQuery.items;
+  const homeNewCount = useMemo(
+    () => sources.reduce((total, source) => source.include_in_home !== false && typeof source.new_count === 'number'
+      ? total + Math.max(0, source.new_count)
+      : total, 0),
+    [sources],
+  );
   const folders = useSourceFolders(sources);
   const folderOptions = useMemo(() => [null, ...folders], [folders]);
   const selectedSource = useMemo(
@@ -190,6 +210,57 @@ function HomeScreenContent({
   }, [folders, onSelectFolder, selectedFolder]);
 
   useEffect(() => {
+    homeMutationContexts.current.clear();
+    setPendingHomeSubscriptionIds(new Set());
+  }, [runtime?.generation, runtime?.identity.server_id, session.user.id]);
+
+  useEffect(() => {
+    if (active) void refetchSources();
+  }, [active, refetchSources]);
+
+  const toggleSourceInHome = useCallback(async (source: SourceListItem, includeInHome: boolean) => {
+    if (homeMutationContexts.current.has(source.subscription_id)) return;
+    const context = captureRuntimeContext(runtime);
+    if (!context) return;
+    homeMutationContexts.current.set(source.subscription_id, context);
+    setPendingHomeSubscriptionIds((current) => new Set(current).add(source.subscription_id));
+    try {
+      const sourcesKey = readerQueryKeys.sources(session.user.id, context.serverId);
+      await readerClient.cancelQueries({ queryKey: sourcesKey });
+      if (!isRuntimeContextCurrent(context)) return;
+      const updated = await updateSourceSubscriptionHomeInclusion(
+        session,
+        source.subscription_id,
+        includeInHome,
+        context.runtime,
+      );
+      if (!isRuntimeContextCurrent(context)) return;
+      await readerClient.cancelQueries({ queryKey: sourcesKey });
+      if (!isRuntimeContextCurrent(context)) return;
+      readerClient.setQueryData<SourceListItem[]>(
+        sourcesKey,
+        (current) => current?.map((item) => item.subscription_id === updated.subscription_id
+          ? { ...item, include_in_home: updated.include_in_home }
+          : item),
+      );
+      await invalidateAfterSourceMutation(readerClient, session.user.id, context.serverId, context);
+    } catch (error) {
+      if (isRuntimeContextCurrent(context)) {
+        Alert.alert(i18n.t('feed:homeChannelUpdateFailed'), error instanceof Error ? error.message : i18n.t('feed:retryLater'));
+      }
+    } finally {
+      if (homeMutationContexts.current.get(source.subscription_id) === context) {
+        homeMutationContexts.current.delete(source.subscription_id);
+        setPendingHomeSubscriptionIds((current) => {
+          const next = new Set(current);
+          next.delete(source.subscription_id);
+          return next;
+        });
+      }
+    }
+  }, [readerClient, runtime, session]);
+
+  useEffect(() => {
     if (sourcesQuery.isSuccess && selectedSourceId !== null && selectedSource === null) {
       onClearSource();
     }
@@ -253,12 +324,17 @@ function HomeScreenContent({
             </ScrollView>
           )}
           <Pressable
-            accessibilityLabel={t(selectedSource ? 'switchChannel' : 'filterChannel')}
+            accessibilityLabel={`${t(selectedSource ? 'switchChannel' : 'filterChannel')}${homeNewCount > 0 ? `, ${homeNewCount}` : ''}`}
             accessibilityRole="button"
-            onPress={() => { revealChrome(); setShowChannelPicker(true); }}
+            onPress={() => { revealChrome(); setShowChannelPicker(true); void refetchSources(); }}
             style={({ pressed }) => [styles.channelFilterButton, pressed && styles.filterPressed]}
           >
             <MaterialCommunityIcons color={colors.textStrong} name="tune-variant" size={18} />
+            {homeNewCount > 0 ? (
+              <View style={styles.channelFilterBadge}>
+                <Text numberOfLines={1} style={styles.channelFilterBadgeText}>{homeNewCount > 999 ? '999+' : homeNewCount}</Text>
+              </View>
+            ) : null}
           </Pressable>
         </View>
       </Reanimated.View>
@@ -266,7 +342,9 @@ function HomeScreenContent({
         <InboxFeedPage
           active={active && !translationPreference.isPending}
           avatarAccessToken={session.access_token}
+          channelVisitId={channelVisitId}
           onOpenArticle={onOpenArticle}
+          onRefreshSources={refetchSources}
           onScroll={onScroll}
           onToggleSave={toggleSaved}
           positionRegistry={positionRegistry}
@@ -288,7 +366,9 @@ function HomeScreenContent({
             <InboxFeedPage
               active={active && !translationPreference.isPending && selectedFolder === folder}
               avatarAccessToken={session.access_token}
+              channelVisitId={0}
               onOpenArticle={onOpenArticle}
+              onRefreshSources={refetchSources}
               onScroll={onScroll}
               onToggleSave={toggleSaved}
               positionRegistry={positionRegistry}
@@ -309,6 +389,8 @@ function HomeScreenContent({
         accessToken={session.access_token}
         onClose={() => setShowChannelPicker(false)}
         onSelect={(source) => { revealChrome(); onSelectSourceId(source?.source_id ?? null); }}
+        onToggleHome={(source, includeInHome) => { void toggleSourceInHome(source, includeInHome); }}
+        pendingHomeSubscriptionIds={pendingHomeSubscriptionIds}
         preferredFolder={selectedFolder}
         selectedSourceId={selectedSourceId}
         sources={sources}
@@ -321,7 +403,9 @@ function HomeScreenContent({
 function InboxFeedPage({
   active,
   avatarAccessToken,
+  channelVisitId,
   onOpenArticle,
+  onRefreshSources,
   onScroll,
   onToggleSave,
   positionRegistry,
@@ -335,7 +419,9 @@ function InboxFeedPage({
 }: {
   active: boolean;
   avatarAccessToken: string;
+  channelVisitId: number;
   onOpenArticle: (item: FeedItem) => void;
+  onRefreshSources: () => Promise<unknown>;
   onScroll: ScrollHandlerProcessed;
   onToggleSave: (item: FeedItem) => Promise<void>;
   positionRegistry: ListPositionRegistry;
@@ -357,6 +443,7 @@ function InboxFeedPage({
     translationEnabled,
     translationEngineFingerprint,
   );
+  const refetchFeed = feed.refetch;
   const memoryKey = feedScopeCacheKey(scope);
   const position = useListPositionMemory({
     active,
@@ -368,10 +455,74 @@ function InboxFeedPage({
   });
   const readerClient = useQueryClient();
   const runtime = useReaderRuntime();
+  const activeChannelVisit = useRef(0);
+  const attemptedChannelVisit = useRef(0);
+  const confirmedChannelVisit = useRef(0);
+  const confirmingChannelVisit = useRef(0);
   const queryKey = useMemo(
     () => readerQueryKeys.feed(session.user.id, memoryKey, translationLocale, runtime?.identity.server_id),
     [memoryKey, runtime?.identity.server_id, session.user.id, translationLocale],
   );
+  useEffect(() => {
+    activeChannelVisit.current = active && source ? channelVisitId : 0;
+    return () => {
+      if (activeChannelVisit.current === channelVisitId) activeChannelVisit.current = 0;
+    };
+  }, [active, channelVisitId, source]);
+  const confirmChannelVisit = useCallback(async (
+    result: Awaited<ReturnType<typeof refetchFeed>>,
+    visitId: number,
+    context: ReaderRuntimeContext,
+  ) => {
+    if (!source || result.isError || activeChannelVisit.current !== visitId ||
+      confirmedChannelVisit.current === visitId || confirmingChannelVisit.current === visitId) return;
+    const token = result.data?.pages[0]?.channel_update_token;
+    if (typeof token !== 'string' || !token) return;
+    if (!isRuntimeContextCurrent(context)) return;
+    confirmingChannelVisit.current = visitId;
+    try {
+      const sourcesKey = readerQueryKeys.sources(session.user.id, context.serverId);
+      await readerClient.cancelQueries({ queryKey: sourcesKey });
+      if (!isRuntimeContextCurrent(context) || activeChannelVisit.current !== visitId) return;
+      const updated = await markSourceSubscriptionViewed(
+        session,
+        source.subscription_id,
+        token,
+        context.runtime,
+      );
+      if (!isRuntimeContextCurrent(context)) return;
+      await readerClient.cancelQueries({ queryKey: sourcesKey });
+      if (!isRuntimeContextCurrent(context)) return;
+      readerClient.setQueryData<SourceListItem[]>(
+        sourcesKey,
+        (current) => current?.map((item) => item.subscription_id === updated.subscription_id
+          ? { ...item, new_count: updated.new_count }
+          : item),
+      );
+      confirmedChannelVisit.current = visitId;
+    } catch (error) {
+      if (isRuntimeContextCurrent(context) && activeChannelVisit.current === visitId) {
+        Alert.alert(i18n.t('feed:channelViewedUpdateFailed'), error instanceof Error ? error.message : i18n.t('feed:retryLater'));
+      }
+    } finally {
+      if (confirmingChannelVisit.current === visitId) confirmingChannelVisit.current = 0;
+    }
+  }, [readerClient, session, source]);
+  const refreshFeed = useCallback(async () => {
+    const visitId = channelVisitId;
+    const context = source ? captureRuntimeContext(runtime) : null;
+    const [result] = await Promise.all([refetchFeed(), onRefreshSources().catch(() => undefined)]);
+    if (source && context && isRuntimeContextCurrent(context) && activeChannelVisit.current === visitId && visitId > 0) {
+      await confirmChannelVisit(result, visitId, context);
+    }
+    return result;
+  }, [channelVisitId, confirmChannelVisit, onRefreshSources, refetchFeed, runtime, source]);
+
+  useEffect(() => {
+    if (!active || !source || channelVisitId <= 0 || attemptedChannelVisit.current === channelVisitId) return;
+    attemptedChannelVisit.current = channelVisitId;
+    void refreshFeed();
+  }, [active, channelVisitId, refreshFeed, source]);
   useEffect(() => () => {
     queueMicrotask(() => trimInactiveInfiniteQueryWhenIdle<FeedItem>({
         anchorId: positionRegistry.get(memoryKey)?.firstVisibleId ?? null,
@@ -391,7 +542,7 @@ function InboxFeedPage({
       onEndReached={() => { if (active && feed.hasNextPage && !feed.isFetchingNextPage) void feed.fetchNextPage(); }}
       onEndReachedThreshold={0.5}
       onRefresh={() => {
-        if (!feed.refreshing && !feed.loading) void feed.refetch();
+        if (!feed.refreshing && !feed.loading) void refreshFeed();
       }}
       onScroll={active ? position.onScroll : undefined}
       onScrollBeginDrag={position.onScrollBeginDrag}
@@ -433,7 +584,7 @@ function InboxFeedPage({
           />
           {feed.isError && feed.items.length > 0 ? (
             <View style={styles.feedError}>
-              <ErrorState message={feed.message || t('contentLoadFailed')} onRetry={() => feed.refetch()} />
+              <ErrorState message={feed.message || t('contentLoadFailed')} onRetry={refreshFeed} />
             </View>
           ) : null}
         </>
@@ -441,7 +592,7 @@ function InboxFeedPage({
       ListEmptyComponent={(
         <View style={listFeedbackStyles.state}>
           {feed.loading ? <LoadingBlock /> : feed.isError ? (
-            <ErrorState message={feed.message || t('contentLoadFailed')} onRetry={() => feed.refetch()} />
+            <ErrorState message={feed.message || t('contentLoadFailed')} onRetry={refreshFeed} />
           ) : feed.message ? (
             <EmptyState icon="newspaper-variant-outline" message={feed.message} />
           ) : null}
@@ -495,7 +646,9 @@ const styles = StyleSheet.create({
   filterBar: { borderBottomWidth: 1, borderBottomColor: colors.border, alignItems: 'center', flexDirection: 'row', gap: spacing.sm, height: HOME_FILTER_BAR_HEIGHT, marginHorizontal: SCREEN_HORIZONTAL_PADDING },
   filterRow: { alignItems: 'center', flexDirection: 'row', gap: 21, paddingRight: spacing.sm },
   chipScroller: { flex: 1, height: 44 },
-  channelFilterButton: { alignItems: 'center', justifyContent: 'center', minHeight: 44, width: 44 },
+  channelFilterButton: { alignItems: 'center', justifyContent: 'center', minHeight: 44, position: 'relative', width: 44 },
+  channelFilterBadge: { alignItems: 'center', backgroundColor: colors.textStrong, borderColor: colors.background, borderRadius: radii.pill, borderWidth: 2, justifyContent: 'center', maxWidth: 42, minHeight: 20, minWidth: 20, paddingHorizontal: 4, position: 'absolute', right: -3, top: -2 },
+  channelFilterBadgeText: { color: colors.surface, fontSize: 10, fontWeight: '800' },
   channelFilterText: { color: colors.textStrong, fontSize: 13, fontWeight: '700' },
   selectedChannelChip: { alignItems: 'center', backgroundColor: colors.textStrong, borderRadius: radii.pill, flex: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 44, overflow: 'hidden', paddingHorizontal: 8, paddingRight: 13 },
   selectedChannelText: { color: colors.surface, flex: 1, fontSize: 13, fontWeight: '700' },

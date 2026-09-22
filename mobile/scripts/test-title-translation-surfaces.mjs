@@ -160,7 +160,7 @@ try {
         titleTranslation: timedOut,
       }),
     };
-    if (request === '../hooks/useSources') return { useSources: () => ({ error: null, isPending: false, isSuccess: true, items: [], loading: false, message: '' }) };
+    if (request === '../hooks/useSources') return { useSources: () => ({ error: null, isPending: false, isSuccess: true, items: [], loading: false, message: '', refetch: async () => {} }) };
     if (request === '../hooks/useTranslationPreference') return { useTranslationPreference: () => ({ effectiveEngineId: null, enabled: true, isPending: false, targetLocale: 'zh-CN' }) };
     if (request === '../hooks/useTitleTranslationConvergence') return { useTitleTranslationConvergence: () => timedOutTitles };
     if (request === '../lib/connection/react') return { useReaderRuntime: () => ({ generation: 1, identity: { server_id: 'surface-test' } }) };

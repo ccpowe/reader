@@ -289,6 +289,10 @@ export type FeedItemResponse = {
  */
 export type FeedPageResponse = {
     /**
+     * Channel Update Token
+     */
+    channel_update_token?: string | null;
+    /**
      * Items
      */
     items: Array<FeedItemResponse>;
@@ -350,6 +354,16 @@ export type ManagedEngineResponse = {
      * Unavailable Reason
      */
     unavailable_reason: string | null;
+};
+
+/**
+ * MarkSourceViewedRequest
+ */
+export type MarkSourceViewedRequest = {
+    /**
+     * Channel Update Token
+     */
+    channel_update_token: string;
 };
 
 /**
@@ -749,6 +763,10 @@ export type SourceListItemResponse = {
      */
     gap_detected: boolean;
     /**
+     * Include In Home
+     */
+    include_in_home: boolean;
+    /**
      * Kind
      */
     kind: string;
@@ -762,6 +780,10 @@ export type SourceListItemResponse = {
      * Latest synchronization error or warning. web_rule_partial_parse means usable articles were found but some rows lacked a title or URL; web_rule_missing_fields means no usable articles were found.
      */
     last_error_code: string | null;
+    /**
+     * New Count
+     */
+    new_count: number;
     /**
      * Next Scan At
      */
@@ -1041,6 +1063,10 @@ export type UpdateSourceSubscriptionRequest = {
      * Folder Name
      */
     folder_name?: string | null;
+    /**
+     * Include In Home
+     */
+    include_in_home?: boolean | null;
 };
 
 /**
@@ -2142,6 +2168,36 @@ export type UpdateSourceSubscriptionV1SourcesSubscriptionIdPatchResponses = {
 };
 
 export type UpdateSourceSubscriptionV1SourcesSubscriptionIdPatchResponse = UpdateSourceSubscriptionV1SourcesSubscriptionIdPatchResponses[keyof UpdateSourceSubscriptionV1SourcesSubscriptionIdPatchResponses];
+
+export type MarkSourceViewedV1SourcesSubscriptionIdViewedPostData = {
+    body: MarkSourceViewedRequest;
+    path: {
+        /**
+         * Subscription Id
+         */
+        subscription_id: string;
+    };
+    query?: never;
+    url: '/v1/sources/{subscription_id}/viewed';
+};
+
+export type MarkSourceViewedV1SourcesSubscriptionIdViewedPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type MarkSourceViewedV1SourcesSubscriptionIdViewedPostError = MarkSourceViewedV1SourcesSubscriptionIdViewedPostErrors[keyof MarkSourceViewedV1SourcesSubscriptionIdViewedPostErrors];
+
+export type MarkSourceViewedV1SourcesSubscriptionIdViewedPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: SourceListItemResponse;
+};
+
+export type MarkSourceViewedV1SourcesSubscriptionIdViewedPostResponse = MarkSourceViewedV1SourcesSubscriptionIdViewedPostResponses[keyof MarkSourceViewedV1SourcesSubscriptionIdViewedPostResponses];
 
 export type ResolveTranslationSegmentsV1TranslationsSegmentsPostData = {
     body: ResolveTranslationSegmentsRequest;

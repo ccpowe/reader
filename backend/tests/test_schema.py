@@ -36,6 +36,19 @@ def test_core_tables_are_registered() -> None:
     }.issubset(Base.metadata.tables)
 
 
+def test_channel_update_state_is_durable_and_history_safe() -> None:
+    sources = Base.metadata.tables["feed_sources"]
+    subscriptions = Base.metadata.tables["source_subscriptions"]
+    candidates = Base.metadata.tables["ingestion_candidates"]
+    entries = Base.metadata.tables["source_entries"]
+
+    assert sources.c.latest_update_sequence.nullable is False
+    assert subscriptions.c.include_in_home.nullable is False
+    assert subscriptions.c.last_viewed_update_sequence.nullable is False
+    assert candidates.c.counts_as_update.nullable is False
+    assert entries.c.update_sequence.nullable is True
+
+
 def test_translation_runtime_has_one_work_authority_and_immutable_artifacts() -> None:
     assert "content_translations" not in Base.metadata.tables
     assert "translation_jobs" not in Base.metadata.tables
@@ -202,7 +215,8 @@ def test_complete_offline_upgrade_can_be_rendered() -> None:
     assert "-- Running upgrade 20260902_23 -> 20260908_24" in rendered
     assert "-- Running upgrade 20260908_24 -> 20260909_25" in rendered
     assert "-- Running upgrade 20260909_25 -> 20260910_26" in rendered
-    assert f"-- Running upgrade 20260910_27 -> {REQUIRED_SCHEMA_REVISION}" in rendered
+    assert "-- Running upgrade 20260910_27 -> 20260912_28" in rendered
+    assert f"-- Running upgrade 20260912_28 -> {REQUIRED_SCHEMA_REVISION}" in rendered
     assert "CREATE TABLE web_rule_jobs" in rendered
     assert "CREATE TABLE web_rule_agent_runtime" in rendered
     assert "web_rule_structural_failures" in rendered
@@ -218,6 +232,9 @@ def test_complete_offline_upgrade_can_be_rendered() -> None:
     assert "reader-runtime-v19" in rendered
     assert "reader-runtime-v20" in rendered
     assert "reader-runtime-v21" in rendered
+    assert "reader-runtime-v25" in rendered
+    assert "reddit_hot_baseline_received" in rendered
+    assert "CREATE SEQUENCE source_entry_update_sequence" in rendered
     assert "reader-runtime-v22" in rendered
     assert "reader-runtime-v23" in rendered
     assert "ck_translation_quota_audits_before_state" in rendered

@@ -468,6 +468,36 @@ async def test_runtime_safety_migrations_against_disposable_postgres(
         assert await connection.fetchval("SELECT count(*) FROM source_entries") == 1
 
         _run_alembic(dsn, "downgrade", "20260810_16")
+        _run_alembic(dsn, "upgrade", "20260912_28")
+        await connection.execute(
+            """
+            INSERT INTO feed_sources (
+                id, kind, canonical_key, canonical_url, display_name,
+                config, visibility, status
+            ) VALUES (
+                '91000000-0000-0000-0000-000000000009', 'reddit',
+                'reddit:awaitingfirstsnapshot',
+                'https://www.reddit.com/r/awaitingfirstsnapshot/',
+                'Awaiting first snapshot', '{}', 'shared', 'pending'
+            );
+            INSERT INTO source_sync_states (
+                source_id, phase, committed_checkpoint, pending_checkpoint,
+                provider_mode, initial_sync_completed, consecutive_failures,
+                consecutive_limit_runs, gap_detected
+            ) VALUES (
+                '91000000-0000-0000-0000-000000000009', 'idle', '{}', '{}',
+                'reddit_snapshot', true, 0, 0, false
+            );
+            INSERT INTO ingestion_candidates (
+                id, source_id, native_id, payload, payload_hash, observed_at,
+                suggested_feed_sort_at, status, attempt_count
+            ) VALUES (
+                'f0000000-0000-0000-0000-00000000000f',
+                '40000000-0000-0000-0000-000000000004', 'legacy-pending', '{}',
+                repeat('f', 64), now(), now(), 'pending', 0
+            )
+            """
+        )
         _run_alembic(dsn, "upgrade", "head")
         assert (
             await connection.fetchval("SELECT version_num FROM alembic_version")
@@ -483,6 +513,47 @@ async def test_runtime_safety_migrations_against_disposable_postgres(
                 "SELECT is_ready FROM ranking_snapshots WHERE kind = 'hacker_news'"
             )
             is True
+        )
+        baseline = await connection.fetchrow(
+            """
+            SELECT source.latest_update_sequence,
+                   subscription.include_in_home,
+                   subscription.last_viewed_update_sequence,
+                   state.committed_checkpoint ->> 'reddit_hot_baseline_received' AS reddit_baseline
+            FROM feed_sources AS source
+            JOIN source_subscriptions AS subscription ON subscription.source_id = source.id
+            JOIN source_sync_states AS state ON state.source_id = source.id
+            WHERE source.id = '40000000-0000-0000-0000-000000000004'
+            """
+        )
+        assert dict(baseline) == {
+            "latest_update_sequence": 0,
+            "include_in_home": True,
+            "last_viewed_update_sequence": 0,
+            "reddit_baseline": "true",
+        }
+        assert (
+            await connection.fetchval(
+                "SELECT counts_as_update FROM ingestion_candidates "
+                "WHERE native_id = 'legacy-pending'"
+            )
+            is False
+        )
+        assert (
+            await connection.fetchval(
+                "SELECT count(*) FROM source_entries WHERE update_sequence IS NOT NULL"
+            )
+            == 0
+        )
+        assert (
+            await connection.fetchval(
+                """
+                SELECT committed_checkpoint ? 'reddit_hot_baseline_received'
+                FROM source_sync_states
+                WHERE source_id = '91000000-0000-0000-0000-000000000009'
+                """
+            )
+            is False
         )
         await _assert_ranking_worker_contract(dsn, connection, monkeypatch)
         await _assert_concurrent_idempotency_contract(dsn, connection)
@@ -667,8 +738,7 @@ async def _assert_translation_quota_contract(
             return_exceptions=True,
         )
         assert (
-            sum(isinstance(result, TranslationQuotaExceeded) for result in concurrent_results)
-            == 1
+            sum(isinstance(result, TranslationQuotaExceeded) for result in concurrent_results) == 1
         )
         assert sum(not isinstance(result, Exception) for result in concurrent_results) == 1
         failed = next(result for result in concurrent_results if isinstance(result, Exception))
@@ -691,12 +761,8 @@ async def _assert_translation_quota_contract(
         broad_engine_a = create_async_engine(async_url, pool_size=1, max_overflow=0)
         broad_engine_b = create_async_engine(async_url, pool_size=1, max_overflow=0)
         engines.extend((broad_engine_a, broad_engine_b))
-        broad_store_a = TranslationQuotaStore(
-            build_session_factory(broad_engine_a), broad_settings
-        )
-        broad_store_b = TranslationQuotaStore(
-            build_session_factory(broad_engine_b), broad_settings
-        )
+        broad_store_a = TranslationQuotaStore(build_session_factory(broad_engine_a), broad_settings)
+        broad_store_b = TranslationQuotaStore(build_session_factory(broad_engine_b), broad_settings)
         await broad_store_a.reserve(users[1], actual_miss_chars=2, provider_miss_chars=2)
         with pytest.raises(TranslationQuotaExceeded) as global_error:
             await broad_store_b.reserve(
@@ -856,12 +922,12 @@ async def _assert_translation_quota_contract(
             "delete",
         }
         for row in audit_rows:
-                for state_name in ("before_state", "after_state"):
-                    state = row[state_name]
-                    if state is not None:
-                        if isinstance(state, str):
-                            state = json.loads(state)
-                        assert set(state) == {"requests", "actual_miss_chars", "is_disabled"}
+            for state_name in ("before_state", "after_state"):
+                state = row[state_name]
+                if state is not None:
+                    if isinstance(state, str):
+                        state = json.loads(state)
+                    assert set(state) == {"requests", "actual_miss_chars", "is_disabled"}
         with pytest.raises(asyncpg.PostgresError):
             await connection.execute(
                 "UPDATE translation_quota_audits SET reason = 'tampered' WHERE user_id = $1",
@@ -916,9 +982,7 @@ async def _assert_translation_quota_contract(
             "INC-CLI",
         )
         assert set_payload["requests"] == 4
-        assert str(cli_user) in {
-            row["user_id"] for row in _run_translation_quota_cli(dsn, "list")
-        }
+        assert str(cli_user) in {row["user_id"] for row in _run_translation_quota_cli(dsn, "list")}
         _run_translation_quota_cli(
             dsn,
             "disable",

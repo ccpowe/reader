@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import logging
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -14,7 +17,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, delete, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthenticatedUser, require_current_user
@@ -46,6 +49,7 @@ from app.services.subscriptions import (
 from app.storage.database import get_session
 from app.storage.models import (
     FeedSource,
+    SourceEntry,
     SourceSubscription,
     SourceSyncState,
     WebRuleAgentRuntime,
@@ -120,6 +124,11 @@ class AddXSourceRequest(StrictRequest):
 
 class UpdateSourceSubscriptionRequest(StrictRequest):
     folder_name: str | None = Field(default=None, max_length=120)
+    include_in_home: bool | None = None
+
+
+class MarkSourceViewedRequest(StrictRequest):
+    channel_update_token: str = Field(min_length=1, max_length=512)
 
 
 class SourceSubscriptionResponse(BaseModel):
@@ -139,6 +148,8 @@ class SourceListItemResponse(BaseModel):
     display_name: str | None
     avatar_url: str | None
     folder_name: str | None
+    include_in_home: bool
+    new_count: int
     status: SourceStatus
     sync_phase: SyncPhase
     last_complete_at: datetime | None
@@ -348,8 +359,18 @@ async def list_sources(
     session: AsyncSession = Depends(get_session),
 ) -> list[SourceListItemResponse]:
     """List the caller's subscriptions, including shared source sync health."""
+    new_count = (
+        select(func.count(SourceEntry.id))
+        .where(
+            SourceEntry.source_id == SourceSubscription.source_id,
+            SourceEntry.update_sequence.is_not(None),
+            SourceEntry.update_sequence > SourceSubscription.last_viewed_update_sequence,
+        )
+        .correlate(SourceSubscription)
+        .scalar_subquery()
+    )
     result = await session.execute(
-        select(SourceSubscription, FeedSource, SourceSyncState)
+        select(SourceSubscription, FeedSource, SourceSyncState, new_count)
         .join(FeedSource, SourceSubscription.source_id == FeedSource.id)
         .join(SourceSyncState, SourceSyncState.source_id == FeedSource.id)
         .where(SourceSubscription.user_id == current_user.id)
@@ -357,27 +378,47 @@ async def list_sources(
     )
     rows = list(result)
     projections = await _web_rule_health_projections(
-        session, [(source, state) for _, source, state in rows]
+        session, [(source, state) for _, source, state, _ in rows]
     )
     return [
-        SourceListItemResponse(
-            source_id=str(source.id),
-            subscription_id=str(subscription.id),
-            kind=source.kind,
-            canonical_url=source.canonical_url,
-            display_name=subscription.custom_name or source.display_name,
-            avatar_url=source.avatar_url,
-            folder_name=subscription.folder_name,
-            status=source.status,
-            sync_phase=projections.get(source.id, (sync_state.phase, None))[0],
-            last_complete_at=sync_state.last_complete_at,
-            next_scan_at=sync_state.next_scan_at,
-            gap_detected=sync_state.gap_detected,
-            backlog_cycles=sync_state.consecutive_limit_runs,
-            last_error_code=projections.get(source.id, (None, sync_state.last_error_code))[1],
+        _source_list_item_response(
+            subscription,
+            source,
+            sync_state,
+            new_count=int(count or 0),
+            projection=projections.get(source.id),
         )
-        for subscription, source, sync_state in rows
+        for subscription, source, sync_state, count in rows
     ]
+
+
+def _source_list_item_response(
+    subscription: SourceSubscription,
+    source: FeedSource,
+    sync_state: SourceSyncState,
+    *,
+    new_count: int,
+    projection: tuple[SyncPhase, str | None] | None = None,
+) -> SourceListItemResponse:
+    phase, error_code = projection or (sync_state.phase, sync_state.last_error_code)
+    return SourceListItemResponse(
+        source_id=str(source.id),
+        subscription_id=str(subscription.id),
+        kind=source.kind,
+        canonical_url=source.canonical_url,
+        display_name=subscription.custom_name or source.display_name,
+        avatar_url=source.avatar_url,
+        folder_name=subscription.folder_name,
+        include_in_home=subscription.include_in_home,
+        new_count=new_count,
+        status=source.status,
+        sync_phase=phase,
+        last_complete_at=sync_state.last_complete_at,
+        next_scan_at=sync_state.next_scan_at,
+        gap_detected=sync_state.gap_detected,
+        backlog_cycles=sync_state.consecutive_limit_runs,
+        last_error_code=error_code,
+    )
 
 
 async def _web_rule_health_projections(
@@ -654,33 +695,134 @@ async def update_source_subscription(
     )
     if subscription is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found.")
-    subscription.folder_name = _normalise_folder_name(payload.folder_name)
+    if "folder_name" in payload.model_fields_set:
+        subscription.folder_name = _normalise_folder_name(payload.folder_name)
+    if "include_in_home" in payload.model_fields_set:
+        if payload.include_in_home is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="include_in_home must be true or false.",
+            )
+        subscription.include_in_home = payload.include_in_home
     await session.commit()
-    await session.refresh(subscription)
-    source = await session.get(FeedSource, subscription.source_id)
-    if source is None:  # Defensive; the foreign key normally makes this impossible.
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found.")
-    sync_state = await session.get(SourceSyncState, source.id)
-    if sync_state is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync state not found.")
-    projections = await _web_rule_health_projections(session, [(source, sync_state)])
-    phase, error_code = projections.get(source.id, (sync_state.phase, sync_state.last_error_code))
-    return SourceListItemResponse(
-        source_id=str(source.id),
-        subscription_id=str(subscription.id),
-        kind=source.kind,
-        canonical_url=source.canonical_url,
-        display_name=subscription.custom_name or source.display_name,
-        avatar_url=source.avatar_url,
-        folder_name=subscription.folder_name,
-        status=source.status,
-        sync_phase=phase,
-        last_complete_at=sync_state.last_complete_at,
-        next_scan_at=sync_state.next_scan_at,
-        gap_detected=sync_state.gap_detected,
-        backlog_cycles=sync_state.consecutive_limit_runs,
-        last_error_code=error_code,
+    return await _load_source_list_item(session, subscription.id, current_user.id)
+
+
+@router.post("/{subscription_id}/viewed", response_model=SourceListItemResponse)
+async def mark_source_viewed(
+    subscription_id: str,
+    payload: MarkSourceViewedRequest,
+    current_user: AuthenticatedUser = Depends(require_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> SourceListItemResponse:
+    """Acknowledge only the source update snapshot returned by a successful feed load."""
+    try:
+        subscription_uuid = UUID(subscription_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found."
+        ) from exc
+    token_source_id, token_sequence = _decode_channel_update_token(payload.channel_update_token)
+    subscription = await session.scalar(
+        select(SourceSubscription)
+        .where(
+            SourceSubscription.id == subscription_uuid,
+            SourceSubscription.user_id == current_user.id,
+        )
+        .with_for_update()
     )
+    if subscription is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found.")
+    if subscription.source_id != token_source_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Channel update token does not match this source.",
+        )
+    latest_sequence = int(
+        await session.scalar(
+            select(FeedSource.latest_update_sequence).where(FeedSource.id == subscription.source_id)
+        )
+        or 0
+    )
+    if token_sequence > latest_sequence:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Channel update token is newer than the source.",
+        )
+    subscription.last_viewed_update_sequence = max(
+        subscription.last_viewed_update_sequence, token_sequence
+    )
+    await session.commit()
+    return await _load_source_list_item(session, subscription.id, current_user.id)
+
+
+async def _load_source_list_item(
+    session: AsyncSession,
+    subscription_id: UUID,
+    user_id: UUID,
+) -> SourceListItemResponse:
+    row = (
+        await session.execute(
+            select(
+                SourceSubscription,
+                FeedSource,
+                SourceSyncState,
+                func.count(SourceEntry.id).filter(
+                    SourceEntry.update_sequence.is_not(None),
+                    SourceEntry.update_sequence > SourceSubscription.last_viewed_update_sequence,
+                ),
+            )
+            .join(FeedSource, FeedSource.id == SourceSubscription.source_id)
+            .join(SourceSyncState, SourceSyncState.source_id == FeedSource.id)
+            .outerjoin(SourceEntry, SourceEntry.source_id == FeedSource.id)
+            .where(
+                SourceSubscription.id == subscription_id,
+                SourceSubscription.user_id == user_id,
+            )
+            .group_by(SourceSubscription, FeedSource, SourceSyncState)
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found.")
+    subscription, source, sync_state, new_count = row
+    projections = await _web_rule_health_projections(session, [(source, sync_state)])
+    return _source_list_item_response(
+        subscription,
+        source,
+        sync_state,
+        new_count=int(new_count or 0),
+        projection=projections.get(source.id),
+    )
+
+
+def _encode_channel_update_token(source_id: UUID, sequence: int) -> str:
+    payload = json.dumps({"source_id": str(source_id), "sequence": sequence}, separators=(",", ":"))
+    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _decode_channel_update_token(value: str) -> tuple[UUID, int]:
+    try:
+        padding = "=" * (-len(value) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(f"{value}{padding}").decode("utf-8"))
+        if not isinstance(payload, dict) or not isinstance(payload.get("source_id"), str):
+            raise ValueError("invalid source id")
+        source_id = UUID(payload["source_id"])
+        sequence = payload["sequence"]
+        if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0:
+            raise ValueError("invalid update sequence")
+        return source_id, sequence
+    except (
+        binascii.Error,
+        UnicodeDecodeError,
+        KeyError,
+        ValueError,
+        TypeError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Invalid channel update token.",
+        ) from exc
 
 
 @router.delete("/{subscription_id}", status_code=status.HTTP_204_NO_CONTENT)

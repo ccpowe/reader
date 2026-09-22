@@ -27,12 +27,14 @@ from app.domain.enums import (
 from app.ingestion.html_safety import sanitize_html as _sanitize_html
 from app.ingestion.models import DiscoveredContent
 from app.services.x_relations import preserve_x_metadata
+from app.storage.locks import acquire_source_update_transaction_lock
 from app.storage.models import (
     Content,
     ContentMedia,
     FeedSource,
     IngestionCandidate,
     SourceEntry,
+    source_entry_update_sequence,
 )
 from app.translation.demand import default_translation_engine
 from app.translation.domain import TranslationDemand
@@ -46,6 +48,7 @@ _MAX_ATTEMPTS = 5
 class CandidateClaim:
     candidate_id: UUID
     lease_token: UUID
+    source_id: UUID
 
 
 async def claim_candidates(session, *, limit: int) -> list[CandidateClaim]:
@@ -124,7 +127,7 @@ async def claim_candidates(session, *, limit: int) -> list[CandidateClaim]:
         candidate.lease_expires_at = now + timedelta(
             seconds=settings.ingestion_candidate_lease_seconds
         )
-        claims.append(CandidateClaim(candidate.id, token))
+        claims.append(CandidateClaim(candidate.id, token, candidate.source_id))
     await session.commit()
     return claims
 
@@ -140,6 +143,9 @@ async def process_candidates(session_factory, *, limit: int | None = None) -> in
             from app.translation.lifecycle import lock_shared_lifecycle
 
             await lock_shared_lifecycle(session)
+            await acquire_source_update_transaction_lock(session, source_id=claim.source_id)
+            if await session.get(FeedSource, claim.source_id, with_for_update=True) is None:
+                continue
             candidate = await session.scalar(
                 select(IngestionCandidate)
                 .where(IngestionCandidate.id == claim.candidate_id)
@@ -184,6 +190,9 @@ async def _process_candidate(session, candidate: IngestionCandidate) -> None:
     from app.translation.lifecycle import lock_shared_lifecycle
 
     await lock_shared_lifecycle(session)
+    # process_candidates locked this row before the Candidate row; session.get
+    # resolves it from the identity map without changing that lock order.
+    source = await session.get(FeedSource, candidate.source_id)
     item = DiscoveredContent.from_payload(candidate.payload)
     item = replace(
         item,
@@ -222,6 +231,20 @@ async def _process_candidate(session, candidate: IngestionCandidate) -> None:
             feed_sort_at=candidate.suggested_feed_sort_at,
             raw_metadata=item.raw_metadata,
         )
+        duplicate_content_entry = await session.scalar(
+            select(
+                select(SourceEntry.id)
+                .where(
+                    SourceEntry.source_id == candidate.source_id,
+                    SourceEntry.content_id == content.id,
+                )
+                .exists()
+            )
+        )
+        if candidate.counts_as_update and not duplicate_content_entry:
+            if source is None:
+                raise RuntimeError("Candidate points to missing FeedSource.")
+            entry.update_sequence = await _next_source_update_sequence(session, source)
         session.add(entry)
     else:
         content = await session.scalar(
@@ -282,9 +305,17 @@ async def _process_candidate(session, candidate: IngestionCandidate) -> None:
         await _enqueue_default_title_translation(session, content)
 
     _complete_candidate(candidate, content_id=content.id)
-    source = await session.get(FeedSource, candidate.source_id)
     if source is not None and source.status == SourceStatus.PENDING:
         source.status = SourceStatus.ACTIVE
+
+
+async def _next_source_update_sequence(session, source: FeedSource) -> int:
+    """Allocate and persist one source high-water mark inside its update lock."""
+    sequence = await session.scalar(select(source_entry_update_sequence.next_value()))
+    if sequence is None:
+        raise RuntimeError("Source update sequence did not return a value.")
+    source.latest_update_sequence = int(sequence)
+    return int(sequence)
 
 
 def _complete_candidate(candidate: IngestionCandidate, *, content_id: UUID | None) -> None:
