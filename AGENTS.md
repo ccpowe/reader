@@ -4,11 +4,13 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 
 ## 适用范围与分工
 
-| 文件 | 适用范围 | 负责维护 |
-| --- | --- | --- |
-| 本文件 | 整个仓库和所有参与任务的 Agent | 仓库级导航、跨端协作、共享资源限制、接口生成与文档审查规则 |
-| [mobile/AGENTS.md](mobile/AGENTS.md) | `mobile/` 前端 | 前端目录与关键入口、环境与命令、界面和客户端开发约定、前端验证 |
+
+| 文件                                     | 适用范围                          | 负责维护                            |
+| -------------------------------------- | ----------------------------- | ------------------------------- |
+| 本文件                                    | 整个仓库和所有参与任务的 Agent            | 仓库级导航、跨端协作、共享资源限制、接口生成与文档审查规则   |
+| [mobile/AGENTS.md](mobile/AGENTS.md)   | `mobile/` 前端                  | 前端目录与关键入口、环境与命令、界面和客户端开发约定、前端验证 |
 | [backend/AGENTS.md](backend/AGENTS.md) | `backend/` 后端，包含 API 与 Worker | 后端目录与关键入口、环境与命令、接口与持久化开发约定、后端验证 |
+
 
 修改前先读本文件，再读目标目录实际存在的 `AGENTS.md`；跨前后端任务同时读取两侧约定。子目录文件继承共享规则，只补充本目录的具体做法。共享规则变化在本文件统一修改，不在子目录复制或另设一套；发现冲突时指出并核对适用范围及已确认要求。
 
@@ -16,28 +18,32 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 
 ## 目录导航
 
-| 路径 | 内容与入口 |
-| --- | --- |
-| `mobile/` | Expo / React Native 前端；详细导航和命令见 [前端约定](mobile/AGENTS.md) |
-| `backend/` | Python / FastAPI 后端，API 与 Worker 分别运行；详细导航和命令见 [后端约定](backend/AGENTS.md) |
-| `contracts/` | 系统边界协议，当前包含生成的 Reader API `openapi.json` |
-| `architecture/` | C4 DSL 源文件；`html/` 为不提交的本地预览产物 |
-| `docs/` | 部署说明、系统架构及 README 所需素材 |
-| `services/` | 核心进程的 systemd／Caddy 模板及可选 Scweet 服务 |
-| `compose.yaml`、`docker-init.sh` | 完整 Docker 部署拓扑与受限的初始化、升级、停止和状态入口 |
-| `.github/workflows/` | CI 配置，目前包含网页翻译运行时检查 |
+
+| 路径                              | 内容与入口                                                                    |
+| ------------------------------- | ------------------------------------------------------------------------ |
+| `mobile/`                       | Expo / React Native 前端；详细导航和命令见 [前端约定](mobile/AGENTS.md)                 |
+| `backend/`                      | Python / FastAPI 后端，API 与 Worker 分别运行；详细导航和命令见 [后端约定](backend/AGENTS.md) |
+| `contracts/`                    | 系统边界协议，当前包含生成的 Reader API `openapi.json`                                 |
+| `architecture/`                 | C4 DSL 源文件；`html/` 为不提交的本地预览产物                                           |
+| `docs/`                         | 部署说明、系统架构及 README 所需素材                                                   |
+| `services/`                     | 核心进程的 systemd／Caddy 模板及可选 Scweet 服务                                      |
+| `compose.yaml`、`docker-init.sh` | 完整 Docker 部署拓扑与受限的初始化、升级、停止和状态入口                                         |
+| `.github/workflows/`            | CI 配置，目前包含网页翻译运行时检查                                                      |
+
 
 根目录导航维护到主要工作区域；模块与关键入口由子目录约定维护，不建立逐文件说明清单。
 
 ## 按任务读取资料
 
-| 要了解或修改什么 | 从哪里开始 |
-| --- | --- |
-| 项目介绍与基本使用 | [README.md](README.md) |
-| 开发约定与命令 | 本文件和目标目录的 AGENTS |
-| 模块职责、数据归属、依赖约束或关键运行流程 | [ARCHITECTURE.md](docs/ARCHITECTURE.md)，随后核对相关代码 |
-| 系统、运行单元、重要组件及其关系 | [architecture/workspace.dsl](architecture/workspace.dsl)，包含 C1–C3 视图；C4 直接查看源码 |
-| 前后端接口 | [contracts/openapi.json](contracts/openapi.json) 查看协议；修改入口为后端路由及请求／响应模型 |
+
+| 要了解或修改什么              | 从哪里开始                                                                          |
+| --------------------- | ------------------------------------------------------------------------------ |
+| 项目介绍与基本使用             | [README.md](README.md)                                                         |
+| 开发约定与命令               | 本文件和目标目录的 AGENTS                                                               |
+| 模块职责、数据归属、依赖约束或关键运行流程 | [ARCHITECTURE.md](docs/ARCHITECTURE.md)，随后核对相关代码                               |
+| 系统、运行单元、重要组件及其关系      | [architecture/workspace.dsl](architecture/workspace.dsl)，包含 C1–C3 视图；C4 直接查看源码 |
+| 前后端接口                 | [contracts/openapi.json](contracts/openapi.json) 查看协议；修改入口为后端路由及请求／响应模型        |
+
 
 历史文档是检索线索。文档与代码不一致时，区分当前实现、已确认的目标和未知项，判断是文档过期、实现偏离还是目标变化；不要把旧方案当作当前约束，也不要通过修改文档把实现缺陷变成预期行为。
 
@@ -65,15 +71,17 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 
 安装、启动和本地检查命令分别维护在 [前端约定](mobile/AGENTS.md#环境与命令) 和 [后端约定](backend/AGENTS.md#环境与命令)。本文件只维护涉及跨端产物和仓库架构模型的命令。
 
-| 工作目录 | 用途 | 命令 |
-| --- | --- | --- |
-| `mobile/` | 更新接口快照和前端类型 | `pnpm run generate:api-types` |
-| `mobile/` | 检查接口快照和前端类型 | `pnpm run test:api-contract` |
-| 仓库根目录 | 校验 C4 模型 | `java -jar /path/to/structurizr.war validate -workspace architecture/workspace.dsl` |
-| 仓库根目录 | 导出可浏览的架构图 | `java -jar /path/to/structurizr.war export -workspace architecture/workspace.dsl -format static -output architecture/html` |
-| 仓库根目录 | 初始化 Docker 私有配置 | `cp .env.docker.example .env.docker && ./docker-init.sh init` |
-| 仓库根目录 | 构建或升级 Docker 服务 | `./docker-init.sh up`；可选 X 使用 `--with-x`，明确关闭使用 `--without-x` |
-| 仓库根目录 | 查看或停止 Docker 服务 | `./docker-init.sh status` / `./docker-init.sh down` |
+
+| 工作目录      | 用途              | 命令                                                                                                                         |
+| --------- | --------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `mobile/` | 更新接口快照和前端类型     | `pnpm run generate:api-types`                                                                                              |
+| `mobile/` | 检查接口快照和前端类型     | `pnpm run test:api-contract`                                                                                               |
+| 仓库根目录     | 校验 C4 模型        | `java -jar /path/to/structurizr.war validate -workspace architecture/workspace.dsl`                                        |
+| 仓库根目录     | 导出可浏览的架构图       | `java -jar /path/to/structurizr.war export -workspace architecture/workspace.dsl -format static -output architecture/html` |
+| 仓库根目录     | 初始化 Docker 私有配置 | `cp .env.docker.example .env.docker && ./docker-init.sh init`                                                              |
+| 仓库根目录     | 构建或升级 Docker 服务 | `./docker-init.sh up`；可选 X 使用 `--with-x`，明确关闭使用 `--without-x`                                                              |
+| 仓库根目录     | 查看或停止 Docker 服务 | `./docker-init.sh status` / `./docker-init.sh down`                                                                        |
+
 
 接口以 FastAPI 路由及请求／响应模型中的声明为编写入口。生成命令通过 `backend/scripts/export_openapi.py` 导出 `contracts/openapi.json`，并从同一份 OpenAPI 生成 `mobile/lib/generated/api.ts`；需要已安装的前端依赖和 `backend/.venv`。两份生成文件均纳入版本控制，不要手改或另写一份协议。路径、参数、响应、认证、错误声明或说明变化后，重新生成、运行契约检查，并将生成变化随实现一起提交。检查命令只校验是否同步，不会修复文件，也不代替兼容性审查与行为测试。
 
