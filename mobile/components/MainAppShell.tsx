@@ -60,7 +60,6 @@ export function MainAppShell({
   }
 
   function openArticle(item: FeedItem) {
-    resetMotionChrome();
     if (item.ranking_kind) {
       dispatchNavigation({ type: 'open_ranking_item', item: {
         title: item.title, translated_title: item.translated_title,
@@ -79,7 +78,6 @@ export function MainAppShell({
   }
 
   function openRankingItem(item: RankingItem) {
-    resetMotionChrome();
     dispatchNavigation({ item, type: 'open_ranking_item' });
   }
 

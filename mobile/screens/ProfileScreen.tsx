@@ -76,11 +76,11 @@ export function ProfileScreen({ active, chromeProgress, onChangeServer, onLogout
   const { preference: appLanguagePreference, language: appLanguage, setPreference: setAppLanguagePreference } = useAppLanguage();
   const client = useQueryClient();
   const runtime = useReaderRuntime();
-  const translation = useTranslationPreference(session, true);
+  const translation = useTranslationPreference(session, active);
   const profileQuery = useQuery({
     queryKey: readerQueryKeys.profile(session.user.id, runtime?.identity.server_id),
     queryFn: () => getProfile(session, runtime ?? undefined),
-    enabled: Boolean(runtime),
+    enabled: active && Boolean(runtime),
     staleTime: 5 * 60_000,
   });
   const [showAppLanguagePicker, setShowAppLanguagePicker] = useState(false);
@@ -231,9 +231,6 @@ export function ProfileScreen({ active, chromeProgress, onChangeServer, onLogout
     : engineMutation.isPending
       ? t('switchingEngine')
       : translation.engineAvailable ? engineName : t('unavailableEngineLabel', { engine: engineName });
-
-  const hasOpenEditor = showAppLanguagePicker || showLanguagePicker || showEnginePicker || showPasswordChange || showProfileEditor;
-  if (!active && !hasOpenEditor) return null;
 
   return <View style={styles.page}>
     <Animated.View pointerEvents="box-none" style={[styles.header, chromeStyle]}>

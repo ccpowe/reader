@@ -69,9 +69,8 @@ export function HomeScreen({
 }) {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const positionRegistry = useRef<ListPositionRegistry>(new Map()).current;
-  if (!active) return null;
   return <HomeScreenContent
-    active
+    active={active}
     chromeProgress={chromeProgress}
     onClearSource={onClearSource}
     onOpenArticle={onOpenArticle}
@@ -220,7 +219,7 @@ function HomeScreenContent({
   const headerStyle = useChromeStyle(chromeProgress, HOME_CHROME_HEIGHT);
 
   return (
-    <View style={styles.motionPage}>
+    <View style={styles.motionPage} testID="home_screen">
       <Reanimated.View style={[styles.homeChromeLayer, headerStyle]}>
         <HomeHeader session={session} onProfile={onProfile} />
         <View style={styles.filterBar}>
@@ -401,12 +400,13 @@ function InboxFeedPage({
       onViewableItemsChanged={position.onViewableItemsChanged}
       ref={position.listRef}
       refreshing={feed.refreshing}
-      renderItem={({ item }) => <FeedCardRow
+      renderItem={({ index, item }) => <FeedCardRow
         avatarAccessToken={session.access_token}
         item={item}
         onOpenArticle={onOpenArticle}
         onRetryXTranslation={feed.xTranslation.retry}
         onToggleSave={onToggleSave}
+        testID={`feed_item_${memoryKey}_${index}`}
         xTranslation={feed.xTranslation.byContentId.get(item.content_id)}
       />}
       scrollEventThrottle={16}

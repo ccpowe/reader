@@ -36,6 +36,7 @@
 | 类型／lint 检查，逐条运行 | `pnpm run typecheck`、`pnpm run lint` |
 | 指定行为检查 | 从 `package.json` 选择对应的 `pnpm run test:<名称>` |
 | 前端完整检查 | `pnpm test` |
+| Android 真机首页返回回归 | 先启动开发客户端 Metro，再运行 `maestro --device <adb-serial> test .maestro/flows/home-article-return.yaml` |
 | 更新网页／字幕注入资源 | `pnpm run generate:translation-runtime` |
 | 检查翻译运行时，含浏览器场景 | `pnpm run test:translation-runtime` |
 | 安装浏览器测试依赖 | `pnpm exec playwright install chromium` |
@@ -61,6 +62,7 @@
 - 行为测试与视觉验收分别报告。尚未完成浏览器对照、真机检查或用户视觉确认时明确待验收，不以测试通过或页面打开代替视觉确认。
 - 按根目录要求选择针对性或完整检查，具体脚本以 `package.json` 为准。JS／UI 迭代优先使用现有开发客户端和真机预览；原生配置、依赖、资源或打包行为变化，发布交付或有具体打包风险时，才执行对应平台的导出／构建。导出时限制 Metro worker 为 1。
 - APK 构建使用 `eas.json` 的 `preview` profile；`production` 保持商店 AAB 输出，`development` 使用开发客户端，不能作为独立发布包的验收证据。
+- `.maestro/flows/` 保存少量发布前真机关键链路。Flow 使用稳定 `testID` 和可观察状态，不使用屏幕坐标；需要保留登录或连接状态的场景不得设置 `clearState: true`。Android 真机由 ADB 连接，应用需预先安装，运行时用 `--device` 明确目标设备。
 
 ## 本文件更新时机
 

@@ -40,7 +40,7 @@ const PagerView = React.forwardRef(({ children, ...props }, ref) => {
 const screenMocks = {};
 for (const name of ['HomeScreen', 'RankingsScreen', 'SavedScreen', 'SourcesScreen', 'ProfileScreen']) {
   screenMocks[name] = function ScreenMock(props) {
-    return props.active ? React.createElement('HeavyScreen', { name }) : null;
+    return React.createElement('HeavyScreen', { active: props.active, name });
   };
 }
 function ArticleReaderScreen(props) { return React.createElement('ArticleReaderScreen', props); }
@@ -255,18 +255,25 @@ Module._load = function load(request, parent, isMain) {
   const { MainAppShell } = require(path.join(root, 'components/MainAppShell.tsx'));
   const session = { access_token: 'token', user: { id: 'user' } };
   await act(async () => { tree = create(React.createElement(MainAppShell, { authClient: {}, onChangeServer() {}, onLogout: async () => {}, session })); });
-  assert.equal(tree.root.findAllByType('HeavyScreen').length, 1, 'only the current tab mounts a heavy screen');
+  assert.equal(tree.root.findAllByType('HeavyScreen').length, 1, 'only visited tabs mount their retained surface');
   await act(async () => tree.root.findByType('MotionReaderTabBar').props.onChange('explore'));
   await act(async () => tree.root.findByType('MotionReaderTabBar').props.onChange('saved'));
   await act(async () => tree.root.findByType('MotionReaderTabBar').props.onChange('sources'));
-  assert.equal(tree.root.findAllByType('HeavyScreen').length, 1, 'visited tabs retain controllers without retaining heavy content');
+  assert.equal(tree.root.findAllByType('HeavyScreen').length, 4, 'visited tabs retain their surfaces for exact return state');
+  assert.equal(tree.root.findAllByType('HeavyScreen').filter((screen) => screen.props.active).length, 1, 'only the visible tab remains active');
   await act(async () => tree.root.findByType(screenMocks.SourcesScreen).props.onOpenSource({ source_id: 'source' }));
   const home = tree.root.findByType(screenMocks.HomeScreen);
+  const retainedHomeSurface = tree.root.findAllByType('HeavyScreen').find((screen) => screen.props.name === 'HomeScreen');
+  home.props.chromeProgress.value = 0.75;
   await act(async () => home.props.onOpenArticle({ content_id: 'item', external_url: 'https://example.test', ranking_kind: null }));
-  assert.equal(tree.root.findAllByType('HeavyScreen').length, 0, 'reader overlay unloads the main tab heavy surface');
+  assert.equal(tree.root.findAllByType('HeavyScreen').length, 4, 'reader overlay retains visited tab surfaces');
+  assert.strictEqual(tree.root.findAllByType('HeavyScreen').find((screen) => screen.props.name === 'HomeScreen'), retainedHomeSurface, 'opening an article keeps the exact home surface instance');
+  assert.equal(home.props.chromeProgress.value, 0.75, 'opening an article preserves the home chrome position');
+  assert.equal(tree.root.findAllByType('HeavyScreen').filter((screen) => screen.props.active).length, 0, 'reader overlay pauses every main surface');
   assert.equal(tree.root.findAllByType('ArticleReaderScreen').length, 1);
   await act(async () => tree.root.findByType('ArticleReaderScreen').props.onBack());
-  assert.equal(tree.root.findAllByType('HeavyScreen').length, 1, 'closing the reader restores the selected tab controller');
+  assert.strictEqual(tree.root.findAllByType('HeavyScreen').find((screen) => screen.props.name === 'HomeScreen'), retainedHomeSurface, 'closing the reader reveals the same home surface instance');
+  assert.equal(tree.root.findAllByType('HeavyScreen').filter((screen) => screen.props.active).length, 1, 'closing the reader resumes only the selected tab');
   await act(async () => tree.unmount());
 
   const { CategoryPager } = require(path.join(root, 'components/CategoryPager.tsx'));
@@ -294,7 +301,7 @@ Module._load = function load(request, parent, isMain) {
   await act(async () => tree.unmount());
 
   client.clear();
-  console.log('PASS: page lifecycle memory, query cleanup, X LRU, restoration and lazy pager');
+  console.log('PASS: retained page lifecycle, query cleanup, X LRU, restoration and lazy pager');
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

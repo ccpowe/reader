@@ -53,9 +53,8 @@ export function SavedScreen({ onProfile,
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const positionRegistry = useRef<ListPositionRegistry>(new Map()).current;
-  if (!active) return null;
   return <SavedScreenContent
-    active
+    active={active}
     chromeProgress={chromeProgress}
     onChangeQuery={setQuery}
     onOpenArticle={onOpenArticle}

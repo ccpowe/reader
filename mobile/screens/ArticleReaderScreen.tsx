@@ -431,7 +431,7 @@ export function ArticleReaderScreen({
 
   if (isVideo) {
     return (
-      <View style={styles.page}>
+      <View style={styles.page} testID="article_reader">
         {header}
         <View style={styles.body} onLayout={(event) => {
           const { width, height } = event.nativeEvent.layout;
@@ -577,7 +577,7 @@ export function ArticleReaderScreen({
   }
 
   return (
-    <View style={styles.page}>
+    <View style={styles.page} testID="article_reader">
       {header}
       <View style={styles.body}>
         <TitleTranslationNotice

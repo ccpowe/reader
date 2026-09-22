@@ -1,0 +1,35 @@
+appId: com.ccpower.reader.dev
+---
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible:
+      id: home_screen
+    timeout: 30000
+- tapOn:
+    id: tab_inbox
+- scrollUntilVisible:
+    element:
+      id: feed_item_all_8
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+    centerElement: true
+- assertVisible:
+    id: feed_item_all_7
+- tapOn:
+    id: feed_item_all_8
+- extendedWaitUntil:
+    visible:
+      id: article_reader
+    timeout: 30000
+- tapOn:
+    id: reader_back
+- extendedWaitUntil:
+    visible:
+      id: feed_item_all_8
+    timeout: 10000
+- assertVisible:
+    id: feed_item_all_7
+- assertNotVisible:
+    id: article_reader

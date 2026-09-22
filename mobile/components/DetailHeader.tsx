@@ -32,7 +32,7 @@ function HeaderAction({ icon, label, onPress, selected, busy = false }: {
   busy?: boolean;
 }) {
   return (
-    <Pressable accessibilityLabel={label} accessibilityRole="button" accessibilityState={{ selected, busy, disabled: busy }} disabled={busy} onPress={onPress} style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
+    <Pressable accessibilityLabel={label} accessibilityRole="button" accessibilityState={{ selected, busy, disabled: busy }} disabled={busy} onPress={onPress} style={({ pressed }) => [styles.button, pressed && styles.pressed]} testID={icon === 'arrow-left' ? 'reader_back' : undefined}>
       {busy ? <ActivityIndicator color={colors.textPrimary} size="small" /> : <MaterialCommunityIcons color={colors.textPrimary} name={icon} size={22} />}
     </Pressable>
   );

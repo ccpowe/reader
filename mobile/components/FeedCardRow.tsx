@@ -10,6 +10,7 @@ export const FeedCardRow = memo(function FeedCardRow({
   onOpenArticle,
   onRetryXTranslation,
   onToggleSave,
+  testID,
   xTranslation,
 }: {
   avatarAccessToken: string;
@@ -17,6 +18,7 @@ export const FeedCardRow = memo(function FeedCardRow({
   onOpenArticle: (item: FeedItem) => void;
   onRetryXTranslation: (item: FeedItem) => void;
   onToggleSave: (item: FeedItem) => void | Promise<void>;
+  testID?: string;
   xTranslation?: XFeedCardTranslation;
 }) {
   const handlePress = useCallback(() => onOpenArticle(item), [item, onOpenArticle]);
@@ -33,6 +35,7 @@ export const FeedCardRow = memo(function FeedCardRow({
       onPress={handlePress}
       onRetryXTranslation={handleRetryXTranslation}
       onToggleSave={handleToggleSave}
+      testID={testID}
       xTranslation={xTranslation}
     />
   );

@@ -82,9 +82,8 @@ export function SourcesScreen({
   const [query, setQuery] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const positionRegistry = useRef<ListPositionRegistry>(new Map()).current;
-  if (!active) return null;
   return <SourcesScreenContent
-    active
+    active={active}
     chromeProgress={chromeProgress}
     onChangeQuery={setQuery}
     onOpenSource={onOpenSource}

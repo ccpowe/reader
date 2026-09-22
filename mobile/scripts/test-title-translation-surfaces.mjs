@@ -93,7 +93,17 @@ try {
       };
     }
     if (request === '@expo/vector-icons') return { Feather: host('Feather'), MaterialCommunityIcons: host('MaterialCommunityIcons') };
-    if (request === 'react-native-reanimated') return { default: Reanimated, ...Reanimated, useAnimatedStyle: () => ({}), useSharedValue: value => ({ value }) };
+    if (request === 'react-native-reanimated') return {
+      default: Reanimated,
+      ...Reanimated,
+      useAnimatedScrollHandler: handlers => handlers,
+      useAnimatedStyle: () => ({}),
+      useComposedEventHandler: handlers => event => handlers.filter(Boolean).forEach(handler => {
+        if (typeof handler === 'function') handler(event);
+        else handler.onScroll?.(event);
+      }),
+      useSharedValue: value => ({ value }),
+    };
     if (request === '@tanstack/react-query') return { useQueryClient: () => ({}) };
     if (request === 'expo-web-browser') return { openBrowserAsync: async () => {} };
     if (request === '../components/TitleTranslationNotice') return originalLoad.call(this, request, parent, isMain);

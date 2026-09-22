@@ -106,7 +106,17 @@ try {
     }
     if (request === 'react-native-reanimated') {
       const reanimated = { FlatList, View: host('ReanimatedView') };
-      return { ...reanimated, default: reanimated, useAnimatedStyle: () => ({}), useSharedValue: value => ({ value }) };
+      return {
+        ...reanimated,
+        default: reanimated,
+        useAnimatedScrollHandler: handlers => handlers,
+        useAnimatedStyle: () => ({}),
+        useComposedEventHandler: handlers => event => handlers.filter(Boolean).forEach(handler => {
+          if (typeof handler === 'function') handler(event);
+          else handler.onScroll?.(event);
+        }),
+        useSharedValue: value => ({ value }),
+      };
     }
     if (request === '@tanstack/react-query') {
       return { useQueryClient: () => ({ setQueryData: () => {} }) };

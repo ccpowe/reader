@@ -66,12 +66,11 @@ export function RankingsScreen({
   const [redditSort, setRedditSort] = useState<RedditRankingSort>('hot');
   const [visibleCounts, setVisibleCounts] = useState<ReadonlyMap<string, number>>(new Map());
   const positionRegistry = useRef<ListPositionRegistry>(new Map()).current;
-  if (!active) return null;
   const currentVariant = rankingVariantKey(kind, kind === 'reddit' && redditCommunity
     ? { subreddit: redditCommunity, sort: redditSort }
     : undefined);
   return <RankingsScreenContent
-    active
+    active={active}
     chromeProgress={chromeProgress}
     kind={kind}
     onChangeKind={setKind}

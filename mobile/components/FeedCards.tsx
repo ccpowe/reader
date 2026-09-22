@@ -32,6 +32,7 @@ export const ArticleCard = memo(function ArticleCard({
   onPress,
   onRetryXTranslation,
   onToggleSave,
+  testID,
   xTranslation,
 }: {
   avatarAccessToken: string;
@@ -39,6 +40,7 @@ export const ArticleCard = memo(function ArticleCard({
   onPress: () => void;
   onRetryXTranslation?: () => void;
   onToggleSave: () => void;
+  testID?: string;
   xTranslation?: XFeedCardTranslation;
 }) {
   const { t } = useTranslation('common');
@@ -47,7 +49,7 @@ export const ArticleCard = memo(function ArticleCard({
   const title = displayTitle(item);
   if (isVideo) {
     return (
-      <Pressable onPress={onPress} style={styles.videoCard}>
+      <Pressable accessibilityRole="button" onPress={onPress} style={styles.videoCard} testID={testID}>
         {item.thumbnail_url ? <ContentImage uri={item.thumbnail_url} resizeMode="contain" style={styles.videoImage} /> : null}
         <View style={styles.videoSource}>
           <SourceIdentity accessToken={avatarAccessToken} avatarUrl={item.source_avatar_url} kind={item.source_kind} label={item.source_name ?? 'YouTube'} />
@@ -67,7 +69,7 @@ export const ArticleCard = memo(function ArticleCard({
     const reference = preview?.repost || preview?.quote;
     const threadCount = preview?.thread?.loaded_count ?? 0;
     return (
-      <Pressable accessibilityRole="button" onPress={onPress} style={styles.postCard}>
+      <Pressable accessibilityRole="button" onPress={onPress} style={styles.postCard} testID={testID}>
         <View style={styles.postHeader}>
           <PostAvatar accessToken={avatarAccessToken} avatarUrl={preview?.author.avatar_url || item.source_avatar_url} fallbackLabel={author} />
           <View style={styles.postCopy}>
@@ -108,7 +110,7 @@ export const ArticleCard = memo(function ArticleCard({
     );
   }
   return (
-    <Pressable onPress={onPress} style={styles.articleCard}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={styles.articleCard} testID={testID}>
           <View style={styles.cardMeta}>
             <SourceIdentity
               accessToken={avatarAccessToken}

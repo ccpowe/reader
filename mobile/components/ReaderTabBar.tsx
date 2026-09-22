@@ -24,6 +24,7 @@ function Bar({ activeTab, onChange }: { activeTab: ReaderTab; onChange: (tab: Re
             key={tab}
             onPress={() => onChange(tab)}
             style={styles.item}
+            testID={`tab_${tab}`}
           >
             <Feather color={selected ? colors.textStrong : colors.textMuted} name={icon} size={22} />
           </Pressable>

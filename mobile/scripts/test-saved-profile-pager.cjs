@@ -30,7 +30,16 @@ Module._extensions['.ts'] = Module._extensions['.tsx'] = (mod, filename) => {
 };
 Module._load = function(request, parent, isMain) {
   if (request === 'react-native') return { ScrollView, ActivityIndicator: host('ActivityIndicator'), Alert: { alert() {} }, Image: host('Image'), Pressable: host('Pressable'), StyleSheet: { create: x => x }, Switch: host('Switch'), Text: host('Text'), TextInput: host('TextInput'), View: host('View') };
-  if (request === 'react-native-reanimated') return { __esModule: true, default: { FlatList: host('FlatList'), ScrollView: host('ScrollView'), View: host('AnimatedView') }, useSharedValue: value => ({ value }) };
+  if (request === 'react-native-reanimated') return {
+    __esModule: true,
+    default: { FlatList: host('FlatList'), ScrollView: host('ScrollView'), View: host('AnimatedView') },
+    useAnimatedScrollHandler: handlers => handlers,
+    useComposedEventHandler: handlers => event => handlers.filter(Boolean).forEach(handler => {
+      if (typeof handler === 'function') handler(event);
+      else handler.onScroll?.(event);
+    }),
+    useSharedValue: value => ({ value }),
+  };
   if (request === '@expo/vector-icons') return { Feather: host('Feather'), MaterialCommunityIcons: host('Icon') };
   if (request === 'expo-image-picker') return { launchImageLibraryAsync: () => pickImage() };
   if (request === '../components/PageHeader') return { PageHeaderContent: host('PageHeaderContent') };

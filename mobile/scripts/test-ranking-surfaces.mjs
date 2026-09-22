@@ -114,7 +114,16 @@ try {
       View,
     };
     if (request === '@expo/vector-icons') return { MaterialCommunityIcons: host('MaterialCommunityIcons'), Feather: host('Feather') };
-    if (request === 'react-native-reanimated') return { default: Reanimated, ...Reanimated, useSharedValue: value => ({ value }) };
+    if (request === 'react-native-reanimated') return {
+      default: Reanimated,
+      ...Reanimated,
+      useAnimatedScrollHandler: handlers => handlers,
+      useComposedEventHandler: handlers => event => handlers.filter(Boolean).forEach(handler => {
+        if (typeof handler === 'function') handler(event);
+        else handler.onScroll?.(event);
+      }),
+      useSharedValue: value => ({ value }),
+    };
     if (request === 'expo-web-browser') return { openBrowserAsync: async () => {} };
     if (request === '@tanstack/react-query') return { useQueryClient: () => ({ fetchQuery: async ({ queryFn }) => queryFn(), setQueryData: () => {} }) };
     if (request === '../components/BottomSheetModal') return { BottomSheetModal: ({ visible, children }) => visible ? React.createElement(View, null, children) : null };
