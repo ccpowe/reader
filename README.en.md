@@ -44,7 +44,9 @@ Reader is a self-hosted information aggregation app. Bring blogs, communities, w
 
 The minimum deployment consists of **Reader API + Worker + PostgreSQL**. Registration does not require email verification. Translation models are optional; the service operator is responsible for server and third-party API costs.
 
-The shortest Docker workflow is below. See the [deployment guide](docs/deployment.md#docker-compose-部署) for upgrades, networks, and secret boundaries.
+The shortest Docker workflow is below. See the
+[Docker Compose deployment guide](docs/docker-deployment.md) for full configuration, upgrades, networks,
+backups, and secret boundaries.
 
 ```bash
 cp .env.docker.example .env.docker
@@ -155,7 +157,7 @@ Web translation can be affected by site layouts, sign-in state, dynamic loading,
 
 | What you want to do | Start here |
 | --- | --- |
-| Deploy a Reader service | [Deployment guide](docs/deployment.md) · [Backend documentation](backend/README.md) · [Environment variable example](backend/.env.example) |
+| Deploy a Reader service | [Docker Compose deployment](docs/docker-deployment.md) · [General deployment guide](docs/deployment.md) · [Backend documentation](backend/README.md) |
 | Develop or build the client | [Repository development guidelines](AGENTS.md) · [Frontend and APK builds](mobile/AGENTS.md) · [Backend development](backend/AGENTS.md) |
 | Understand the system design | [Architecture overview](docs/ARCHITECTURE.md) · [C4 model](architecture/workspace.dsl) |
 | Inspect the API | [Reader API OpenAPI](contracts/openapi.json) |

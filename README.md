@@ -44,7 +44,8 @@ Reader 是一个自托管信息聚合应用。把博客、社区、网站和视�
 
 最小运行组合为 **Reader API + Worker + PostgreSQL**。注册无需邮箱验证；翻译模型按需配置，服务器和第三方 API 的费用由部署者承担。
 
-使用 Docker 的最短流程如下；详细的升级、网络和密钥边界见[部署指南](docs/deployment.md#docker-compose-部署)：
+使用 Docker 的最短流程如下；完整配置、升级、网络、备份和密钥边界见
+[Docker Compose 部署文档](docs/docker-deployment.md)：
 
 ```bash
 cp .env.docker.example .env.docker
@@ -158,7 +159,7 @@ Android 客户端在运行时连接服务，不需要在安装包中写入服务
 
 | 想做什么 | 从这里开始 |
 | --- | --- |
-| 部署 Reader 服务 | [部署指南](docs/deployment.md) · [后端说明](backend/README.md) · [环境变量示例](backend/.env.example) |
+| 部署 Reader 服务 | [Docker Compose 部署](docs/docker-deployment.md) · [综合部署指南](docs/deployment.md) · [后端说明](backend/README.md) |
 | 开发或构建客户端 | [仓库开发约定](AGENTS.md) · [前端与 APK 构建](mobile/AGENTS.md) · [后端开发](backend/AGENTS.md) |
 | 理解系统设计 | [架构说明](docs/ARCHITECTURE.md) · [C4 模型](architecture/workspace.dsl) |
 | 查看接口 | [Reader API OpenAPI](contracts/openapi.json) |
