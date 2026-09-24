@@ -41,10 +41,12 @@ COPY backend/alembic.ini ./alembic.ini
 COPY backend/migrations ./migrations
 COPY backend/docker-entrypoint.py /usr/local/bin/reader-container-entrypoint
 COPY backend/docker-state-init.sh /usr/local/bin/reader-state-init
+COPY backend/docker-codex-auth-init.sh /usr/local/bin/reader-codex-auth-init
 COPY services/browser_runtime/init-browser-task-volume /reader/init-browser-task-volume
 RUN chmod 0555 \
       /usr/local/bin/reader-container-entrypoint \
       /usr/local/bin/reader-state-init \
+      /usr/local/bin/reader-codex-auth-init \
       /reader/init-browser-task-volume
 
 USER 10001:10001

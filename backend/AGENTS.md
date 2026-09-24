@@ -40,6 +40,7 @@
 | 指定测试 | `PYTHON_DOTENV_DISABLED=1 uv run pytest -q tests/<测试文件>.py -m 'not postgres and not live_provider'` |
 | 常规后端测试 | `PYTHON_DOTENV_DISABLED=1 uv run pytest -q -m 'not postgres and not live_provider'` |
 | lint | `uv run ruff check src tests` |
+| 导入／检查 Codex 订阅登录，不依赖数据库 | `uv run reader-admin codex-auth import --source /path/to/dedicated/auth.json` / `uv run reader-admin codex-auth status` |
 | 格式化本次修改的 Python 文件 | `uv run ruff format <文件路径>` |
 | 生成容器浏览器内部契约 | `uv run python scripts/export_browser_openapi.py` |
 | 检查容器浏览器内部契约 | `uv run python scripts/export_browser_openapi.py --check` |

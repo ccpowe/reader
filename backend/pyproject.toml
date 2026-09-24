@@ -12,6 +12,7 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     "crawl4ai==0.9.3",
     "feedparser>=6.0.11",
+    "filelock>=3.20",
     "fastapi>=0.115.0",
     "httpx>=0.28.0",
     "langchain==1.4.0",

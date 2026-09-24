@@ -47,7 +47,9 @@ def build_translation_provider(
             model_name=descriptor.model_name,
             prompt_version=descriptor.prompt_version,
             provider_name=descriptor.provider_name,
-            structured_output_method="json_mode",
+            structured_output_method=(
+                "json_schema" if descriptor.provider_name == "codex-subscription" else "json_mode"
+            ),
             request_semaphore=request_semaphore,
         )
     raise TranslationProviderConfigurationError(

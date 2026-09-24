@@ -17,7 +17,7 @@
 开始部署前，请确认：
 1. 部署目标是什么系统？服务通过 HTTP 仅供本机使用、通过 HTTP 供同一局域网设备连接，还是通过域名和 HTTPS 公网访问？
 2. 需要哪些体验入口：仅后端、Web 开发预览、安装现有 Android Release APK，还是本地构建 Android APK？
-3. 翻译选择 DeepSeek、OpenRouter，还是暂不启用？
+3. 翻译选择 DeepSeek、OpenRouter、Codex 订阅，还是暂不启用？
 4. 是否启用 X 内容同步、YouTube Data API 和无 RSS 网站的 Web 规则自动生成？
 
 我会根据你的选择列出需要在本机填写的配置位置；请不要在聊天中发送任何密钥或 Cookie。
@@ -30,14 +30,14 @@
 | 访问范围 | 本机 HTTP、局域网 HTTP 或公网 HTTPS；公网部署还需域名、证书和反向代理 | 只监听本机时，手机和其他设备无法连接；本机和受信局域网不要求额外配置 HTTPS |
 | Web 预览 | 是否启动 `mobile/` 的 Expo Web 开发预览 | 不影响后端和 Android；Web 只是开发预览，不能替代依赖原生 WebView 的 Android 体验 |
 | Android | 下载现有 [Release APK](https://github.com/ccpowe/reader/releases)，或用 EAS 重新构建 | 不影响 Web 和后端；未安装客户端时只能通过 API 或 Web 预览验收 |
-| 翻译 | DeepSeek 或 OpenRouter 二选一，并在 `backend/.env` 配置对应 key 和默认引擎 | 翻译不可用，翻译循环失败且 `/worker-ready` 不能通过；只能交付为用户明确接受的受限部署 |
+| 翻译 | 选择 DeepSeek、OpenRouter 或 Codex 订阅，在 `backend/.env` 配置对应凭据及默认引擎 | 翻译不可用，翻译循环失败且 `/worker-ready` 不能通过；只能交付为用户明确接受的受限部署 |
 | X 内容 | 专用 X 账号的 `auth_token` Cookie、私有 Scweet 服务及服务间 token | 只有 X 同步不可用，其他来源、阅读和翻译不受影响 |
 | YouTube | 可选的 YouTube Data API v3 key | 回退到公开 Atom feed，仍可订阅公开频道，但数据完整性降低 |
 | Web 规则自动生成 | 模型 key、Linux、bubblewrap、Lightpanda 0.4.0 和 agent-browser 0.37.1 | 保持关闭；静态 HTTP、RSS 发现和已保存规则仍可工作，需要新规则的无 RSS／动态网站不能自动完成接入 |
 
 用户确认后，Agent 先从 `backend/.env.example` 创建 `backend/.env`，再按所选能力明确告知
 用户应填写的字段：DeepSeek 使用 `APP_DEEPSEEK_API_KEY`；OpenRouter 使用
-`APP_OPENROUTER_API_KEY` 并设置匹配的 `APP_TRANSLATION_DEFAULT_ENGINE_ID`；YouTube 使用
+`APP_OPENROUTER_API_KEY`；Codex 订阅使用 `APP_CODEX_SUBSCRIPTION_AUTH_FILE`，三者均设置匹配的 `APP_TRANSLATION_DEFAULT_ENGINE_ID`；YouTube 使用
 `APP_YOUTUBE_DATA_API_KEY`；Scweet 的 X Cookie 写入 `services/scweet/cookies.json`，服务 URL
 和 token 写入 `backend/.env`；Web 规则 Agent 按第 6 节填写引擎和两个可执行文件路径。
 需要用户填写真实秘密时暂停，等用户在部署主机本地保存后再继续，并且检查时不得输出真实值。
@@ -95,7 +95,8 @@ Issue、放进 APK、截图或实验 workspace。
 | `APP_DATABASE_URL` | 必需 | `postgresql+asyncpg://USER:PASSWORD@127.0.0.1:PORT/DB` | 仅后端 `.env` |
 | `APP_DATABASE_SSL` | 必需 | 本文 loopback Compose 设 `false`；使用提供 TLS 的远端数据库时按实际配置 | 仅后端 `.env` |
 | `POSTGRES_USER/PASSWORD/DB/PORT` | Compose 必需 | 数据库账号、随机密码、库名和 loopback 端口 | 仅后端 `.env` |
-| `APP_DEEPSEEK_API_KEY` / `APP_OPENROUTER_API_KEY` | 完整部署二选一必需 | 在 DeepSeek 或 OpenRouter 创建 API key，并与默认翻译引擎匹配 | `backend/.env` |
+| `APP_DEEPSEEK_API_KEY` / `APP_OPENROUTER_API_KEY` | 使用 API key 翻译时二选一必需 | 在 DeepSeek 或 OpenRouter 创建 API key，并与默认翻译引擎匹配 | `backend/.env` |
+| `APP_CODEX_SUBSCRIPTION_AUTH_FILE` | 使用 Codex 订阅翻译时必需 | 指向 Reader 自有的可写凭据库；使用独立 Codex 登录导入，见下文 | `backend/.env` 保存路径，凭据仅在服务器私有目录 |
 | `APP_YOUTUBE_DATA_API_KEY` | 可选 | 在 Google Cloud 创建项目、启用 YouTube Data API v3、创建并限制 API key | `backend/.env` |
 
 连接 token 和 JWT 签名密钥用途不同，不应共用。示例值仅展示配置格式，实际部署生成
@@ -128,12 +129,71 @@ Reader 只读取公开频道，不需要 OAuth client secret。未设置 key 或
 `APP_TRANSLATION_DEFAULT_ENGINE_ID` 设为 `openrouter-minimax-m3`，并配置
 `APP_OPENROUTER_API_KEY`。
 
-长时间运行的 Worker 要求配置与默认翻译引擎匹配的非空 key。缺少该配置时，
+长时间运行的 Worker 要求配置与默认翻译引擎匹配的有效凭据（API key 或下述 Codex 登录文件）。缺少该配置时，
 翻译循环会失败，`/worker-ready` 不能通过，不应宣布完整部署成功。
 `/worker-ready` 只验证配置可构建且循环正在运行，不会主动请求模型，因此不能证明
 key 的鉴权和额度真实可用。部署 Agent 默认只检查 key 已配置、不是示例占位值，
 并验证 `/worker-ready`；只有在获得明确授权后，才通过一次真实翻译请求做在线验收。
 未执行在线验收时，交付结论应标明“翻译循环已启动，模型凭证未做在线验证”。
+
+### Codex 订阅翻译
+
+引擎 ID 为 `codex-subscription`，默认模型 `gpt-6-luna`，推理强度固定为 `low`。Reader 使用独立的凭据库，按需用 `refresh_token` 续期并保存完整的新令牌；不会自动读取个人的 `~/.codex`，也不依赖宿主机 Codex 常驻。服务端用户共用这份订阅额度，继续受 Reader 翻译配额约束。
+
+**首次登录与导入**：先在有 Codex CLI 的机器上创建专用于 Reader 的登录目录，按 [Codex 官方认证说明](https://developers.openai.com/codex/auth) 完成 ChatGPT 登录。例如：
+
+```bash
+mkdir -m 700 /absolute/private/reader-codex-bootstrap
+CODEX_HOME=/absolute/private/reader-codex-bootstrap codex -c 'cli_auth_credentials_store="file"' login --device-auth
+```
+
+设备授权需要账户允许；不支持时使用同一专用目录下的普通 `codex login` 浏览器流程。API key 登录不适用。导入的是包含 `access_token`、`refresh_token` 等字段的完整 `auth.json`，不要把 token 填入环境变量或发到聊天中。导入后由 Reader 独占管理这条刷新链：不要再用该登录目录运行 Codex，也不要定期把旧文件覆盖回来；个人开发环境应使用另一份独立登录。
+
+**Docker 部署**：在 `.env.docker` 设置：
+
+```dotenv
+APP_TRANSLATION_DEFAULT_ENGINE_ID=codex-subscription
+APP_CODEX_SUBSCRIPTION_MODEL=gpt-6-luna
+APP_CODEX_SUBSCRIPTION_REQUEST_TIMEOUT_SECONDS=60
+```
+
+```bash
+./docker-init.sh up
+./docker-init.sh codex-auth import /absolute/private/reader-codex-bootstrap/auth.json
+./docker-init.sh codex-auth status
+```
+
+Compose 将专用命名卷 `codex-auth` 挂载给 API 和 Worker，路径固定为 `/var/lib/reader-codex/auth.json`。初始化工具将卷目录设为 UID/GID 10001、权限 0700，凭据文件和锁文件为 0600。卷可写且独立于容器的只读根文件系统；容器重建、升级和普通 `down` 均保留卷，删除卷会丢失登录。无需 `compose.override.yaml` 或宿主机个人 Codex 目录挂载。若之前使用了只读挂载示例，请先移除该覆盖配置再升级。
+
+导入命令通过 stdin 传送凭据，保存成功后重启 API、Worker，让启动时尚未配置的路由生效。首次 `up` 到完成导入之间翻译未就绪，`/worker-ready` 可能返回 503；只配置模型名并不等于登录完成。`status` 仅检查本地凭据，不发送模型请求；`codex-auth refresh` 在即将过期时执行 OAuth 续期，可单独检查刷新链，但不验证模型额度或推理权限。
+
+**非 Docker 部署**：在 `backend/.env` 指定 Reader 自有存储路径，两进程应以同一系统用户运行并访问同一个可写私有目录，然后在 `backend/` 执行：
+
+```dotenv
+APP_CODEX_SUBSCRIPTION_AUTH_FILE=/absolute/private/reader-codex/auth.json
+APP_CODEX_SUBSCRIPTION_MODEL=gpt-6-luna
+APP_TRANSLATION_DEFAULT_ENGINE_ID=codex-subscription
+```
+
+```bash
+uv run reader-admin codex-auth import --source /absolute/private/reader-codex-bootstrap/auth.json
+uv run reader-admin codex-auth status
+```
+
+导入后重启 API、Worker。凭据管理命令不依赖数据库。原先指向 Codex 原始文件的配置需迁移到新的 Reader 目录并执行导入；未导入的文件会显示为非 Reader 管理的登录。
+
+**自动续期与恢复**：请求前若访问令牌剩余寿命不足 120 秒，Reader 获取跨进程文件锁，重新读取凭据，再按需刷新。刷新完成后原子替换文件；等待的进程采用新令牌，不重复消费旧刷新令牌。推理返回 401 时最多刷新后重试一次，403 和限流不会触发该强制刷新。锁和 OAuth 请求有界等待；刷新期间取消翻译不会提前释放锁，正在进行的刷新仍完成写回。多机部署不支持复制文件各自刷新，当前方案要求共享同一台主机上支持文件锁和原子替换的文件系统。
+
+连接失败、429 和服务端临时错误会保留凭据并退避 30 秒；若原访问令牌仍有效且未被 401 拒绝，可暂时继续使用。刷新令牌被拒绝时会持久标记为需要重新登录，避免请求风暴。若进程在交换期间崩溃、请求发出后断线、返回的新凭据无效，或刷新后落盘失败，Reader 不能确定旧刷新令牌是否已消费，也会要求新登录，不重放旧令牌。先完成新的独立 Codex 登录，再替换：
+
+```bash
+./docker-init.sh codex-auth import /absolute/private/reader-codex-bootstrap/auth.json --replace
+# 非 Docker：uv run reader-admin codex-auth import --source /path/to/fresh/auth.json --replace
+```
+
+过期但仍可刷新的凭据在进程重启时仍可建立路由；重新导入用于恢复不可刷新或被撤销的登录，不是日常操作。备份中的旧刷新令牌可能已被消费，恢复旧卷后不能假定还能续期，应准备重新授权。
+
+此实现参考 [Hermes 的刷新事务](https://github.com/NousResearch/hermes-agent/blob/51b5c314e9de80b5c0e70b57f227fb1700d6eb2a/hermes_cli/auth_codex.py)、[OpenClaw 的集中凭据管理](https://github.com/openclaw/openclaw/blob/main/src/agents/auth-profiles/oauth-manager.ts) 及 [Codex OAuth 协议实现](https://github.com/openai/codex/blob/f5f08c54cb7a774594d3579c5731ea3e87f01c48/codex-rs/login/src/oauth/client.rs)。订阅推理仍调用 `chatgpt.com/backend-api/codex/responses`，并非公开、稳定的 OpenAI API 契约；模型权限、额度及端点兼容性以真实调用为准。该引擎仅用于翻译，网页规则 Agent 继续使用 DeepSeek／OpenRouter。常规测试只用模拟 OAuth 和模型响应，在线验收需另行明确授权。
 
 ### X 内容（可选：Scweet）
 

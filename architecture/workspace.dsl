@@ -11,7 +11,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
 
     model {
         reader = person "读者" "连接 Reader 服务，订阅、浏览、收藏、阅读和翻译内容。"
-        operator = person "管理员" "通过管理命令维护用户、翻译配额和网页规则任务。"
+        operator = person "管理员" "通过管理命令维护用户、翻译配额、网页规则任务及 Codex 订阅凭据。"
 
         websites = softwareSystem "内容网站与 RSS" "提供文章、RSS/Atom、来源头像和可提取网页。" "External"
         youtube = softwareSystem "YouTube" "提供频道、视频、播放器及字幕。" "External"
@@ -20,11 +20,13 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         reddit = softwareSystem "Reddit" "提供 subreddit 榜单 RSS；hot 快照也驱动已订阅内容入库。" "External"
         hackerNews = softwareSystem "Hacker News" "通过 Firebase API 提供榜单与条目。" "External"
         github = softwareSystem "GitHub" "通过 Trending 页面提供排行。" "External"
-        models = softwareSystem "模型提供方" "按配置选择 DeepSeek 或 OpenRouter，执行翻译及可选网页规则生成。" "External" {
+        models = softwareSystem "模型提供方" "DeepSeek、OpenRouter 执行翻译及可选网页规则生成；Codex 订阅仅执行翻译。" "External" {
             properties {
                 "sources" "backend/src/app/llm/factory.py"
             }
         }
+
+        codexIdentity = softwareSystem "OpenAI 认证" "为导入的 Codex ChatGPT 登录交换新的访问／刷新令牌。" "External,Optional"
 
         system = softwareSystem "Reader" "聚合订阅内容与排行，提供个人收藏、阅读和翻译。" {
             client = container "Reader 客户端" "Expo 原生应用，含同源代码的 Web 预览入口；WebView 阅读能力为原生实现。" "Expo / React Native / TypeScript" {
@@ -214,7 +216,12 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                     "sources" "backend/src/app/storage/; backend/migrations/; backend/src/app/translation/notifier.py"
                 }
             }
-            admin = container "Reader 管理 CLI" "按需运行，管理用户、翻译配额和网页规则任务；直接访问数据库。" "Python / argparse" {
+            codexCredentials = container "Codex 凭据库" "Reader 专用登录及刷新状态；API 与 Worker 通过文件锁协调并原子更新，Docker 卷跨容器重建保留。" "JSON / File lock / Docker volume" "Database,Optional" {
+                properties {
+                    "sources" "backend/src/app/llm/codex_auth.py; backend/src/app/admin/codex_auth.py; compose.yaml"
+                }
+            }
+            admin = container "Reader 管理 CLI" "按需运行，管理用户、翻译配额和网页规则任务；Codex 凭据命令直接访问独立文件库，无需数据库。" "Python / argparse" {
                 properties {
                     "sources" "backend/src/app/admin/cli.py; backend/pyproject.toml"
                 }
@@ -242,6 +249,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system -> hackerNews "获取榜单条目"
         system -> github "获取 Trending 排行"
         system -> models "请求翻译；按配置生成网页规则"
+        system -> codexIdentity "按需刷新 Codex 订阅凭据"
 
         // C2：运行单元与数据存储。数据库工作队列不是另一套消息服务。
         reader -> system.client "操作应用" "界面交互" "ContainerRelationship"
@@ -279,6 +287,12 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.browserAdapter -> system.browserSandbox "经任务专属 Unix socket 提供 CDP 与 CLI 控制" "Unix sockets" "ContainerRelationship"
         system.browserAdapter -> websites "以受控公网传输获取页面" "HTTPS / safe_get" "ContainerRelationship"
         system.admin -> system.database "管理用户、配额及规则任务" "SQL" "ContainerRelationship"
+        system.api -> system.codexCredentials "读取并按需原子更新订阅凭据" "File / Lock" "ContainerRelationship"
+        system.worker -> system.codexCredentials "读取并按需原子更新订阅凭据" "File / Lock" "ContainerRelationship"
+        system.admin -> system.codexCredentials "导入、检查和按需刷新独立登录" "File / Lock" "ContainerRelationship"
+        system.api -> codexIdentity "刷新接近过期或被 401 拒绝的登录" "HTTPS / OAuth" "ContainerRelationship"
+        system.worker -> codexIdentity "按需刷新订阅登录" "HTTPS / OAuth" "ContainerRelationship"
+        system.admin -> codexIdentity "显式检查需要续期的登录" "HTTPS / OAuth" "ContainerRelationship"
         system.scweet -> x "请求上游内容" "HTTPS / GraphQL" "ContainerRelationship"
         system.scweet -> system.scweetState "管理采集账号与状态" "SQLite" "ContainerRelationship"
 
@@ -331,6 +345,8 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.api.translationPolicy -> system.api.interactive "分派普通或实时片段" "Python / async"
         system.api.interactive -> system.api.translationState "读写结果；适用时建立持久工作" "Python / async"
         system.api.interactive -> models "调用配置的翻译模型" "HTTPS / 模型 API"
+        system.api.interactive -> system.codexCredentials "锁内刷新并原子写回订阅凭据" "File / Lock"
+        system.api.interactive -> codexIdentity "按需续期；401 后有界重试" "HTTPS / OAuth"
         system.api.translationState -> system.database "读写 Artifact/Work 并唤醒消费者" "SQL / NOTIFY"
 
         // C3 Worker：扫描和排行通过持久候选交接入库，API 同样可写入这些状态。
@@ -355,6 +371,8 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.worker.rankings -> github "获取 Trending" "HTTPS / HTML"
         system.worker.translation -> system.database "领取 Work、保存 Artifact、等待通知" "SQL / LISTEN / NOTIFY"
         system.worker.translation -> models "执行持久翻译" "HTTPS / 模型 API"
+        system.worker.translation -> system.codexCredentials "锁内刷新并原子写回订阅凭据" "File / Lock"
+        system.worker.translation -> codexIdentity "按需续期；401 后有界重试" "HTTPS / OAuth"
         system.worker.ruleJobs -> system.database "管理任务、预算、租约并激活有效规则" "SQL"
         system.worker.ruleJobs -> websites "预检旧规则是否已恢复" "HTTPS / 抓取与验证"
         system.worker.ruleJobs -> system.worker.ruleAgent "启用时编写并验证候选" "Python / async"
@@ -376,12 +394,12 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         }
         container system "C2-Containers" {
             title "C2 · Reader 运行单元与数据存储"
-            include reader operator system.client system.localState system.api system.worker system.browserManager system.browserReaper system.browserState system.browserAdapter system.browserSandbox system.database system.admin system.scweet system.scweetState
+            include reader operator system.client system.localState system.api system.worker system.browserManager system.browserReaper system.browserState system.browserAdapter system.browserSandbox system.database system.codexCredentials system.admin system.scweet system.scweetState
             autoLayout lr 350 80
         }
         container system "C2-ExternalDependencies" {
             title "C2 · Reader 外部依赖"
-            include system.client system.api system.worker system.browserManager system.browserReaper system.browserAdapter system.browserSandbox system.scweet websites youtube x apify reddit hackerNews github models
+            include system.client system.api system.worker system.browserManager system.browserReaper system.browserAdapter system.browserSandbox system.scweet websites youtube x apify reddit hackerNews github models codexIdentity
             autoLayout lr 350 80
         }
         component system.client "C3-Client" {

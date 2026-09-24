@@ -42,6 +42,12 @@ const localeLabels: Record<string, string> = {
 const engineUnavailableKeys = {
   langchain_deepseek_not_installed: 'engineDependencyMissing',
   missing_deepseek_api_key: 'engineApiKeyMissing',
+  missing_codex_subscription_auth_file: 'engineCodexAuthMissing',
+  invalid_codex_subscription_auth: 'engineCodexAuthInvalid',
+  expired_codex_subscription_auth: 'engineCodexAuthExpired',
+  unmanaged_codex_subscription_auth: 'engineCodexAuthUnmanaged',
+  codex_subscription_reauth_required: 'engineCodexAuthExpired',
+  codex_subscription_auth_not_writable: 'engineCodexAuthNotWritable',
 } as const;
 
 function engineDescription(engine: ManagedTranslationEngine): string {

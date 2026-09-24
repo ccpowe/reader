@@ -56,7 +56,7 @@ cp .env.docker.example .env.docker
 ```
 
 API 默认只监听 `127.0.0.1:8000`。`token` 输出供客户端连接的 token；模型 key、数据库密码
-和 JWT 密钥不会写入镜像或 Git。不配置模型 key 时原文阅读等功能仍可使用，但
+和 JWT 密钥不会写入镜像或 Git。Codex 订阅使用[独立凭据导入与自动续期](docs/deployment.md#codex-订阅翻译)。未配置默认引擎凭据时原文阅读等功能仍可使用，但
 `/worker-ready` 会保持 503，表示翻译循环尚未就绪。
 
 > [!CAUTION]
@@ -81,7 +81,7 @@ API 默认只监听 `127.0.0.1:8000`。`token` 输出供客户端连接的 token
 
 阅读模式使用当前网页，不根据 RSS 是否提供正文切换内容来源。页面无法提取或尚未加载时，会保留原网页并提示原因，不影响订阅继续更新。正文提取结果仅供当前阅读使用，不会自动保存为离线文章或同步到其他设备。
 
-支持原文、双语和纯译文显示。等待翻译或翻译失败时，仍可继续阅读原文。目前支持由服务端配置 **DeepSeek** 或 **OpenRouter**。
+支持原文、双语和纯译文显示。等待翻译或翻译失败时，仍可继续阅读原文。目前支持由服务端配置 **DeepSeek**、**OpenRouter** 或 **Codex 订阅**（默认 `gpt-6-luna`，推理强度 `low`）。
 
 ### 看视频，也能跟着读
 
@@ -139,7 +139,7 @@ Android 客户端在运行时连接服务，不需要在安装包中写入服务
 <details>
 <summary><strong>不配置翻译模型，可以使用吗？</strong></summary>
 
-可以。订阅、原文阅读、榜单和收藏不依赖翻译模型。需要翻译时，再由管理员配置 DeepSeek 或 OpenRouter，并在应用中选择可用引擎。配置项见[后端环境变量示例](backend/.env.example)。
+可以。订阅、原文阅读、榜单和收藏不依赖翻译模型。需要翻译时，再由管理员配置 DeepSeek、OpenRouter 或 Codex 订阅，并在应用中选择可用引擎。配置项见[后端环境变量示例](backend/.env.example)，Codex 登录与续期见[部署说明](docs/deployment.md#codex-订阅翻译)。
 
 </details>
 

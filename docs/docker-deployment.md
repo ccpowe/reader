@@ -20,7 +20,7 @@
 | `browser-reaper` | 回收超时或遗留的浏览器任务资源 | 无 |
 | `scweet` | 可选的 X 内容采集 | 无 |
 
-`pg-init`、`migrate`、`state-init` 和 `network-init` 是 `up` 期间运行的一次性任务，不是常驻服务。
+`pg-init`、`migrate`、`state-init`、`codex-auth-init` 和 `network-init` 是 `up` 期间运行的一次性任务，不是常驻服务。
 关闭 X 后不运行 `scweet`，其余 5 个长期服务不变。
 
 部署主机需要：
@@ -44,7 +44,7 @@ Docker 部署把公开配置、长期输入、运行时 secret 和内部状态�
 ├── inputs/                 # 管理员填写的长期凭证，0600
 ├── secrets/                # 容器实际挂载的封装值，0440
 ├── runtime/                # 部署 ID、镜像 ID 和 X 启用状态，0600
-└── operation.lock          # 串行化 init/up/down/status/token
+└── operation.lock          # 串行化 init/up/down/status/token/codex-auth
 ```
 
 `.env.docker`、`.docker/` 都被 Git 忽略。不要删除、提交、通过聊天发送或复制到不受信任的主机。
@@ -68,12 +68,14 @@ cp .env.docker.example .env.docker
 | `APP_PUBLIC_API_BASE_URL` | `http://127.0.0.1:8000` | 客户端可访问的完整 API 根地址；公网部署应填写 HTTPS 地址 |
 | `APP_CORS_ORIGINS` | `[]` | JSON 数组；仅加入实际需要访问 API 的 Web origin |
 | `APP_LOG_LEVEL` | `INFO` | 后端日志级别 |
-| `APP_TRANSLATION_DEFAULT_ENGINE_ID` | `deepseek-v4-flash` | 默认翻译引擎，也可设为 `openrouter-minimax-m3` 或 `disabled` |
+| `APP_TRANSLATION_DEFAULT_ENGINE_ID` | `deepseek-v4-flash` | 默认翻译引擎，也可设为 `openrouter-minimax-m3`、`codex-subscription` 或 `disabled` |
 | `APP_DEEPSEEK_API_BASE` | `https://api.deepseek.com` | DeepSeek 兼容 API 根地址 |
 | `APP_DEEPSEEK_MODEL` | `deepseek-flash` | DeepSeek 实际模型名 |
 | `APP_OPENROUTER_API_BASE` | `https://openrouter.ai/api/v1` | OpenRouter API 根地址 |
 | `APP_OPENROUTER_MODEL` | `minimax/minimax-m3` | OpenRouter 实际模型名 |
-| `APP_WEB_RULE_AGENT_ENGINE_ID` | `disabled` | 网页规则 Agent；可设为上述两个引擎 ID |
+| `APP_CODEX_SUBSCRIPTION_MODEL` | `gpt-6-luna` | Codex 订阅实际模型名，推理固定 `low` |
+| `APP_CODEX_SUBSCRIPTION_REQUEST_TIMEOUT_SECONDS` | `60` | 订阅请求总超时（秒） |
+| `APP_WEB_RULE_AGENT_ENGINE_ID` | `disabled` | 网页规则 Agent；可设为 `deepseek-v4-flash` 或 `openrouter-minimax-m3` |
 | `APP_YOUTUBE_DAILY_QUOTA_SOFT_LIMIT` | `8000` | YouTube Data API 每日软限额 |
 
 翻译和网页规则任务的限额使用 `.env.docker.example` 中的默认值：
@@ -104,7 +106,7 @@ cp .env.docker.example .env.docker
 
 用服务器本地编辑器写入实际值，不要让值出现在命令历史或部署日志中。未使用的 key 文件保持为空。
 模型 key 必须与所选引擎匹配：`deepseek-v4-flash` 需要 DeepSeek key，
-`openrouter-minimax-m3` 需要 OpenRouter key。
+`openrouter-minimax-m3` 需要 OpenRouter key。`codex-subscription` 使用导入到 Reader 专用卷的 ChatGPT 登录，由 Reader 自动续期，默认模型为 `gpt-6-luna`、推理强度为 `low`；其专用凭据卷、登录导入命令与自动续期方式见 [Codex 订阅翻译](deployment.md#codex-订阅翻译)。该订阅适配器仅用于翻译，规则 Agent 仍需上述 API key。
 
 `init` 还会自动生成数据库密码、客户端连接 token、JWT 签名密钥、Browser Manager token 和
 Scweet 服务 token。生成结果位于 `.docker/secrets/`，无需手工填写。每次 `up` 会重新校验输入文件
@@ -129,7 +131,7 @@ cp .env.docker.example .env.docker
 1. 校验配置、权限和输入，生成或保留部署身份与内部 secret；
 2. 从当前工作树构建 Reader、Browser，以及按需构建 Scweet 候选镜像，并把当前 commit 写入镜像 tag；
 3. 停止旧 Worker，由旧 Browser Manager drain 本部署的短期浏览器、adapter 和任务卷；
-4. 启动 PostgreSQL，执行 `alembic upgrade head`，初始化 Browser 状态卷和网络；
+4. 启动 PostgreSQL，执行 `alembic upgrade head`，初始化 Browser 状态卷、Codex 私有凭据卷和网络；
 5. 记录候选镜像的精确 Image ID；
 6. 依次启动并检查 Browser Manager、API、可选 Scweet，最后启动 Worker。
 
@@ -194,7 +196,7 @@ curl --fail http://127.0.0.1:8000/worker-ready
 ```
 
 - `/ready` 验证 API 和数据库 schema；
-- `/worker-ready` 验证必需 Worker 循环。没有配置与默认翻译引擎匹配的 key 时，它会返回 503；
+- `/worker-ready` 验证必需 Worker 循环。没有配置与默认翻译引擎匹配的凭据（API key 或 Codex 登录文件）时，它会返回 503；
   这表示翻译未就绪，不等于 API 故障；
 - `status` 应显示 PostgreSQL、API 和 Browser Manager 为 `healthy`；启用 X 时 Scweet 也应为
   `healthy`。Worker 和 Browser Reaper 没有 Compose healthcheck，但必须处于 `Up`。
@@ -234,17 +236,20 @@ git fetch --all --prune
 ```
 
 `down` 会先 drain 浏览器任务，再停止并移除 Compose 容器和网络；PostgreSQL、Browser 状态和
-Scweet 状态卷以及 `.docker/` 配置都会保留。不要使用 `docker compose down -v`，它会删除数据卷。
+Scweet 状态卷、Codex 凭据卷以及 `.docker/` 配置都会保留。不要使用 `docker compose down -v`，它会删除数据卷。
 
 ### 升级前备份
 
-确认没有其他 `init`、`up`、`down`、`status` 或 `token` 操作正在执行后，至少备份以下内容，
+确认没有其他 `init`、`up`、`down`、`status`、`token` 或 `codex-auth` 操作正在执行后，至少备份以下内容，
 并限制备份文件权限：
 
 1. PostgreSQL 的一致性逻辑备份（例如从当前 PostgreSQL 容器运行 `pg_dump -Fc`）；
 2. 整个 `.docker/` 和 `.env.docker`；
 3. 启用 X 时的 Scweet 状态卷；
-4. 服务器自定义的 Compose override、反向代理和防火墙配置。
+4. 使用 Codex 订阅时的私有凭据卷（见下述恢复限制）；
+5. 服务器自定义的 Compose override、反向代理和防火墙配置。
+
+Codex 凭据卷需按秘密保存；其中刷新令牌会轮换，旧备份可能已经不可用，恢复后应检查状态并准备重新授权，详见 [Codex 订阅翻译](deployment.md#codex-订阅翻译)。
 
 Browser 状态卷只保存浏览器任务协调状态，不能代替数据库备份。恢复演练需要验证数据库、连接 token、
 JWT 密钥、部署 ID 和 X Cookie 成套对应；只有文件存在但未验证可恢复，不算有效备份。

@@ -17,6 +17,7 @@ __pycache__/
 !.env.docker.example
 .env.docker
 .docker/
+compose.override.yaml
 
 
 # Experimental workspaces live outside the public repository.

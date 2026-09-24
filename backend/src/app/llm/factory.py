@@ -23,6 +23,22 @@ def build_chat_model(
     max_output_tokens: int | None = None,
 ) -> Any:
     """Create a model; callers own prompts, output protocols, budgets and cleanup."""
+    if descriptor.provider_name == "codex-subscription":
+        from app.llm.codex_subscription import CodexSubscriptionModel
+
+        if settings.codex_subscription_auth_file is None:
+            raise ChatModelConfigurationError("APP_CODEX_SUBSCRIPTION_AUTH_FILE is required.")
+        if max_output_tokens is not None:
+            raise ChatModelConfigurationError("Codex subscription supports translation only.")
+        return CodexSubscriptionModel(
+            model_name=descriptor.model_name,
+            auth_file=settings.codex_subscription_auth_file,
+            timeout=(
+                settings.codex_subscription_request_timeout_seconds
+                if timeout_seconds is None
+                else timeout_seconds
+            ),
+        )
     options: dict[str, Any] = {}
     if max_output_tokens is not None:
         options["max_tokens"] = max_output_tokens
@@ -90,6 +106,11 @@ def chat_model_snapshot(settings: Settings, descriptor: EngineDescriptor) -> dic
     elif descriptor.provider_name == "deepseek":
         base_url = str(settings.deepseek_api_base).rstrip("/")
         options = {"thinking": {"type": "disabled"}}
+    elif descriptor.provider_name == "codex-subscription":
+        from app.llm.codex_subscription import CODEX_RESPONSES_URL
+
+        base_url = CODEX_RESPONSES_URL
+        options = {"store": False, "stream": True, "reasoning": {"effort": "low"}}
     else:
         raise ChatModelConfigurationError("Unsupported managed model provider.")
     identity = {

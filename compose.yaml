@@ -20,6 +20,9 @@ x-reader-environment: &reader-environment
   APP_DEEPSEEK_MODEL: ${APP_DEEPSEEK_MODEL:-deepseek-flash}
   APP_OPENROUTER_API_BASE: ${APP_OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}
   APP_OPENROUTER_MODEL: ${APP_OPENROUTER_MODEL:-minimax/minimax-m3}
+  APP_CODEX_SUBSCRIPTION_AUTH_FILE: /var/lib/reader-codex/auth.json
+  APP_CODEX_SUBSCRIPTION_MODEL: ${APP_CODEX_SUBSCRIPTION_MODEL:-gpt-6-luna}
+  APP_CODEX_SUBSCRIPTION_REQUEST_TIMEOUT_SECONDS: ${APP_CODEX_SUBSCRIPTION_REQUEST_TIMEOUT_SECONDS:-60}
   APP_YOUTUBE_DAILY_QUOTA_SOFT_LIMIT: ${APP_YOUTUBE_DAILY_QUOTA_SOFT_LIMIT:-8000}
   APP_TRANSLATION_DEFAULT_ENGINE_ID: ${APP_TRANSLATION_DEFAULT_ENGINE_ID:-deepseek-v4-flash}
   APP_TRANSLATION_QUOTA_REQUESTS_PER_MINUTE: ${APP_TRANSLATION_QUOTA_REQUESTS_PER_MINUTE:-30}
@@ -153,6 +156,21 @@ services:
     cpus: 0.25
     pids_limit: 32
 
+  codex-auth-init:
+    <<: *reader-runtime
+    profiles: [tools]
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    cap_add: [CHOWN]
+    entrypoint: [reader-codex-auth-init]
+    command: []
+    volumes:
+      - codex-auth:/var/lib/reader-codex
+    mem_limit: 32m
+    cpus: 0.25
+    pids_limit: 16
+
   network-init:
     <<: *reader-runtime
     profiles: [tools]
@@ -236,6 +254,8 @@ services:
     group_add: ["${READER_SECRET_GID}"]
     environment: *reader-environment
     secrets: *api-secrets
+    volumes:
+      - codex-auth:/var/lib/reader-codex
     networks: [db-data, app-egress]
     ports:
       - "${READER_API_BIND_HOST:-127.0.0.1}:${READER_API_PORT:-8000}:8000"
@@ -272,6 +292,9 @@ services:
       APP_DEEPSEEK_MODEL: ${APP_DEEPSEEK_MODEL:-deepseek-flash}
       APP_OPENROUTER_API_BASE: ${APP_OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}
       APP_OPENROUTER_MODEL: ${APP_OPENROUTER_MODEL:-minimax/minimax-m3}
+      APP_CODEX_SUBSCRIPTION_AUTH_FILE: /var/lib/reader-codex/auth.json
+      APP_CODEX_SUBSCRIPTION_MODEL: ${APP_CODEX_SUBSCRIPTION_MODEL:-gpt-6-luna}
+      APP_CODEX_SUBSCRIPTION_REQUEST_TIMEOUT_SECONDS: ${APP_CODEX_SUBSCRIPTION_REQUEST_TIMEOUT_SECONDS:-60}
       APP_YOUTUBE_DATA_API_KEY_FILE: /run/secrets/youtube-data-api-key
       APP_YOUTUBE_DAILY_QUOTA_SOFT_LIMIT: ${APP_YOUTUBE_DAILY_QUOTA_SOFT_LIMIT:-8000}
       APP_TRANSLATION_DEFAULT_ENGINE_ID: ${APP_TRANSLATION_DEFAULT_ENGINE_ID:-deepseek-v4-flash}
@@ -290,6 +313,8 @@ services:
       APP_SCWEET_SERVICE_URL: http://scweet:8090
       APP_SCWEET_SERVICE_TOKEN_FILE: /run/secrets/scweet-service-token
     secrets: *worker-secrets
+    volumes:
+      - codex-auth:/var/lib/reader-codex
     networks: [db-data, app-egress, browser-control, browser-data, scweet-control]
     command: [reader-worker]
     labels:
@@ -344,6 +369,7 @@ services:
       io.reader.component: scweet
 
 volumes:
+  codex-auth:
   postgres-data:
   browser-state:
   scweet-state:

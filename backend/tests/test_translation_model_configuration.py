@@ -24,7 +24,9 @@ def test_model_environment_aliases(monkeypatch, provider, prefix):
     assert getattr(Settings(_env_file=None), provider + "_model") == "preferred-model"
 
 
-@pytest.mark.parametrize("field", ["deepseek_model", "openrouter_model"])
+@pytest.mark.parametrize(
+    "field", ["deepseek_model", "openrouter_model", "codex_subscription_model"]
+)
 @pytest.mark.parametrize("value", ["", "   ", "a" * 161])
 def test_invalid_model_is_rejected(field, value):
     with pytest.raises(ValidationError):

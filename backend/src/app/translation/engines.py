@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from importlib.util import find_spec
 
 from app.core.settings import Settings
+from app.llm.codex_auth import subscription_unavailable_reason
 from app.translation.domain import TranslationEngine
 
 LEGACY_MANAGED_PROMPT_VERSIONS = ("v1", "v2-caption-context")
@@ -56,6 +57,7 @@ def managed_engine_catalog(settings: Settings) -> tuple[EngineDescriptor, ...]:
     else:
         openrouter_reason = None
 
+    codex_reason = subscription_unavailable_reason(settings.codex_subscription_auth_file)
     return (
         EngineDescriptor(
             engine_id="deepseek-v4-flash",
@@ -78,6 +80,17 @@ def managed_engine_catalog(settings: Settings) -> tuple[EngineDescriptor, ...]:
             selectable=True,
             available=openrouter_reason is None,
             unavailable_reason=openrouter_reason,
+        ),
+        EngineDescriptor(
+            engine_id="codex-subscription",
+            label=f"Codex · {settings.codex_subscription_model}",
+            adapter_kind="langchain",
+            provider_name="codex-subscription",
+            model_name=settings.codex_subscription_model,
+            prompt_version=settings.translation_prompt_version,
+            selectable=True,
+            available=codex_reason is None,
+            unavailable_reason=codex_reason,
         ),
     )
 

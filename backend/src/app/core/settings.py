@@ -197,7 +197,14 @@ class Settings(BaseSettings):
     )
     openrouter_request_timeout_seconds: float = Field(default=20.0, ge=1.0, le=120.0)
 
-    @field_validator("deepseek_model", "openrouter_model", mode="before")
+    # Explicit opt-in: never consume a developer's local subscription implicitly.
+    codex_subscription_auth_file: Path | None = None
+    codex_subscription_model: str = Field(default="gpt-6-luna", min_length=1, max_length=160)
+    codex_subscription_request_timeout_seconds: float = Field(default=60.0, ge=1.0, le=120.0)
+
+    @field_validator(
+        "deepseek_model", "openrouter_model", "codex_subscription_model", mode="before"
+    )
     @classmethod
     def normalize_translation_model(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value

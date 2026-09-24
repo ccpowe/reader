@@ -308,6 +308,7 @@ run_up() {
   wait_healthy "$CANDIDATE_ENV" postgres
   compose_with "$CANDIDATE_ENV" --profile tools run --rm migrate
   compose_with "$CANDIDATE_ENV" --profile tools run --rm state-init
+  compose_with "$CANDIDATE_ENV" --profile tools run --rm codex-auth-init
   compose_with "$CANDIDATE_ENV" --profile tools run --rm network-init
 
   # From this point onward candidate containers own the fixed service names.
@@ -349,7 +350,7 @@ run_status() {
   port=$(awk -F= '$1=="READER_API_PORT" {sub(/^[^=]*=/,""); print}' "$CONFIG")
   bind=${bind:-127.0.0.1}; port=${port:-8000}
   code=$(curl --silent --output /dev/null --write-out '%{http_code}' "http://$bind:$port/worker-ready" || true)
-  printf 'worker-ready HTTP %s (503 is expected when no translation provider key is configured)\n' "${code:-unreachable}"
+  printf 'worker-ready HTTP %s (503 is expected when default translation credentials are unavailable)\n' "${code:-unreachable}"
 }
 
 run_token() {
@@ -357,9 +358,33 @@ run_token() {
   cat "$SECRET_DIR/server-access-token"
 }
 
+run_codex_auth() {
+  require_config
+  test -f "$ACTIVE_ENV" || die "run docker-init.sh up before managing Codex credentials"
+  local action=${1:-}
+  case "$action" in
+    import)
+      test "$#" = 2 || { test "$#" = 3 && test "$3" = --replace; } || die "codex-auth import PATH [--replace]"
+      test -f "$2" && test ! -L "$2" || die "source must be a regular auth.json file"
+      # Credential bytes go only through stdin into the private named volume.
+      local options=()
+      if test "$#" = 3; then options+=(--replace); fi
+      compose_with "$ACTIVE_ENV" run --rm --no-deps -T api reader-admin codex-auth import --source - "${options[@]}" < "$2"
+      # Routes are constructed at startup, including after an initially missing login.
+      compose_with "$ACTIVE_ENV" restart api worker
+      ;;
+    status|refresh)
+      test "$#" = 1 || die "codex-auth $action accepts no arguments"
+      compose_with "$ACTIVE_ENV" run --rm --no-deps -T api reader-admin codex-auth "$action"
+      ;;
+    *) die "codex-auth accepts import PATH [--replace], status, or refresh" ;;
+  esac
+}
+
 usage() {
   cat <<'EOF'
 Usage: ./docker-init.sh init|up [--with-x|--without-x]|down|status|token
+       ./docker-init.sh codex-auth import PATH [--replace]|status|refresh
 EOF
 }
 
@@ -378,5 +403,6 @@ case ${1:-} in
   down) test "$#" = 1 || die "down accepts no arguments"; run_down ;;
   status) test "$#" = 1 || die "status accepts no arguments"; run_status ;;
   token) test "$#" = 1 || die "token accepts no arguments"; run_token ;;
+  codex-auth) shift; run_codex_auth "$@" ;;
   *) usage; exit 2 ;;
 esac

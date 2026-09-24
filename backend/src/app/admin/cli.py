@@ -9,9 +9,12 @@ import sys
 from uuid import UUID
 
 from app.core.settings import get_settings
+from app.llm.codex_auth import CodexAuthenticationError, CodexRefreshError
 from app.services.web_rule_jobs import JobGuardError
 from app.storage.database import build_engine, build_session_factory
 
+from .codex_auth import configure_parser as configure_codex_auth_parser
+from .codex_auth import run_codex_auth
 from .translation_quota import TranslationQuotaAdminError, TranslationQuotaAdminService
 from .users import configure_parser as configure_user_parser
 from .users import run_user_admin
@@ -24,6 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     configure_web_rule_parser(commands)
     configure_user_parser(commands)
+    configure_codex_auth_parser(commands)
     quota = commands.add_parser(
         "translation-quota",
         help="show or change per-user translation quota overrides",
@@ -55,12 +59,22 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return asyncio.run(_run(args))
-    except (TranslationQuotaAdminError, JobGuardError, ValueError) as exc:
+    except (
+        TranslationQuotaAdminError,
+        JobGuardError,
+        ValueError,
+        CodexAuthenticationError,
+        CodexRefreshError,
+    ) as exc:
         print(str(exc), file=sys.stderr)
         return 2
 
 
 async def _run(args: argparse.Namespace) -> int:
+    if args.command == "codex-auth":
+        result = await run_codex_auth(get_settings(), args)
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result["available"] else 2
     if args.command not in {"translation-quota", "web-rules", "users"}:
         raise TranslationQuotaAdminError("unknown command")
     settings = get_settings()

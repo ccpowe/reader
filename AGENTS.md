@@ -81,6 +81,7 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 | 仓库根目录     | 初始化 Docker 私有配置 | `cp .env.docker.example .env.docker && ./docker-init.sh init`                                                              |
 | 仓库根目录     | 构建或升级 Docker 服务 | `./docker-init.sh up`；可选 X 使用 `--with-x`，明确关闭使用 `--without-x`                                                              |
 | 仓库根目录     | 查看或停止 Docker 服务 | `./docker-init.sh status` / `./docker-init.sh down`                                                                        |
+| 仓库根目录 | 导入／检查 Docker Codex 订阅凭据 | `./docker-init.sh codex-auth import /path/to/dedicated/auth.json` / `./docker-init.sh codex-auth status` |
 
 
 接口以 FastAPI 路由及请求／响应模型中的声明为编写入口。生成命令通过 `backend/scripts/export_openapi.py` 导出 `contracts/openapi.json`，并从同一份 OpenAPI 生成 `mobile/lib/generated/api.ts`；需要已安装的前端依赖和 `backend/.venv`。两份生成文件均纳入版本控制，不要手改或另写一份协议。路径、参数、响应、认证、错误声明或说明变化后，重新生成、运行契约检查，并将生成变化随实现一起提交。检查命令只校验是否同步，不会修复文件，也不代替兼容性审查与行为测试。

@@ -166,6 +166,9 @@ def test_preference_response_lists_runtime_engine_availability(
     assert response.effective_engine_id == "deepseek-v4-flash"
     assert response.effective_engine_available is True
     engines = {engine.engine_id: engine for engine in response.managed_engines}
-    assert set(engines) == {"deepseek-v4-flash", "openrouter-minimax-m3"}
+    assert set(engines) == {"deepseek-v4-flash", "openrouter-minimax-m3", "codex-subscription"}
+    assert (
+        engines["codex-subscription"].unavailable_reason == "missing_codex_subscription_auth_file"
+    )
     assert engines["openrouter-minimax-m3"].available is False
     assert engines["deepseek-v4-flash"].available is True

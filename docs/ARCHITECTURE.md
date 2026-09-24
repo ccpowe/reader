@@ -16,7 +16,8 @@ Reader 采用前后端分离结构。后端是一个 Python 应用，分别以 A
 | PostgreSQL | 保存 Reader 业务数据、身份会话、任务状态、租约、配额和 Worker 心跳；翻译使用 LISTEN/NOTIFY 唤醒空闲消费者 | [storage/database.py](../backend/src/app/storage/database.py)、[translation/notifier.py](../backend/src/app/translation/notifier.py) |
 | Scweet 配套服务 | 在选择 Scweet 作为 X 来源供应商时提供采集接口，独立管理采集凭据和自身状态；通过内部令牌与后端通信 | [scweet_service/app.py](../services/scweet_service/app.py) |
 | Scweet 状态库 | 独立保存 Scweet 采集账号与运行状态，不使用 Reader 业务数据库 | [Scweet 服务说明](../services/README.md) |
-| Reader 管理 CLI | 按需运行，直接访问 PostgreSQL，管理用户、翻译配额和网页规则任务 | [admin/cli.py](../backend/src/app/admin/cli.py) |
+| Codex 凭据库 | Reader 专用文件库；API 与 Worker 在文件锁内按需刷新和原子写回，Docker 使用独立持久卷 | [llm/codex_auth.py](../backend/src/app/llm/codex_auth.py) |
+| Reader 管理 CLI | 按需运行；用户、配额和规则操作访问 PostgreSQL，Codex 凭据操作访问独立文件库 | [admin/cli.py](../backend/src/app/admin/cli.py) |
 
 RSS／网站、YouTube、X 供应商、排行提供方和模型提供方是外部依赖。具体供应商及启用条件由 [settings.py](../backend/src/app/core/settings.py) 和相应 adapter 决定。
 
@@ -49,6 +50,7 @@ RSS／网站、YouTube、X 供应商、排行提供方和模型提供方是外�
 | 账户与资料 | Reader 自有用户、密码哈希、可撤销会话、刷新令牌哈希和个人资料存于 PostgreSQL；头像数据也存于数据库 |
 | 排行快照 | 服务端按榜单查询维度缓存；打开榜单或预览不等于订阅或收藏，显式收藏才建立持久收藏关系 |
 | 翻译结果与工作 | `TranslationArtifact` 保存成功结果，`TranslationWork` 保存持久执行状态；身份包含文本、用途、语言、引擎指纹和作用域。网页片段与字幕采用用户作用域，公共标题等可共享 |
+| Codex 订阅登录 | 属于 Reader 部署，由管理员导入专用登录；访问／刷新令牌和刷新状态存于私有文件库，所有进程只使用同一份刷新链，不属于客户端或单个 Reader 账户 |
 | 后台运行状态 | 来源游标、候选、扫描租约、规则任务、预算和心跳由服务端管理。规则任务独立保存候选、执行事实、模型判断与版本绑定凭据；diagnostics 中的 authoring checkpoint 仅为恢复提示。页面读取有限状态投影，不拥有调度权 |
 | 客户端本地数据 | 保存连接坐标、会话凭据、界面语言和缓存；公共连接元数据与凭据分开，查询缓存按服务器和用户隔离。WebView 提取的正文仅保留在当前阅读界面的内存状态，不写入服务端 Content 或离线文章库 |
 
@@ -111,6 +113,12 @@ Reddit 订阅的首页内容由 `hot` 快照发布时送入同一候选队列，
 | 持久翻译工作 | 入库标题预热、内容读取产生的缺失需求，以及普通片段的适用回退；Worker 按前台／后台优先级领取批次执行 | PostgreSQL 中的 Work、租约与成功 Artifact；NOTIFY 用于唤醒，轮询作为补充 |
 | 普通显式片段 | 排行响应先附带已有成功译文；仍缺失的字段显示原文并请求片段翻译。片段请求命中缓存直接返回，适合直接执行的缺失项在 API 内调用模型，成功结果随后持久化并供榜单响应复用 | [interactive.py](../backend/src/app/translation/interactive.py) 管理直接执行及适用的持久工作回退 |
 | 实时片段 | 网页片段、字幕及特定富文本片段由 API 进程中的协调器合并相同需求、限制并发并处理结果 | [RealtimeCoordinator](../backend/src/app/translation/realtime.py) 管理进程内在途任务，成功结果写入数据库；这条路径不承诺重启后恢复在途任务 |
+
+翻译引擎目录包含 DeepSeek、OpenRouter 和 Codex 订阅。Codex 默认模型为 `gpt-6-luna`，请求固定使用 `reasoning.effort=low`，由 [订阅适配器](../backend/src/app/llm/codex_subscription.py) 将现有翻译批次转换为原生 JSON Schema Responses 请求，并在收到 `response.completed` 后交给现有译文校验。标题、普通片段和实时片段共用该入口及现有并发与配额约束；流中断、失败或不完整响应不写入成功缓存。该适配器本次只支持翻译，不用于网页规则 Agent。
+
+Codex 凭据归 Reader 独立管理：管理员显式导入一次专用 ChatGPT 登录，运行时不会发现或回写个人 Codex 目录。[凭据管理器](../backend/src/app/llm/codex_auth.py) 由 API、Worker 共用，在请求前按需续期，在跨进程文件锁内重新读取、交换和原子保存完整令牌；取消调用不会中断已进行的刷新事务。过期但带刷新令牌的登录仍可构建执行路由。401 触发一次刷新重试；临时刷新故障有持久退避，永久拒绝或交换结果不确定则要求重新授权，避免重放可能已消费的令牌。目录检查不进行网络请求。
+
+凭据及刷新状态不进入 PostgreSQL、不下发客户端；Docker 将独立的 `codex-auth` 命名卷仅挂载给 API、Worker 及按需管理工具，使用同一个 UID 和可写私有目录。该锁依赖同一主机文件系统语义，不支持复制凭据后在多机独立刷新。容器重建保留卷，旧备份中的刷新令牌不保证可恢复使用。缓存继续按引擎、实际模型和提示版本区分，与令牌轮换无关。`reader-admin codex-auth` 的导入／状态／按需刷新操作不访问业务数据库；导入后需要建立启动时缺失的路由，Docker 包装命令会重启 API／Worker。配置、故障恢复及参考来源见[部署说明](deployment.md#codex-订阅翻译)。
 
 实际路由选择在 [resolve_translation_segments](../backend/src/app/api/translations.py)。翻译偏好与配额由后端读取和执行；用户不能通过片段 ID 指定另一个用户的缓存归属。网页片段和字幕的结果绑定用户、引擎与偏好代次，偏好变更时拒绝旧结果并清理对应临时缓存。
 

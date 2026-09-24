@@ -3,7 +3,7 @@
 from typing import Any
 
 from app.core.settings import Settings
-from app.llm.factory import build_chat_model
+from app.llm.factory import ChatModelConfigurationError, build_chat_model
 from app.translation.engines import EngineDescriptor
 
 
@@ -25,6 +25,8 @@ def build_rule_chat_model(
     timeout_seconds: float | None = None,
     max_output_tokens: int | None = None,
 ) -> Any:
+    if descriptor.provider_name == "codex-subscription":
+        raise ChatModelConfigurationError("Codex subscription supports translation only.")
     model = build_chat_model(
         settings,
         descriptor,
