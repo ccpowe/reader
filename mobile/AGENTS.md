@@ -50,6 +50,7 @@
 - 页面和 Hooks 复用现有 API、连接与缓存入口。修改账户请求、服务器切换或异步状态更新时，同时核对会话刷新、缓存失效和 `lib/connection/guard.ts`，避免绕过既有连接与身份检查；边界依据见[连接服务与账户会话](../docs/ARCHITECTURE.md#连接服务与账户会话)。
 - 服务器地址及凭据沿用运行时发现、连接存储与平台密钥存储，不写入应用配置、dotenv 或构建脚本。修改传输层时同时核对普通与 `.native.ts` 实现，以及第三方网页请求与 Reader 账户请求的区别。
 - 修改网页／字幕逻辑时编辑 TypeScript 源码，再生成注入资源并验证。核对导航、视频切换和偏好变化期间的过期结果处理；职责与执行路径见[翻译架构](../docs/ARCHITECTURE.md#翻译的三条执行路径)。
+- 网页缓存清理入口为 `domain/webStorage.ts`，与翻译脚本共用 `generate:translation-runtime` 生成链；修改时运行 `test:web-translation-browser` 中的 `web-storage.spec.mjs`，核对既有缓存回收、持续写入及登录存储保留。Android 与 iOS 的 `clearCache`／`cacheEnabled` 语义不同，不可直接共用会清除站点状态的配置。
 - 修改网页阅读模式时，同时验证 Screen 切换状态与真实 DOM／桥接场景：`test:social-web-reader` 覆盖页面挂载，`test:web-translation-browser` 包含正文提取、可信阅读文档净化和页面变更失效。桌面 Chromium 结果不能替代 Android／iOS WebView 的注入、双视图性能与视觉验收。
 - 修改界面文案和共享样式时核对 `i18n/`、`ui/` 及已有组件，统一维护可复用内容。新设计不受旧组件样式限制，但采用新的共享样式后应同步受影响页面。
 - `app.json` 管理原生配置；当前 Android 明文 HTTP 通过 `expo-build-properties` 配置，iOS 使用 ATS 配置，Web 受浏览器策略约束。修改这些配置时检查各平台影响，不用单个平台结果代表其他平台。

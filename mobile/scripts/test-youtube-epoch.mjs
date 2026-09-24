@@ -54,9 +54,10 @@ try {
   let currentGeneration = 1;
   const originalLoad = Module._load;
   Module._load = function load(request, parent, isMain) {
+    if (request === 'react-native') return { Platform: { OS: 'android' } };
     if (request === 'react-native-webview') {
       const WebView = React.forwardRef((props, ref) => {
-        React.useImperativeHandle(ref, () => ({ injectJavaScript: (script) => { injections.push(script); } }), []);
+        React.useImperativeHandle(ref, () => ({ clearCache() {}, injectJavaScript: (script) => { injections.push(script); } }), []);
         return React.createElement('WebView', props);
       });
       return { WebView };

@@ -85,6 +85,7 @@ const generated = [
   `export const WEB_TRANSLATION_RUNTIME_VERSION = ${JSON.stringify(runtimeVersion)};`,
   `export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = ${JSON.stringify(webRuntime)};`,
   `export const ${youtubeSpecification.constantName} = ${JSON.stringify(transpileFunction(youtubeSpecification))};`,
+  `export const WEB_STORAGE_BOOTSTRAP_SOURCE = ${JSON.stringify(transpileFunction({ functionName: 'webStorageBootstrap', sourcePath: resolve(mobileRoot, 'domain/webStorage.ts') }))};`,
   '',
 ].join('\n');
 

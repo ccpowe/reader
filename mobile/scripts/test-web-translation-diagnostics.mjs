@@ -28,15 +28,18 @@ try {
   const originalLoad = Module._load;
   const debugCalls = [];
   const injections = [];
+  const cacheClears = [];
+  const platform = { OS: 'ios' };
   const plans = [];
   const forgotten = [];
   const originalDebug = console.debug;
   console.debug = (...args) => { if (args[0] === '[web-translation-engine]') debugCalls.push(args); };
   const scheduler = { activeCount: 0, enqueuePlan: plan => plans.push(plan), forgetSegments: ids => forgotten.push(ids), error: null, replaceWindow: () => undefined, reset: () => undefined };
   Module._load = function load(request, parent, isMain) {
+    if (request === 'react-native') return { Platform: platform };
     if (request === 'react-native-webview') {
       const WebView = React.forwardRef((props, ref) => {
-        React.useImperativeHandle(ref, () => ({ injectJavaScript: (script) => injections.push(script) }), []);
+        React.useImperativeHandle(ref, () => ({ clearCache: disk => cacheClears.push(disk), injectJavaScript: (script) => injections.push(script) }), []);
         return React.createElement('WebView', props);
       });
       return { WebView };
@@ -70,6 +73,22 @@ try {
     }));
   });
   const webView = tree.root.findByType('WebView');
+  assert.notEqual(webView.props.cacheEnabled, false, 'iOS must retain its persistent login store');
+  await act(async () => webView.props.onLoadEnd({ nativeEvent: { url: 'https://example.test/article' } }));
+  assert.deepEqual(cacheClears, [], 'iOS clearCache(true) would delete login-related site databases');
+  platform.OS = 'android';
+  await act(async () => tree.update(React.createElement(TranslatableWebView, {
+    ...tree.root.findByType(TranslatableWebView).props, translationEnabled: false,
+  })));
+  assert.equal(webView.props.cacheEnabled, false);
+  assert.equal(webView.props.cacheMode, 'LOAD_NO_CACHE');
+  await act(async () => webView.props.onLoadEnd({ nativeEvent: { url: 'https://example.test/article' } }));
+  await act(async () => webView.props.onLoadEnd({ nativeEvent: { url: 'https://example.test/next' } }));
+  assert.deepEqual(cacheClears, [true], 'old Android resource caches are cleared once per process');
+  assert.ok(injections.filter(s => s.includes('function webStorageBootstrap')).length >= 3, 'each navigation installs cleanup even with translation disabled');
+  await act(async () => tree.update(React.createElement(TranslatableWebView, {
+    ...tree.root.findByType(TranslatableWebView).props, translationEnabled: true,
+  })));
   const bootstrap = webView.props.injectedJavaScript;
   const channelToken = bootstrap.match(/"channelToken":"([^"]+)"/)[1];
   const send = async (payload) => act(async () => webView.props.onMessage({

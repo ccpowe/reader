@@ -36,6 +36,7 @@ writeFileSync(join(temp, 'request-errors.cjs'), transformSync(readFileSync(join(
 writeFileSync(join(temp, 'i18n.cjs'), buildSync({ stdin: {
   contents: `export * from './i18n/index';
     export * from './i18n/message';
+    export { createWebStorageScript } from './domain/webStorage';
     export { createReaderInterfaceScript, buildExtractedReaderHtml } from './domain/readerHtml';
     export { getYouTubeInterfaceMessages } from './domain/youtubeTranslation';`,
   resolveDir: mobileRoot, loader: 'ts',
@@ -58,6 +59,7 @@ const originalLoad = Module._load;
 Module._load = function(request, parent, isMain) {
   if (request === '../i18n' || request === '../i18n/message') return localization;
   if (request === '../domain/readerHtml') return localization;
+  if (request === '../domain/webStorage') return localization;
   if (request === '../domain/webReader') return require(join(temp, 'web-reader.cjs'));
   if (request === '../domain/translationRequestErrors' || request === './translationRequestErrors') return require(join(temp, 'request-errors.cjs'));
   if (request === '../domain/translationDiagnostics') return diagnostics;
@@ -68,7 +70,7 @@ Module._load = function(request, parent, isMain) {
     captureRuntimeContext: () => ({ runtime: connectionRuntime }), isRuntimeContextCurrent: () => true,
   };
   if (request === '../domain/realtimeTranslationErrors') return require(join(temp, 'realtime-errors.cjs'));
-  if (request === 'react-native') return { View: host('View'), Text: host('Text'), Pressable: host('Pressable'),
+  if (request === 'react-native') return { Platform: { OS: 'android' }, View: host('View'), Text: host('Text'), Pressable: host('Pressable'),
     FlatList: host('FlatList'), ActivityIndicator: host('ActivityIndicator'), StyleSheet: { create: value => value },
     Alert: { alert: () => {} }, Linking: { openURL: async value => current.externalOpens.push(value) },
     Share: { share: async value => current.shares.push(value) } };
@@ -93,7 +95,7 @@ Module._load = function(request, parent, isMain) {
       translated_text: `已翻译：${segment.text}`, translation_status: 'succeeded' }));
   } };
   if (request === 'react-native-webview') return { WebView: React.forwardRef((props, ref) => {
-    React.useImperativeHandle(ref, () => ({ injectJavaScript: (script) => current.scriptTargets
+    React.useImperativeHandle(ref, () => ({ clearCache() {}, injectJavaScript: (script) => current.scriptTargets
       ? current.scriptTargets.push({ reader: Boolean(props.source?.html), script }) : current.scripts.push(script) }), []);
     return React.createElement('WebView', props);
   }) };

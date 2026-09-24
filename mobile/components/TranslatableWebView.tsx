@@ -3,6 +3,8 @@ import { createReaderInterfaceScript } from '../domain/readerHtml';
 import { isWebReaderArticle, MAX_WEB_READER_BYTES, utf8ByteLength, type WebDocumentIdentity, type WebReaderResult } from '../domain/webReader';
 import { exportTranslationDiagnostics, recordTranslationDiagnostic } from '../domain/translationDiagnostics';
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Platform } from 'react-native';
+import { createWebStorageScript } from '../domain/webStorage';
 import type { Session } from '../lib/readerAuth';
 import {
   WebView,
@@ -26,6 +28,8 @@ const MAX_SEGMENT_CHARS = 8_000;
 const MAX_ACCEPTED_CHARACTERS_PER_DOCUMENT = 750_000;
 const MAX_TIMELINE_CUES = 180;
 const MAX_TIMELINE_CHARACTERS = 40_000;
+const WEB_STORAGE_SCRIPT = createWebStorageScript();
+let didClearAndroidResourceCache = false;
 
 type BridgeKind = 'web' | 'youtube';
 
@@ -1000,10 +1004,26 @@ export function TranslatableWebView({
   return <WebView
     {...primary}
     ref={webViewRef}
-    injectedJavaScript={joinScripts(primary.injectedJavaScript, captionScript(captions.injectedJavaScript))}
-    injectedJavaScriptBeforeContentLoaded={joinScripts(primary.injectedJavaScriptBeforeContentLoaded, captionScript(captions.injectedJavaScriptBeforeContentLoaded))}
+    // iOS cacheEnabled=false switches to a nonpersistent store in this library.
+    // Keep its persistent login store; only Android gets LOAD_NO_CACHE.
+    cacheEnabled={Platform.OS === 'android' ? false : primary.cacheEnabled}
+    cacheMode={Platform.OS === 'android' ? 'LOAD_NO_CACHE' : primary.cacheMode}
+    injectedJavaScript={joinScripts(WEB_STORAGE_SCRIPT, primary.injectedJavaScript, captionScript(captions.injectedJavaScript))}
+    injectedJavaScriptBeforeContentLoaded={joinScripts(WEB_STORAGE_SCRIPT, primary.injectedJavaScriptBeforeContentLoaded, captionScript(captions.injectedJavaScriptBeforeContentLoaded))}
     onLoadStart={(event) => { primary.onLoadStart(event); if (youtubePage) captions.onLoadStart(event); }}
-    onLoadEnd={(event) => { primary.onLoadEnd(event); if (youtubePage) captions.onLoadEnd(event); }}
+    onLoadEnd={(event) => {
+      // Document-start injection is best effort on Android. Also sweep when
+      // translation is disabled, and when navigating an already-mounted view.
+      webViewRef.current?.injectJavaScript(WEB_STORAGE_SCRIPT);
+      if (Platform.OS === 'android' && !didClearAndroidResourceCache && webViewRef.current) {
+        // Android clears only resource caches. iOS clearCache(true) also clears
+        // localStorage/IndexedDB, so must never use it for this policy.
+        webViewRef.current.clearCache(true);
+        didClearAndroidResourceCache = true;
+      }
+      primary.onLoadEnd(event);
+      if (youtubePage) captions.onLoadEnd(event);
+    }}
     onMessage={(event) => { primary.onMessage(event); if (youtubePage) captions.onMessage(event); }}
   />;
 }
