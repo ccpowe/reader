@@ -39,6 +39,8 @@ class CodexSubscriptionStreamError(RuntimeError):
 class _ResponseStream:
     def __init__(self):
         self.data: list[str] = []
+        self.finished_items: dict[int, dict] = {}
+        self.finished_bytes = 0
 
     def feed(self, line: str) -> ChatResult | None:
         line = line.rstrip("\r\n")
@@ -55,15 +57,34 @@ class _ResponseStream:
                 kind = event["type"]
                 if kind in {"error", "response.failed", "response.incomplete"}:
                     raise CodexSubscriptionStreamError("Codex response did not complete")
+                if kind == "response.output_item.done":
+                    index, item = event["output_index"], event["item"]
+                    if type(index) is not int or index < 0 or not isinstance(item, dict):
+                        raise ValueError
+                    self.finished_bytes += len(data)
+                    if len(self.finished_items) >= 128 or self.finished_bytes > 2_000_000:
+                        raise CodexSubscriptionStreamError("Codex output exceeds response limit")
+                    self.finished_items[index] = item
+                    return None
                 if kind != "response.completed":
                     return None
                 response = event["response"]
                 if response.get("status") != "completed":
                     raise CodexSubscriptionStreamError("Codex response did not complete")
+                output = response.get("output")
+                # Some subscription responses omit the output from the terminal
+                # event. Completed items are usable only after the entire response
+                # succeeds; deltas and unfinished streams never produce a result.
+                if output is None or output == []:
+                    output = [self.finished_items[i] for i in sorted(self.finished_items)]
+                if not isinstance(output, list):
+                    raise ValueError
                 texts = []
-                for item in response["output"]:
+                for item in output:
                     if item["type"] != "message" or item.get("phase") == "commentary":
                         continue
+                    if item.get("status", "completed") != "completed":
+                        raise CodexSubscriptionStreamError("Codex output item did not complete")
                     for part in item["content"]:
                         if part["type"] == "refusal":
                             raise CodexSubscriptionHTTPError(400)

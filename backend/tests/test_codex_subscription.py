@@ -160,6 +160,85 @@ async def test_wire_schema_complete_output_and_credential_rotation(configured, m
     await provider.aclose()
 
 
+def finished_message(text, *, index=0, phase="final_answer", status="completed"):
+    return event(
+        "response.output_item.done",
+        output_index=index,
+        item={
+            "type": "message",
+            "phase": phase,
+            "status": status,
+            "content": [{"type": "output_text", "text": text}],
+        },
+    )
+
+
+@pytest.mark.parametrize("terminal_output", [{}, {"output": []}])
+async def test_finished_items_supply_output_only_after_response_completed(
+    configured, monkeypatch, terminal_output
+):
+    text = json.dumps({"items": [{"item_id": "title", "translated_text": "你好"}]})
+    stream = (
+        finished_message("not translation", index=0, phase="commentary")
+        + finished_message(text[10:], index=2)
+        + finished_message(text[:10], index=1)
+        + event("response.completed", response={"status": "completed", **terminal_output})
+    )
+
+    async def send(_client, request, **kwargs):
+        return httpx.Response(200, request=request, text=stream)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", send)
+    provider = build_translation_provider(configured)
+    try:
+        assert (await translate(provider))[0].translated_text == "你好"
+    finally:
+        await provider.aclose()
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "",
+        "data: [DONE]\n\n",
+        event("response.failed", response={"status": "failed"}),
+        event("response.incomplete", response={"status": "incomplete"}),
+    ],
+)
+async def test_finished_item_is_not_a_successful_response(configured, monkeypatch, suffix):
+    text = json.dumps({"items": [{"item_id": "title", "translated_text": "你好"}]})
+
+    async def send(_client, request, **kwargs):
+        return httpx.Response(200, request=request, text=finished_message(text) + suffix)
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", send)
+    provider = build_translation_provider(configured)
+    try:
+        with pytest.raises(TranslationProviderError):
+            await translate(provider)
+    finally:
+        await provider.aclose()
+
+
+def test_terminal_output_is_authoritative_and_buffer_is_bounded():
+    from app.llm.codex_subscription import CodexSubscriptionStreamError, _ResponseStream
+
+    state = _ResponseStream()
+    for line in (finished_message("earlier") + completed("final")).splitlines():
+        result = state.feed(line)
+        if result:
+            assert result.generations[0].message.content == "final"
+            break
+    else:
+        pytest.fail("No completed result")
+
+    state = _ResponseStream()
+    with pytest.raises(CodexSubscriptionStreamError, match="output exceeds"):
+        for index in range(129):
+            for line in finished_message("x", index=index).splitlines():
+                state.feed(line)
+
+
 @pytest.mark.parametrize(
     "status,code,retryable",
     [
