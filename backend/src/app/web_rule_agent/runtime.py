@@ -50,15 +50,15 @@ class DurableGuardMiddleware(AgentMiddleware):
             await context.dispatch_condition.wait_for(
                 lambda: (
                     index == context.dispatch_next
-                    or context.handoff
+                    or context.activation.result is not None
                     or context.dispatch_error is not None
                 )
             )
             if context.dispatch_error is not None:
                 raise context.dispatch_error
-            if context.handoff is not None:
+            if context.activation.result is not None:
                 return ToolMessage(
-                    content=json.dumps(context.handoff),
+                    content=json.dumps(context.activation.result),
                     tool_call_id=request.tool_call["id"],
                 )
             try:
@@ -81,9 +81,9 @@ class DurableGuardMiddleware(AgentMiddleware):
     @hook_config(can_jump_to=["end"])
     async def abefore_model(self, state, runtime):
         context: RuleAgentContext = runtime.context
-        # An accepted submission needs no final model turn, including while a
-        # scanner is busy. Only the injected context can set this handoff.
-        if context.handoff is not None:
+        # The host-owned handoff suppresses every subsequent model turn, including
+        # while a scanner is busy.
+        if context.activation.result is not None:
             return {"jump_to": "end"}
         await context.check()
         return None
@@ -93,9 +93,9 @@ class DurableGuardMiddleware(AgentMiddleware):
         await context.check()
         working = {
             **context.memory.snapshot(),
-            "candidate": context.latest_candidate,
+            "candidate": context.activation.candidate,
             "execution": context.latest_validation,
-            "execution_id": context.receipt,
+            "execution_id": context.activation.receipt,
         }
         request = request.override(
             messages=bounded_messages(
@@ -235,8 +235,8 @@ async def run_rule_agent(context: RuleAgentContext, model, *, preflight: dict) -
                     assessment=final_rule.assessment,
                     limitations=final_rule.limitations,
                 )
-                if context.handoff is not None:
-                    return context.handoff
+                if context.activation.result is not None:
+                    return context.activation.result
             elif isinstance(final_rule, RuleAuthoringFailure):
                 if all(context.memory.knows(ref) for ref in final_rule.evidence_ids):
                     await context.check()

@@ -18,6 +18,7 @@ from pydantic import Field
 from app.core.settings import Settings
 from app.ingestion import web_rules as page_tools
 from app.services.web_rule_jobs import JobGuardError
+from app.web_rule_agent import handoff
 from app.web_rule_agent.context import RuleAgentContext, compact
 from app.web_rule_agent.errors import AgentFailure, model_failure
 from app.web_rule_agent.runtime import _request_bytes, _response_usage, run_rule_agent
@@ -501,6 +502,77 @@ async def test_activation_pending_hands_off_without_another_model_call(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_pending_expiration_reexecutes_approved_candidate_without_model(monkeypatch):
+    executions = []
+
+    async def validate(**kwargs):
+        executions.append(kwargs["raw_rule"])
+        return execution_report({"status": "pass"})
+
+    class ExpiringStore(MemoryStore):
+        def __init__(self):
+            super().__init__(busy=True)
+            self.submissions = []
+
+        async def activate(
+            self, claim, validation_id, *, raw_rule=None, assessment=None, limitations=None
+        ):
+            self.submissions.append((raw_rule, assessment, limitations))
+            return await super().activate(
+                claim,
+                validation_id,
+                raw_rule=raw_rule,
+                assessment=assessment,
+                limitations=limitations,
+            )
+
+    store = ExpiringStore()
+    context = make_context(store=store)
+    monkeypatch.setattr(page_tools, "execute_web_rule", validate)
+    await context.execute(RULE)
+    assert (
+        await context.submit(
+            context.activation.receipt,
+            raw_rule=RULE,
+            assessment="Approved current listing",
+            limitations=["Older pages unverified"],
+        )
+    )["status"] == "activation_pending"
+
+    async def release_scan(delay):
+        assert delay == 2
+        store.current_receipt = None
+        store.busy = False
+
+    monkeypatch.setattr(handoff, "sleep", release_scan)
+    await context.activation.complete()
+    assert context.activation.result["status"] == "succeeded"
+    assert executions == [RULE, RULE] and store.activated == RULE
+    assert store.submissions == [
+        (RULE, "Approved current listing", ["Older pages unverified"]),
+        (None, None, None),
+        (None, "Approved current listing", ["Older pages unverified"]),
+    ]
+    assert store.model_reservations == []
+
+
+@pytest.mark.asyncio
+async def test_resume_rejects_failed_candidate_reexecution_without_activation(monkeypatch):
+    async def validate(**kwargs):
+        return execution_report({"status": "fail", "code": "web_structure_changed"})
+
+    monkeypatch.setattr(page_tools, "execute_web_rule", validate)
+    context = make_context(stage="activate", candidate=RULE)
+    with pytest.raises(AgentFailure) as failure:
+        await context.activation.resume()
+    assert failure.value.code == "activation_revalidation_failed"
+    assert context.activation.receipt is None
+    assert context.store.activated is None
+    assert context.store.tool_calls == ["execute_web_rule"]
+    assert context.store.model_reservations == []
+
+
+@pytest.mark.asyncio
 async def test_token_budget_cannot_reset_across_attempts():
     store = MemoryStore(max_tokens=1)
     context = make_context(store=store)
@@ -699,14 +771,14 @@ async def test_worker_persists_provider_block_and_releases_slot(monkeypatch):
     class CycleStore(MemoryStore):
         released = False
 
-        async def _call(self, name, **kwargs):
-            if name == "backfill_web_rule_jobs":
-                return 0
-            if name == "claim_web_rule_job":
-                return context.claim
-            if name == "web_rule_agent_status":
-                return {"mode": "paused" if self.paused else "active"}
-            raise AssertionError(name)
+        async def backfill(self, *, limit):
+            return 0
+
+        async def claim(self, **kwargs):
+            return context.claim
+
+        async def status(self, *, engine_snapshot):
+            return {"mode": "paused" if self.paused else "active"}
 
         async def release(self, claim):
             self.released = True

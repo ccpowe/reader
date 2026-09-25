@@ -161,8 +161,7 @@ async def test_provider_block_is_visible_before_another_worker_can_claim(monkeyp
         class InterleavingStore(JobStore):
             async def competing_claim(self):
                 attempts.append(
-                    await self._call(
-                        "claim_web_rule_job",
+                    await self.claim(
                         engine_snapshot=snapshot["engine"],
                         limits=worker.job_limits(settings),
                         prompt_version=snapshot["prompt"],
@@ -1226,7 +1225,7 @@ async def test_execution_read_progress_and_notes_survive_diagnostic_trim_and_new
         # Context restoration itself preserves read position and never restores page refs.
         assert context.memory.read_progress[report["execution_id"]] == 10
         assert context.memory.read(report["execution_id"])["items"][10]["title"] == "Article 10"
-        assert not context.observed_pages and context.receipt is None
+        assert not context.observed_pages and context.activation.receipt is None
 
 
 @pytest.mark.postgres
@@ -1428,8 +1427,8 @@ async def test_repair_preflight_preserves_candidate_execution_across_actual_leas
         assert resumed.latest_validation["execution_id"] == execution_id
         assert resumed.memory.read(execution_id)["items"][10]["title"] == "Article 10"
         assert resumed.memory.read_progress[execution_id] == 10
-        assert resumed.assessment == "Candidate B checked."
-        assert resumed.limitations == ["History unverified."]
+        assert resumed.activation.assessment == "Candidate B checked."
+        assert resumed.activation.limitations == ["History unverified."]
         async with factory() as session:
             job = await session.get(WebRuleJob, second.job_id)
             assert job.validation_report["execution_id"] == execution_id
@@ -1444,10 +1443,12 @@ async def test_repair_preflight_preserves_candidate_execution_across_actual_leas
             again = RuleAgentContext(
                 claim=third, store=JobStore(factory), settings=Settings(_env_file=None)
             )
-            assert again.latest_candidate["id"] == "candidate-B"
+            assert again.activation.candidate["id"] == "candidate-B"
             assert again.memory.read_progress[execution_id] == 10
             assert (await again.read_evidence(execution_id))["item_start"] == 10
-            assert again.assessment == "Candidate B checked." and not again.observed_pages
+            assert (
+                again.activation.assessment == "Candidate B checked." and not again.observed_pages
+            )
 
 
 @pytest.mark.postgres

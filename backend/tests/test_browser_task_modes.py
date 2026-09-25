@@ -12,10 +12,11 @@ async def test_remote_rule_worker_pauses_before_claim_when_controller_is_unavail
     calls: list[str] = []
 
     class Store:
-        async def _call(self, name, **_kwargs):
-            calls.append(name)
-            if name == "backfill_web_rule_jobs":
-                return 0
+        async def backfill(self, *, limit):
+            calls.append("backfill_web_rule_jobs")
+            return 0
+
+        async def claim(self, **kwargs):
             raise AssertionError("worker must not claim without a runtime descriptor")
 
     class Client:

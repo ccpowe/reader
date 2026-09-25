@@ -16,6 +16,7 @@ from app.services.web_rule_jobs import JobGuardError
 
 from .cli_browser import MAX_RESULT_BYTES, finalize_cli_report, visible_links
 from .errors import AgentFailure, page_failure
+from .handoff import ActivationHandoff
 from .memory import AuthoringMemory, json_bytes
 
 
@@ -88,14 +89,12 @@ class RuleAgentContext:
     dispatch_next: int = 0
     dispatch_error: BaseException | None = None
     observed_pages: dict[str, str] = field(default_factory=dict)
-    handoff: dict | None = None
-    latest_candidate: dict | None = None
+    activation: ActivationHandoff = field(init=False)
     lost_lease: bool = False
     heartbeat_callback: Any = None
     memory: AuthoringMemory = field(default_factory=AuthoringMemory)
     browser: Any = None
     latest_validation: dict | None = None
-    receipt: str | None = None
     budget: dict = field(default_factory=dict)
     stage: str = "explore"
     recent_input_tokens: int = 0
@@ -103,15 +102,27 @@ class RuleAgentContext:
 
     def __post_init__(self):
         self.memory.restore(getattr(self.claim, "authoring_checkpoint", None))
-        self.latest_candidate = getattr(self.claim, "candidate_rule", None) or getattr(
-            self.claim, "base_rule", None
+        self.activation = ActivationHandoff(
+            claim=self.claim,
+            store=self.store,
+            settings=self.settings,
+            lock=self.lock,
+            check=self.check,
+            feedback=self.validation_feedback,
+            checkpoint=self._checkpoint,
+            bound=self.bound,
+            validation_required=self._validation_required,
         )
         previous = getattr(self.claim, "last_feedback", None) or {}
         if previous.get("execution_id"):
             self.memory.remember_execution(previous)
             self.latest_validation = web_rules.execution_summary(previous)
-        self.assessment = previous.get("assessment", "")
-        self.limitations = previous.get("limitations", [])
+
+    async def _checkpoint(self) -> None:
+        await self.store.checkpoint(self.claim, self.memory.checkpoint())
+
+    def _validation_required(self) -> None:
+        self.stage = "validate"
 
     async def check(self) -> None:
         if self.lost_lease:
@@ -339,16 +350,16 @@ class RuleAgentContext:
 
     async def schema(self) -> dict:
         async with self.lock:
-            if self.handoff:
-                return self.handoff
+            if self.activation.result is not None:
+                return self.activation.result
             await self.check()
             await self.store.reserve_tool(self.claim, "web_rule_schema")
             return self.bound({"status": "pass", "schema": web_rules.web_rule_schema()}, "schema")
 
     async def inspect(self, *, argv: list[str]) -> dict:
         async with self.lock:
-            if self.handoff:
-                return self.handoff
+            if self.activation.result is not None:
+                return self.activation.result
             await self.check()
             await self.store.reserve_tool(self.claim, "inspect_web_page")
             try:
@@ -404,31 +415,7 @@ class RuleAgentContext:
             return result
 
     async def execute(self, raw_rule: dict) -> dict:
-        async with self.lock:
-            if self.handoff:
-                return self.handoff
-            await self.check()
-            await self.store.reserve_tool(self.claim, "execute_web_rule", validation=True)
-            report = await web_rules.execute_web_rule(
-                source_url=self.claim.source_url,
-                raw_rule=raw_rule,
-                timeout_seconds=self.settings.web_rule_agent_validate_timeout_seconds,
-                browser_identity=getattr(self.claim, "engine_snapshot", {}).get(
-                    "browser_execution_identity"
-                ),
-            )
-            saved = await self.store.save_validation(self.claim, raw_rule, report)
-            self.latest_candidate = raw_rule
-            result = self.validation_feedback(saved)
-            self.receipt = (
-                saved.get("execution_id") if saved.get("first_window_completed") else None
-            )
-            await self.store.checkpoint(self.claim, self.memory.checkpoint())
-            return result
-
-    async def validate(self, raw_rule: dict) -> dict:
-        """Internal compatibility alias; model tools advertise execute_web_rule only."""
-        return await self.execute(raw_rule)
+        return await self.activation.execute(raw_rule)
 
     async def submit(
         self,
@@ -438,46 +425,9 @@ class RuleAgentContext:
         assessment: str | None = None,
         limitations: list[str] | None = None,
     ) -> dict:
-        """Host-only activation; model output cannot bypass the persisted receipt check."""
-        async with self.lock:
-            if self.handoff:
-                return self.handoff
-            await self.check()
-            await self.store.reserve_tool(self.claim, "submit_web_rule")
-            try:
-                result = await self.store.activate(
-                    self.claim,
-                    validation_id,
-                    raw_rule=raw_rule,
-                    assessment=self.assessment if assessment is None else assessment,
-                    limitations=self.limitations if limitations is None else limitations,
-                )
-            except JobGuardError as exc:
-                if exc.code not in {
-                    "validation_expired",
-                    "final_rule_mismatch",
-                    "execution_not_usable",
-                }:
-                    raise
-                self.receipt = None
-                self.stage = "validate"
-                return self.bound(
-                    {
-                        "status": "fail",
-                        "code": exc.code,
-                        "next_action": (
-                            "execute_web_rule_again"
-                            if exc.code == "validation_expired"
-                            else "return_exact_executed_rule_or_execute_the_changed_rule"
-                        ),
-                    },
-                    "activate",
-                )
-            if result.get("status") in {"succeeded", "activation_pending"}:
-                if assessment is not None:
-                    self.assessment = assessment
-                if limitations is not None:
-                    self.limitations = limitations
-                # This is runtime authority, never a model-settable state key.
-                self.handoff = {**result, "validation_id": validation_id}
-            return self.bound(result, "activate")
+        return await self.activation.submit(
+            validation_id,
+            raw_rule=raw_rule,
+            assessment=assessment,
+            limitations=limitations,
+        )

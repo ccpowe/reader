@@ -61,7 +61,7 @@ async def run_web_rule_author_once(
     """Claim at most one globally serialized task; errors never cancel sibling loops."""
     settings = settings or get_settings()
     store = store or JobStore(session_factory)
-    await store._call("backfill_web_rule_jobs", limit=50)
+    await store.backfill(limit=50)
     engine_id = settings.web_rule_agent_engine_id.strip().lower()
     if engine_id in {"disabled", "none", ""}:
         return RuleAgentCycleResult(0, {"mode": "disabled"})
@@ -95,8 +95,7 @@ async def run_web_rule_author_once(
             "agent_browser_sha256": browser_identity["agent_browser_sha256"],
             "runtime_fingerprint": browser_descriptor.runtime_identity.fingerprint(),
         }
-    claim = await store._call(
-        "claim_web_rule_job",
+    claim = await store.claim(
         engine_snapshot=snapshot,
         limits=job_limits(settings),
         prompt_version=PROMPT_VERSION,
@@ -106,7 +105,7 @@ async def run_web_rule_author_once(
         browser_execution_identity=browser_identity,
     )
     if claim is None:
-        metrics = await store._call("web_rule_agent_status", engine_snapshot=snapshot)
+        metrics = await store.status(engine_snapshot=snapshot)
         return RuleAgentCycleResult(0, {"mode": "active", **metrics})
     context = RuleAgentContext(
         claim=claim, store=store, settings=settings, heartbeat_callback=heartbeat_callback
@@ -153,7 +152,7 @@ async def run_web_rule_author_once(
         )
     finally:
         await store.release(claim)
-    metrics = await store._call("web_rule_agent_status", engine_snapshot=snapshot)
+    metrics = await store.status(engine_snapshot=snapshot)
     return RuleAgentCycleResult(1, {"mode": "active", **metrics})
 
 
@@ -219,9 +218,7 @@ async def _execute_claim(context: RuleAgentContext, descriptor, model_factory) -
 
 
 async def _execute_claim_inner(context: RuleAgentContext, descriptor, model_factory) -> None:
-    if context.claim.stage == "activate" and context.claim.candidate_rule:
-        await _revalidate_for_activation(context, context.claim.candidate_rule)
-        await _finish_activation(context)
+    if await context.activation.resume():
         return
     preflight = await _preflight(context)
     if context.claim.base_rule and preflight.get("first_window_completed") is True:
@@ -258,7 +255,7 @@ async def _execute_claim_inner(context: RuleAgentContext, descriptor, model_fact
                 logger.warning(
                     "Rule model resource cleanup failed: job_id=%s", context.claim.job_id
                 )
-    await _finish_activation(context)
+    await context.activation.complete()
 
 
 async def _preflight(context: RuleAgentContext) -> dict:
@@ -275,31 +272,3 @@ async def _preflight(context: RuleAgentContext) -> dict:
         )
         await context.store.save_recovery_check(context.claim, report)
         return context.preflight_feedback(report)
-
-
-async def _revalidate_for_activation(context: RuleAgentContext, candidate: dict) -> None:
-    context.handoff = None
-    await context.execute(candidate)
-    # Activation uses persisted execution authority, never a bounded tool view.
-    validation_id = context.receipt
-    if not validation_id:
-        raise AgentFailure("activation_revalidation_failed", "Saved candidate no longer validates.")
-    await context.submit(validation_id)
-
-
-async def _finish_activation(context: RuleAgentContext) -> None:
-    while context.handoff and context.handoff.get("status") == "activation_pending":
-        await asyncio.sleep(2)
-        await context.check()
-        try:
-            context.handoff = {
-                **context.handoff,
-                **await context.store.activate(context.claim, context.handoff["validation_id"]),
-            }
-        except JobGuardError as exc:
-            if exc.code != "validation_expired":
-                raise
-            candidate = context.latest_candidate or context.claim.candidate_rule
-            if not candidate:
-                raise AgentFailure("candidate_missing", "Activation candidate is missing.") from exc
-            await _revalidate_for_activation(context, candidate)
