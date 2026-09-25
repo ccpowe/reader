@@ -2,7 +2,7 @@
 
 适用于 `backend/`，包含 API、Worker、管理命令和数据库迁移。先读取并遵守[根目录约定](../AGENTS.md)。本文维护后端目录导航、环境与命令、后端开发及验证做法；跨端协作、接口生成、文档审查和共享资源调度由根目录统一维护。
 
-后端使用 Python、FastAPI、SQLAlchemy 和 PostgreSQL。API 与 Worker 的职责、数据归属和运行边界见 [ARCHITECTURE.md](../docs/ARCHITECTURE.md)；本文不另写架构说明、完整协议或部署历史。
+后端使用 Python、FastAPI、SQLAlchemy 和 PostgreSQL。API 与 Worker 的职责、数据归属和运行边界见 [ARCHITECTURE.md](../docs/ARCHITECTURE.md)，分层模块、事务和内部实现图见[后端架构图谱](../docs/backend-architecture.md)；本文不另写架构说明、完整协议或部署历史。
 
 ## 目录导航
 

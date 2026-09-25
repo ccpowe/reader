@@ -1,7 +1,7 @@
 # Reader 架构
 
 本文描述当前工作区的系统组成、职责、数据归属和关键运行流程。源码链接是核对入口；线上部署状态需要另行核实。
-开发命令和工作约定见 [AGENTS.md](../AGENTS.md)。系统、运行单元和组件关系见 [architecture/workspace.dsl](../architecture/workspace.dsl)。
+开发命令和工作约定见 [AGENTS.md](../AGENTS.md)。系统、运行单元和组件关系见 [architecture/workspace.dsl](../architecture/workspace.dsl)；从后端顶层到子系统、事务和内部实现的分层图解见[后端架构图谱](backend-architecture.md)。
 
 ## 系统组成
 
@@ -30,7 +30,7 @@ RSS／网站、YouTube、X 供应商、排行提供方和模型提供方是外�
 | 阅读与翻译界面 | 加载原网页、按需提取和清洗阅读正文，发现可翻译文本、安排可见内容请求并处理导航和视频切换 | [ArticleReaderScreen.tsx](../mobile/screens/ArticleReaderScreen.tsx)、[TranslatableWebView.tsx](../mobile/components/TranslatableWebView.tsx)、[webReaderExtraction.ts](../mobile/domain/webReaderExtraction.ts) 与翻译调度器协作 |
 | API 与业务服务 | 校验请求和用户权限，处理订阅、资料、排行、收藏等业务，组装响应 | [api/](../backend/src/app/api/) 保留 HTTP 契约；[subscriptions.py](../backend/src/app/services/subscriptions.py) 拥有订阅事务，[source_health.py](../backend/src/app/services/source_health.py) 解释来源健康状态；其他业务继续使用共享持久层及服务 |
 | 来源接入与入库 | 来源身份规范化、上游请求、分页、候选去重、内容与媒体入库 | [workers/sync.py](../backend/src/app/workers/sync.py) 拥有扫描 I/O 和事务，[scan_state.py](../backend/src/app/services/scan_state.py) 拥有扫描状态迁移，[web_scan_health.py](../backend/src/app/services/web_scan_health.py) 解释 Web 结构健康并触发修复；[ingestion/](../backend/src/app/ingestion/) 提供来源适配，[workers/candidates.py](../backend/src/app/workers/candidates.py) 消费候选 |
-| 翻译 | 请求策略、需求与缓存身份、任务领取、批处理、实时合并、配额和结果生命周期 | [requests.py](../backend/src/app/translation/requests.py) 协调用户请求，[projection.py](../backend/src/app/translation/projection.py) 区分只读查询与需求创建；执行器由 API 或 Worker 驱动 |
+| 翻译 | 请求策略、需求与缓存身份、任务领取、批处理、实时合并、配额和结果生命周期 | [requests.py](../backend/src/app/translation/requests.py) 协调用户请求，[projection.py](../backend/src/app/translation/projection.py) 区分只读查询与需求创建；API 驱动交互式／实时请求并复用批处理隔离函数，Worker 的 `TranslationExecutor` 领取和执行持久任务 |
 | 网页规则 Agent | 针对单个来源保存有界证据和发现，生成、执行并评估列表规则后交接激活 | [web_rule_agent/](../backend/src/app/web_rule_agent/)、[workers/web_rules.py](../backend/src/app/workers/web_rules.py) 调用受限工具和规则服务；[browser.py](../backend/src/app/web_rule_agent/browser.py) 统一探索页面接口 |
 | 模型适配 | 构造外部聊天模型客户端，集中处理供应商配置 | [llm/factory.py](../backend/src/app/llm/factory.py) 被翻译和规则 Agent 复用；两者分别管理提示词、任务和预算 |
 | 持久层 | 数据模型、数据库会话、锁和 schema 就绪检查 | [storage/](../backend/src/app/storage/)、[migrations/](../backend/migrations/) 为 API、Worker 和管理命令共用 |
@@ -192,5 +192,6 @@ API 在 lifespan 内建立进程级数据库资源、认证服务、模型客户
 - **数据库结构**：[ORM 模型](../backend/src/app/storage/models.py)、[账户模型](../backend/src/app/storage/auth_models.py)、[Alembic 迁移](../backend/migrations/) 与 [schema 就绪检查](../backend/src/app/storage/schema.py) 共同定义持久化结构与部署兼容条件。
 - **内部规则契约**：[WebRule](../backend/src/app/ingestion/web_rules.py) 定义可接受的抓取规则；Python 模块之间的调用约定以代码中的公开类型和函数为准。
 - **架构模型**：[architecture/workspace.dsl](../architecture/workspace.dsl) 集中维护 C1 系统上下文、C2 内部运行单元与外部依赖，以及客户端／API／Worker 的 C3 组件视图，共 6 张图。组件的 `sources` 属性指向仓库内代码；C4 直接查看源码。Dynamic View 和 Deployment View 按需要再增加。
+- **后端实现图谱**：[backend-architecture.md](backend-architecture.md) 补充后端运行拓扑、子系统依赖、核心数据关系、事务时序和可恢复状态机；每组图关联当前源码，不另外定义接口或把进程内模块视为微服务。
 
 模块职责、数据归属、依赖约束或关键运行流程变化时更新本文件；命令、完整接口字段和决策历史分别更新其所属位置。

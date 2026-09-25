@@ -163,7 +163,7 @@ Android 客户端在运行时连接服务，不需要在安装包中写入服务
 | --- | --- |
 | 部署 Reader 服务 | [Docker Compose 部署](docs/docker-deployment.md) · [综合部署指南](docs/deployment.md) · [后端说明](backend/README.md) |
 | 开发或构建客户端 | [仓库开发约定](AGENTS.md) · [前端与 APK 构建](mobile/AGENTS.md) · [后端开发](backend/AGENTS.md) |
-| 理解系统设计 | [架构说明](docs/ARCHITECTURE.md) · [C4 模型](architecture/workspace.dsl) |
+| 理解系统设计 | [架构说明](docs/ARCHITECTURE.md) · [后端架构图谱](docs/backend-architecture.md) · [C4 模型](architecture/workspace.dsl) |
 | 查看接口 | [Reader API OpenAPI](contracts/openapi.json) |
 
 反馈问题时，请说明应用版本、复现步骤和相关页面；网页或字幕问题可以附上公开网址和截图，避免包含账号凭证或私人内容。

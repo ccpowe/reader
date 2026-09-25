@@ -159,7 +159,7 @@ Web translation can be affected by site layouts, sign-in state, dynamic loading,
 | --- | --- |
 | Deploy a Reader service | [Docker Compose deployment](docs/docker-deployment.md) · [General deployment guide](docs/deployment.md) · [Backend documentation](backend/README.md) |
 | Develop or build the client | [Repository development guidelines](AGENTS.md) · [Frontend and APK builds](mobile/AGENTS.md) · [Backend development](backend/AGENTS.md) |
-| Understand the system design | [Architecture overview](docs/ARCHITECTURE.md) · [C4 model](architecture/workspace.dsl) |
+| Understand the system design | [Architecture overview](docs/ARCHITECTURE.md) · [Backend architecture atlas (Chinese)](docs/backend-architecture.md) · [C4 model](architecture/workspace.dsl) |
 | Inspect the API | [Reader API OpenAPI](contracts/openapi.json) |
 
 When reporting a problem, include the app version, reproduction steps, and the affected screen. For web-page or subtitle issues, attach a public URL and screenshot when possible, without including credentials or private content.

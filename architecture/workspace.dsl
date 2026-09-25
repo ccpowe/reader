@@ -1,5 +1,5 @@
-// Reader 当前实现的结构模型；职责、数据约束与运行流程见 ../ARCHITECTURE.md。
-// 一个 model 生成 C1、C2 和按容器展开的 C3；C4 直接查看代码。
+// Reader 当前实现的结构模型；职责、数据约束与运行流程见 ../docs/ARCHITECTURE.md。
+// 一个 model 生成 C1、C2 和按容器展开的 C3；后端关键实现图见 ../docs/backend-architecture.md，符号与细节以源码为准。
 // sources 属性中的路径相对仓库根目录。组件表示稳定职责，不逐文件/函数建模。
 // 元素、职责边界或依赖变化时同步更新；普通内部重构只需修正源码入口。
 // 同一源码可在 API、Worker 中分别实例化，不因此建立跨进程调用关系。
@@ -97,14 +97,14 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                         "sources" "backend/src/app/main.py; backend/src/app/api/router.py; backend/src/app/api/discovery.py; backend/src/app/api/auth.py; backend/src/app/core/server_access.py; backend/src/app/core/auth.py; backend/src/app/services/auth.py"
                     }
                 }
-                sources = component "来源与订阅" "管理来源和用户订阅，解析 YouTube 频道并代理来源头像。" "FastAPI / SQLAlchemy / HTTPX" {
+                sources = component "来源与订阅" "管理来源和用户订阅，集中订阅事务与只读健康查询，解析 YouTube 频道并代理来源头像。" "FastAPI / SQLAlchemy / HTTPX" {
                     properties {
-                        "sources" "backend/src/app/api/sources.py; backend/src/app/services/subscriptions.py; backend/src/app/ingestion/source_identity.py; backend/src/app/ingestion/youtube.py"
+                        "sources" "backend/src/app/api/sources.py; backend/src/app/services/subscriptions.py; backend/src/app/services/source_health.py; backend/src/app/ingestion/source_identity.py; backend/src/app/ingestion/youtube.py"
                     }
                 }
-                content = component "信息流、收藏与资料" "按用户范围查询内容、维护收藏与阅读状态，管理个人资料和头像。" "FastAPI / SQLAlchemy" {
+                content = component "信息流、收藏与资料" "按用户范围查询内容、维护收藏，管理个人资料和头像。" "FastAPI / SQLAlchemy" {
                     properties {
-                        "sources" "backend/src/app/api/feed.py; backend/src/app/api/saved.py; backend/src/app/api/profile.py; backend/src/app/api/avatars.py; backend/src/app/services/ranking_saved.py"
+                        "sources" "backend/src/app/api/feed.py; backend/src/app/api/saved.py; backend/src/app/api/profile.py; backend/src/app/api/avatars.py; backend/src/app/services/ranking_saved.py; backend/src/app/domain/x_relations.py"
                     }
                 }
                 rankings = component "排行快照" "读取或刷新榜单；发布适用 Reddit hot 快照时写入持久候选。" "Python / HTTPX / SQLAlchemy" {
@@ -114,17 +114,17 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                 }
                 translationPolicy = component "翻译请求与策略" "校验文本、访问范围、用户偏好与配额，分派标题及片段翻译路径。" "FastAPI / Python" {
                     properties {
-                        "sources" "backend/src/app/api/translations.py; backend/src/app/api/translation_preferences.py; backend/src/app/translation/quota.py"
+                        "sources" "backend/src/app/api/translations.py; backend/src/app/api/translation_preferences.py; backend/src/app/translation/requests.py; backend/src/app/translation/quota.py"
                     }
                 }
                 interactive = component "直接与实时翻译" "在 API 进程内执行模型请求、合并实时在途需求；普通片段可回退到持久工作。" "asyncio / LangChain" {
                     properties {
-                        "sources" "backend/src/app/translation/interactive.py; backend/src/app/translation/realtime.py; backend/src/app/translation/providers/langchain.py; backend/src/app/translation/factory.py; backend/src/app/llm/factory.py"
+                        "sources" "backend/src/app/translation/interactive.py; backend/src/app/translation/realtime.py; backend/src/app/translation/executor.py; backend/src/app/translation/providers/langchain.py; backend/src/app/translation/factory.py; backend/src/app/llm/factory.py"
                     }
                 }
                 translationState = component "翻译需求与持久状态" "投影成功结果、建立缺失 Work、保存 Artifact，并通知空闲消费者。" "SQLAlchemy / PostgreSQL" {
                     properties {
-                        "sources" "backend/src/app/translation/projection.py; backend/src/app/translation/demand.py; backend/src/app/translation/store.py; backend/src/app/translation/notifier.py"
+                        "sources" "backend/src/app/translation/projection.py; backend/src/app/translation/demand.py; backend/src/app/translation/store.py; backend/migrations/versions/20260803_11_translation_work_notify.py"
                     }
                 }
             }
@@ -141,12 +141,12 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                 }
                 scan = component "来源扫描与接入" "领取来源租约，选择 RSS/Web/YouTube/X adapter，发现 feed 或网页列表并写入候选；不逐篇补抓网页正文。" "Python / HTTPX / Crawl4AI" {
                     properties {
-                        "sources" "backend/src/app/workers/sync.py; backend/src/app/ingestion/sources/; backend/src/app/ingestion/feed_discovery.py; backend/src/app/services/web_feeds.py; backend/src/app/ingestion/web_crawl.py; backend/src/app/ingestion/url_safety.py"
+                        "sources" "backend/src/app/workers/sync.py; backend/src/app/services/scan_state.py; backend/src/app/services/web_scan_health.py; backend/src/app/ingestion/candidate_queue.py; backend/src/app/ingestion/sources/; backend/src/app/ingestion/feed_discovery.py; backend/src/app/services/web_feeds.py; backend/src/app/ingestion/web_crawl.py; backend/src/app/ingestion/url_safety.py"
                     }
                 }
                 candidates = component "候选入库" "领取持久候选，去重并写入内容、来源条目与媒体；按配置建立标题翻译 Work。" "Python / SQLAlchemy" {
                     properties {
-                        "sources" "backend/src/app/workers/candidates.py; backend/src/app/ingestion/candidate_queue.py; backend/src/app/translation/store.py"
+                        "sources" "backend/src/app/workers/candidates.py; backend/src/app/ingestion/candidate_queue.py; backend/src/app/ingestion/models.py; backend/src/app/domain/x_relations.py; backend/src/app/translation/store.py"
                     }
                 }
                 rankings = component "排行刷新" "定期刷新榜单快照；适用 Reddit hot 条目进入同一持久候选队列。" "Python / HTTPX / SQLAlchemy" {
@@ -159,9 +159,9 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                         "sources" "backend/src/app/translation/executor.py; backend/src/app/translation/store.py; backend/src/app/translation/notifier.py; backend/src/app/translation/providers/langchain.py; backend/src/app/llm/factory.py"
                     }
                 }
-                ruleJobs = component "网页规则任务与激活" "持久管理租约、预算、提示性检查点与真实执行报告，核验首窗执行、候选凭据和来源版本后激活规则。" "Python / SQLAlchemy" {
+                ruleJobs = component "网页规则任务与激活" "宿主收拢提交、扫描忙等待、凭据过期重执行及重启恢复；持久服务管理租约与预算，校验执行凭据和来源版本后原子激活。" "Python / SQLAlchemy" {
                     properties {
-                        "sources" "backend/src/app/workers/web_rules.py; backend/src/app/services/web_rule_jobs.py; backend/src/app/services/web_rules.py"
+                        "sources" "backend/src/app/workers/web_rules.py; backend/src/app/web_rule_agent/handoff.py; backend/src/app/web_rule_agent/store.py; backend/src/app/services/web_rule_jobs.py; backend/src/app/services/web_rules.py"
                     }
                 }
                 ruleAgent = component "网页规则 Agent" "自动作者默认停用；启用后保存有界证据，根据 DOM 和真实执行结果评估、修正列表规则并交接。" "LangChain / Crawl4AI" "Optional" {
@@ -268,7 +268,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.api -> github "刷新榜单" "HTTPS / HTML" "ContainerRelationship"
         system.api -> models "直接和实时翻译" "HTTPS / 模型 API" "ContainerRelationship"
         system.worker -> system.database "领取任务、读写内容和结果，监听通知" "SQL / LISTEN / NOTIFY" "ContainerRelationship"
-        system.worker -> websites "抓取 feed、内容及规则验证页面" "HTTPS / RSS / HTML" "ContainerRelationship"
+        system.worker -> websites "发现和抓取 feed、扫描列表及规则探索与验证页面" "HTTPS / RSS / HTML" "ContainerRelationship"
         system.worker -> youtube "扫描频道" "HTTPS / Data API / 回退抓取" "ContainerRelationship"
         system.worker -> system.scweet "采集 X（x_provider=scweet）" "HTTP / 内部令牌" "ContainerRelationship"
         system.worker -> apify "采集 X（x_provider=apify）" "HTTPS / API" "ContainerRelationship"
@@ -446,6 +446,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
             }
             element "Database" {
                 shape Cylinder
+                height 300
             }
             element "Optional" {
                 border Dashed
