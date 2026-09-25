@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup, Tag
 from app.domain.enums import ContentKind
 from app.ingestion.http import ensure_response_size, raise_for_provider_status
 from app.ingestion.models import (
+    ContentObservation,
     DiscoveredContent,
     DiscoveredMedia,
     DiscoveredWebLink,
@@ -327,10 +328,10 @@ class WebBlogSourceAdapter(SourceAdapter):
             author_name=str(row["author"])[:300] if row.get("author") else None,
             excerpt_html=("<p>" + html.escape(str(summary)[:10000]) + "</p>") if summary else None,
             media=media,
+            observation=ContentObservation.LISTING,
             raw_metadata={
                 "adapter": "web_crawl4ai",
                 "index_url": self._config.url,
-                "web_discovery_only": True,
             },
         )
 

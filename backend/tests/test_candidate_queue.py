@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -6,7 +7,12 @@ import pytest
 
 from app.domain.enums import ContentKind
 from app.ingestion.candidate_queue import upsert_candidates
-from app.ingestion.models import DiscoveredContent, checkpoint_for_items
+from app.ingestion.models import (
+    ContentAvailability,
+    ContentObservation,
+    DiscoveredContent,
+    checkpoint_for_items,
+)
 
 
 def _item(native_id: str, title: str) -> DiscoveredContent:
@@ -16,6 +22,24 @@ def _item(native_id: str, title: str) -> DiscoveredContent:
         title=title,
         external_url=f"https://example.com/{native_id}",
         published_at=None,
+    )
+
+
+def test_material_hash_tracks_explicit_policy_not_metadata_control_keys() -> None:
+    item = _item("same", "Unchanged title")
+    assert (
+        replace(item, availability=ContentAvailability.UNAVAILABLE).material_hash()
+        != item.material_hash()
+    )
+    assert (
+        replace(item, observation=ContentObservation.LISTING).material_hash()
+        != item.material_hash()
+    )
+    assert (
+        replace(
+            item, raw_metadata={"availability": "unavailable", "web_discovery_only": True}
+        ).material_hash()
+        == item.material_hash()
     )
 
 

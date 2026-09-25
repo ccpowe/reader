@@ -17,8 +17,8 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.auth import AuthenticatedUser, require_current_user
 from app.domain.enums import MediaType
+from app.domain.x_relations import XPreview, x_preview
 from app.services.x_feed_groups import grouped_feed_entries
-from app.services.x_relations import XPreview, x_preview
 from app.storage.database import get_session
 from app.storage.models import (
     Content,

@@ -24,9 +24,9 @@ from app.domain.enums import (
     TranslationPurpose,
     TranslationScope,
 )
+from app.domain.x_relations import preserve_x_metadata
 from app.ingestion.html_safety import sanitize_html as _sanitize_html
-from app.ingestion.models import DiscoveredContent
-from app.services.x_relations import preserve_x_metadata
+from app.ingestion.models import ContentAvailability, ContentObservation, DiscoveredContent
 from app.storage.locks import acquire_source_update_transaction_lock
 from app.storage.models import (
     Content,
@@ -206,7 +206,12 @@ async def _process_candidate(session, candidate: IngestionCandidate) -> None:
             SourceEntry.native_id == candidate.native_id,
         )
     )
-    unavailable = item.raw_metadata.get("availability") == "unavailable"
+    unavailable = item.availability == ContentAvailability.UNAVAILABLE
+    entry_metadata = {
+        key: value for key, value in item.raw_metadata.items() if key != "availability"
+    }
+    if unavailable:
+        entry_metadata["availability"] = item.availability.value
     if entry is None and unavailable:
         # A private/deleted video that was only part of the initial baseline
         # must not become a new unreadable home-feed card.  Existing entries are
@@ -229,7 +234,7 @@ async def _process_candidate(session, candidate: IngestionCandidate) -> None:
             author_name=item.author_name,
             published_at=item.published_at,
             feed_sort_at=candidate.suggested_feed_sort_at,
-            raw_metadata=item.raw_metadata,
+            raw_metadata=entry_metadata,
         )
         duplicate_content_entry = await session.scalar(
             select(
@@ -253,15 +258,15 @@ async def _process_candidate(session, candidate: IngestionCandidate) -> None:
         if content is None:
             raise RuntimeError("SourceEntry points to missing Content.")
         if unavailable:
-            entry.raw_metadata = {**entry.raw_metadata, **item.raw_metadata}
+            entry.raw_metadata = {**entry.raw_metadata, **entry_metadata}
         else:
             entry.external_url = item.external_url
             entry.title = item.title
             entry.author_name = item.author_name
             entry.published_at = item.published_at
-            entry.raw_metadata = preserve_x_metadata(entry.raw_metadata, item.raw_metadata)
+            entry.raw_metadata = preserve_x_metadata(entry.raw_metadata, entry_metadata)
 
-    discovery_only = bool(item.raw_metadata.get("web_discovery_only"))
+    discovery_only = item.observation == ContentObservation.LISTING
     preserve_body = discovery_only and bool(content.body_html or content.body_text)
     safe_body_text = _plain_text(safe_body_html)
     if discovery_only:

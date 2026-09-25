@@ -14,7 +14,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from app.services.x_relations import normalize_x_relations
+from app.domain.x_relations import normalize_x_relations
 from app.storage.database import build_engine, build_session_factory
 from app.storage.models import FeedSource, SourceEntry
 

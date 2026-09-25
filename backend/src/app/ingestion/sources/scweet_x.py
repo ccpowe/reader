@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 
 from app.domain.enums import ContentKind, MediaType
+from app.domain.x_relations import normalize_x_relations
 from app.ingestion.http import ensure_response_size
 from app.ingestion.models import (
     DiscoveredContent,
@@ -20,7 +21,6 @@ from app.ingestion.models import (
     checkpoint_for_items,
     checkpoint_ids,
 )
-from app.services.x_relations import normalize_x_relations
 
 from .base import SourceAdapter
 
@@ -264,8 +264,6 @@ def _through_oldest_anchor(
     matches = [
         index
         for index, item in enumerate(items)
-        if index > 0
-        and not item.raw_metadata.get("is_pinned")
-        and item.native_id in anchors
+        if index > 0 and not item.raw_metadata.get("is_pinned") and item.native_id in anchors
     ]
     return (items[: max(matches) + 1], True) if matches else (items, False)

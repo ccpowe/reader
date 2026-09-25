@@ -6,6 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Literal
 
 from app.domain.enums import ContentKind, MediaType
@@ -36,6 +37,18 @@ class DiscoveredMedia:
         )
 
 
+class ContentAvailability(StrEnum):
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+
+
+class ContentObservation(StrEnum):
+    """Whether absent enrichment replaces stored values or was not observed."""
+
+    FULL = "full"
+    LISTING = "listing"
+
+
 @dataclass(frozen=True)
 class DiscoveredContent:
     """A stable upstream item before it enters the Candidate Queue."""
@@ -50,6 +63,8 @@ class DiscoveredContent:
     raw_metadata: dict[str, Any] = field(default_factory=dict)
     media: tuple[DiscoveredMedia, ...] = ()
     source_updated_at: datetime | None = None
+    availability: ContentAvailability = ContentAvailability.AVAILABLE
+    observation: ContentObservation = ContentObservation.FULL
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -63,6 +78,8 @@ class DiscoveredContent:
             "raw_metadata": self.raw_metadata,
             "media": [item.to_payload() for item in self.media],
             "source_updated_at": _datetime_text(self.source_updated_at),
+            "availability": self.availability.value,
+            "observation": self.observation.value,
         }
 
     @classmethod
@@ -86,11 +103,22 @@ class DiscoveredContent:
                 if isinstance(item, dict)
             ),
             source_updated_at=_parse_datetime(payload.get("source_updated_at")),
+            availability=ContentAvailability(payload["availability"]),
+            observation=ContentObservation(payload["observation"]),
         )
 
     def material_hash(self) -> str:
         """Hash reader-visible fields, excluding volatile rank/engagement counters."""
         stable_metadata = _stable_metadata(self.raw_metadata)
+        # Keep the installed material-hash encoding: queue rows and scanner
+        # checkpoints must not see a content change merely from payload migration.
+        # These keys are hash representation only, never policy read from metadata.
+        stable_metadata.pop("availability", None)
+        stable_metadata.pop("web_discovery_only", None)
+        if self.availability == ContentAvailability.UNAVAILABLE:
+            stable_metadata["availability"] = "unavailable"
+        if self.observation == ContentObservation.LISTING:
+            stable_metadata["web_discovery_only"] = True
         material = {
             "kind": self.kind.value,
             "title": self.title,

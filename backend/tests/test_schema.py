@@ -1,6 +1,3 @@
-from io import StringIO
-
-from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
@@ -183,60 +180,3 @@ def test_required_schema_revision_is_the_alembic_head() -> None:
     scripts = ScriptDirectory.from_config(Config("alembic.ini"))
 
     assert scripts.get_current_head() == REQUIRED_SCHEMA_REVISION
-
-
-def test_complete_offline_upgrade_can_be_rendered() -> None:
-    config = Config("alembic.ini")
-    config.set_main_option(
-        "sqlalchemy.url",
-        "postgresql+asyncpg://offline:offline@example.invalid/offline",
-    )
-    output = StringIO()
-    config.output_buffer = output
-
-    command.upgrade(config, "head", sql=True)
-
-    rendered = output.getvalue()
-    assert "UPDATE translation_artifacts" in rendered
-    assert "reader-runtime-v17" in rendered
-    assert "FROM feed_sources AS source" in rendered
-    assert "UPDATE ranking_snapshots" in rendered
-    assert "SET next_refresh_at = now()" in rendered
-    assert "jsonb_array_length(payload -> 'items') > 0" in rendered
-    assert "CROSS JOIN (VALUES" in rendered
-    assert "reddit_snapshot_reconciliation" in rendered
-    assert "reader_json_ascii" in rendered
-    assert "-- Running upgrade 20260810_16 -> 20260811_17" in rendered
-    assert "-- Running upgrade 20260811_17 -> 20260815_18" in rendered
-    assert "-- Running upgrade 20260815_18 -> 20260828_19" in rendered
-    assert "-- Running upgrade 20260828_20 -> 20260902_21" in rendered
-    assert "-- Running upgrade 20260902_21 -> 20260902_22" in rendered
-    assert "-- Running upgrade 20260902_22 -> 20260902_23" in rendered
-    assert "-- Running upgrade 20260902_23 -> 20260908_24" in rendered
-    assert "-- Running upgrade 20260908_24 -> 20260909_25" in rendered
-    assert "-- Running upgrade 20260909_25 -> 20260910_26" in rendered
-    assert "-- Running upgrade 20260910_27 -> 20260912_28" in rendered
-    assert f"-- Running upgrade 20260912_28 -> {REQUIRED_SCHEMA_REVISION}" in rendered
-    assert "CREATE TABLE web_rule_jobs" in rendered
-    assert "CREATE TABLE web_rule_agent_runtime" in rendered
-    assert "web_rule_structural_failures" in rendered
-    assert "ADD COLUMN goal_resumptions_reserved INTEGER DEFAULT '0' NOT NULL" in rendered
-    assert "ck_web_rule_jobs_goal_resumptions" in rendered
-    assert "web_rule_required" in rendered
-    assert "DELETE FROM web_frontier" in rendered
-    assert "DELETE FROM ranking_snapshots" in rendered
-    assert "UPDATE user_translation_preferences" in rendered
-    assert "translation_engine_retired" in rendered
-    assert "CREATE TABLE worker_loop_heartbeats" in rendered
-    assert "reader-runtime-v18" in rendered
-    assert "reader-runtime-v19" in rendered
-    assert "reader-runtime-v20" in rendered
-    assert "reader-runtime-v21" in rendered
-    assert "reader-runtime-v25" in rendered
-    assert "reddit_hot_baseline_received" in rendered
-    assert "CREATE SEQUENCE source_entry_update_sequence" in rendered
-    assert "reader-runtime-v22" in rendered
-    assert "reader-runtime-v23" in rendered
-    assert "ck_translation_quota_audits_before_state" in rendered
-    assert "ck_translation_quota_audits_after_state" in rendered
-    assert "WHEN kind = 'article' THEN 'failed'" in rendered

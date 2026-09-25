@@ -12,10 +12,11 @@
 | --- | --- |
 | `src/app/main.py`、`src/app/api/router.py` | FastAPI 应用与路由装配 |
 | `src/app/api/`、`src/app/services/` | HTTP 路由、请求／响应模型与业务服务；订阅事务入口为 `services/subscriptions.py`，来源健康查询为 `services/source_health.py` |
+| `src/app/domain/` | 共享枚举与不依赖数据库的领域表示；`x_relations.py` 提供 X 关系规范化、合并与预览，供接入、入库及 API 共用 |
 | `src/app/core/` | 配置和认证；入口为 `settings.py`、`auth.py`、`server_access.py` |
 | `src/app/storage/` | 数据库会话、业务与账户模型、锁和 schema 就绪检查；入口为 `database.py`、`models.py`、`auth_models.py`、`schema.py` |
 | `src/app/workers/` | 后台循环，入口为 `main.py`；`sync.py` 负责来源扫描 I/O 与事务，`services/scan_state.py` 集中扫描状态迁移，`services/web_scan_health.py` 处理 Web 结构健康与修复触发；`candidates.py` 处理候选，`health.py` 维护 Worker 健康状态 |
-| `src/app/ingestion/` | 内容源接入、抓取与提取；`sources/` 为来源适配，`web_rules.py` 为规则 schema 与真实执行反馈，`feed_discovery.py` 为 feed 探测，`browser_runtime.py` 为可选浏览器进程与隔离入口 |
+| `src/app/ingestion/` | 内容源接入、抓取与提取；`models.py` 定义包含可用性与观察范围的候选载荷，`sources/` 为来源适配，`web_rules.py` 为规则 schema 与真实执行反馈，`feed_discovery.py` 为 feed 探测，`browser_runtime.py` 为可选浏览器进程与隔离入口 |
 | `src/app/web_rule_agent/`、`src/app/workers/web_rules.py` | 网页规则 Agent 与 Worker 交接；`runtime.py` 为模型执行入口，`handoff.py` 管理宿主提交、等待与恢复激活，`store.py` 封装持久服务的短事务；`cli_browser.py` 运行任务内持久 CLI 探索，`memory.py` 管理工作证据、执行结果与读取进度 |
 | `src/app/browser_tasks/` | 可选容器浏览器任务的内部协议、Worker 客户端、adapter、控制器和回收器；公共 DTO 入口为 `protocol.py` |
 | `src/app/translation/`、`src/app/llm/` | 翻译请求入口为 `translation/requests.py`，只读／需求创建入口为 `translation/projection.py`，实时执行为 `translation/realtime.py`；公共模型入口为 `llm/factory.py` |

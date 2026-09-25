@@ -11,6 +11,7 @@ import httpx
 from app.domain.enums import ContentKind, MediaType
 from app.ingestion.http import ensure_response_size, raise_for_provider_status
 from app.ingestion.models import (
+    ContentAvailability,
     DiscoveredContent,
     DiscoveredMedia,
     SourceScanError,
@@ -363,8 +364,8 @@ class YouTubeSourceAdapter(SourceAdapter):
                 title=str(playlist_row.get("playlist_title") or "Unavailable video"),
                 external_url=f"https://www.youtube.com/watch?v={video_id}",
                 published_at=_parse_datetime(playlist_row.get("playlist_published_at")),
+                availability=ContentAvailability.UNAVAILABLE,
                 raw_metadata={
-                    "availability": "unavailable",
                     "privacy_status": "unavailable",
                 },
             )

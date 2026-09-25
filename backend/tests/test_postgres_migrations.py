@@ -30,11 +30,16 @@ from app.api.translation_preferences import (
 )
 from app.core.auth import AuthenticatedUser
 from app.core.settings import Settings
+from app.ingestion.models import DiscoveredContent
 from app.ingestion.source_identity import canonical_rss_identity
 from app.services import ranking_snapshots
 from app.services.subscriptions import subscribe_to_source
 from app.storage.database import build_session_factory
-from app.storage.schema import REQUIRED_SCHEMA_REVISION
+from app.storage.schema import (
+    REQUIRED_SCHEMA_CONTRACT,
+    REQUIRED_SCHEMA_REVISION,
+    runtime_readiness_failures,
+)
 from app.translation.quota import (
     TRANSLATION_QUOTA_GLOBAL_CHARS_EXCEEDED,
     TRANSLATION_QUOTA_STORAGE_UNAVAILABLE,
@@ -193,6 +198,22 @@ def _expected_engine_fingerprint() -> str:
     }
     encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _historical_candidate_hash(payload: dict) -> str:
+    """Pre-cutover material encoding for fixtures without volatile metadata."""
+    material = {
+        "kind": payload["kind"],
+        "title": payload["title"],
+        "external_url": payload["external_url"],
+        "author_name": payload["author_name"],
+        "excerpt_html": payload["excerpt_html"],
+        "source_updated_at": payload["source_updated_at"],
+        "metadata": payload["raw_metadata"],
+        "media": [],
+    }
+    encoded = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 @pytest.mark.postgres
@@ -498,6 +519,8 @@ async def test_runtime_safety_migrations_against_disposable_postgres(
             )
             """
         )
+        _run_alembic(dsn, "upgrade", "20260922_29")
+        await _assert_candidate_semantics_migration(dsn, connection)
         _run_alembic(dsn, "upgrade", "head")
         assert (
             await connection.fetchval("SELECT version_num FROM alembic_version")
@@ -558,8 +581,266 @@ async def test_runtime_safety_migrations_against_disposable_postgres(
         await _assert_ranking_worker_contract(dsn, connection, monkeypatch)
         await _assert_concurrent_idempotency_contract(dsn, connection)
         await _assert_translation_quota_contract(dsn, connection)
+        await connection.execute(
+            "DELETE FROM ingestion_candidates WHERE id = 'f0000000-0000-0000-0000-00000000000f'"
+        )
     finally:
         await connection.close()
+
+
+async def _assert_candidate_semantics_migration(
+    dsn: str,
+    connection: asyncpg.Connection,
+) -> None:
+    """Upgrade and roll back real queued work without reissuing a claim or scan."""
+    await connection.execute(
+        """
+        INSERT INTO feed_sources (
+            id, kind, canonical_key, canonical_url, display_name,
+            config, visibility, status
+        ) VALUES
+        (
+            '92000000-0000-0000-0000-000000000009', 'web',
+            'web:https://example.com/migration', 'https://example.com/migration',
+            'Legacy web', '{}', 'shared', 'active'
+        ),
+        (
+            '93000000-0000-0000-0000-000000000009', 'youtube',
+            'youtube:channel:migration', 'https://www.youtube.com/channel/migration',
+            'Legacy YouTube', '{}', 'shared', 'active'
+        );
+        UPDATE source_sync_states
+        SET pending_checkpoint = '{"cursor":"in-flight"}'::jsonb
+        WHERE source_id = '40000000-0000-0000-0000-000000000004';
+        """
+    )
+    source_state_sql = """
+        SELECT phase, committed_checkpoint, pending_checkpoint, last_complete_at
+        FROM source_sync_states
+        WHERE source_id = '40000000-0000-0000-0000-000000000004'
+    """
+    source_state = await connection.fetchrow(source_state_sql)
+    assert source_state is not None
+    assert json.loads(source_state["pending_checkpoint"]) == {"cursor": "in-flight"}
+
+    cases = (
+        (
+            "baseline-full",
+            "post",
+            "40000000-0000-0000-0000-000000000004",
+            {"provider": "reddit", "nested": {"availability": "provider-value"}},
+            "pending",
+            0,
+            False,
+            "available",
+            "full",
+        ),
+        (
+            "listing-web",
+            "article",
+            "92000000-0000-0000-0000-000000000009",
+            {
+                "web_discovery_only": True,
+                "index_url": "https://example.com/migration",
+                "nested": {"availability": "provider-value"},
+            },
+            "processing",
+            3,
+            True,
+            "available",
+            "listing",
+        ),
+        (
+            "unavailable-video",
+            "video",
+            "93000000-0000-0000-0000-000000000009",
+            {
+                "availability": "unavailable",
+                "privacy_status": "unavailable",
+                "nested": {"availability": "still-provider-data"},
+            },
+            "failed",
+            2,
+            False,
+            "unavailable",
+            "full",
+        ),
+    )
+    legacy_payloads = {}
+    for native_id, kind, source_id, metadata, status, attempts, counts, _, _ in cases:
+        payload = {
+            "native_id": native_id,
+            "kind": kind,
+            "title": f"Legacy {native_id}",
+            "external_url": f"https://example.com/{native_id}",
+            "published_at": "2026-09-24T12:00:00+00:00",
+            "author_name": "Upstream author",
+            "excerpt_html": "<p>Summary</p>",
+            "raw_metadata": metadata,
+            "media": [],
+            "source_updated_at": None,
+        }
+        legacy_payloads[native_id] = payload
+        await connection.execute(
+            """
+            INSERT INTO ingestion_candidates (
+                id, source_id, native_id, payload, payload_hash, observed_at,
+                suggested_feed_sort_at, status, attempt_count, counts_as_update,
+                lease_token, lease_expires_at, last_error_code, last_error_message
+            ) VALUES (
+                $1, $2::uuid, $3, $4::jsonb, $5, now(), now(), $6::text, $7, $8,
+                $9, CASE WHEN $6::text = 'processing' THEN now() + interval '10 minutes' END,
+                CASE WHEN $6::text = 'failed' THEN 'provider_unavailable' END,
+                CASE WHEN $6::text = 'failed' THEN 'Upstream removed the item' END
+            )
+            """,
+            uuid4(),
+            source_id,
+            native_id,
+            json.dumps(payload),
+            _historical_candidate_hash(payload),
+            status,
+            attempts,
+            counts,
+            uuid4() if status == "processing" else None,
+        )
+
+    candidate_sql = """
+        SELECT native_id, payload, payload_hash, status, attempt_count,
+               counts_as_update, lease_token, lease_expires_at, available_at,
+               observed_at, suggested_feed_sort_at, source_updated_at,
+               completed_at, content_id, last_error_code, last_error_message,
+               created_at, updated_at
+        FROM ingestion_candidates
+        WHERE native_id = ANY($1::text[])
+        ORDER BY native_id
+    """
+    names = list(legacy_payloads)
+    before = await connection.fetch(candidate_sql, names)
+    assert len(before) == len(cases)
+    assert next(row for row in before if row["native_id"] == "listing-web")["lease_token"]
+    assert next(row for row in before if row["native_id"] == "listing-web")["counts_as_update"]
+    engine = create_async_engine(dsn.replace("postgresql://", "postgresql+asyncpg://", 1))
+    settings = Settings(
+        _env_file=None,
+        server_id="reader-migration-test",
+        database_url=dsn,
+        server_access_token="test-connection",
+        auth_jwt_secret="test-jwt-signing-secret-at-least-32-characters",
+    )
+    try:
+        assert await runtime_readiness_failures(settings, engine) == ["schema_contract_missing"]
+        _run_alembic(dsn, "upgrade", "20260925_30")
+        assert (
+            await connection.fetchval("SELECT version_num FROM alembic_version")
+            == REQUIRED_SCHEMA_REVISION
+        )
+        assert await connection.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM app_schema_contracts WHERE contract = $1)",
+            REQUIRED_SCHEMA_CONTRACT,
+        )
+        assert await runtime_readiness_failures(settings, engine) == []
+        upgraded = await connection.fetch(candidate_sql, names)
+        assert await connection.fetchrow(source_state_sql) == source_state
+        for old, row in zip(before, upgraded, strict=True):
+            assert {key: row[key] for key in row.keys() if key != "payload"} == {
+                key: old[key] for key in old.keys() if key != "payload"
+            }
+            payload = json.loads(row["payload"])
+            legacy = legacy_payloads[row["native_id"]]
+            case = next(item for item in cases if item[0] == row["native_id"])
+            assert payload["availability"] == case[7]
+            assert payload["observation"] == case[8]
+            assert payload["raw_metadata"] == {
+                key: value
+                for key, value in legacy["raw_metadata"].items()
+                if key not in {"availability", "web_discovery_only"}
+            }
+            assert row["payload_hash"] == _historical_candidate_hash(legacy)
+            discovered = DiscoveredContent.from_payload(payload)
+            assert discovered.material_hash() == row["payload_hash"]
+        assert json.loads(
+            await connection.fetchval(
+                "SELECT payload FROM ingestion_candidates WHERE native_id = 'legacy-pending'"
+            )
+        ) == {"availability": "available", "observation": "full"}
+
+        # A new producer can carry provider keys with the former policy names.
+        # Rollback must derive old-worker policy from explicit fields, not revive them.
+        explicit_payload = {
+            **legacy_payloads["baseline-full"],
+            "native_id": "v26-conflicting-metadata",
+            "availability": "available",
+            "observation": "full",
+            "raw_metadata": {
+                "availability": "unavailable",
+                "web_discovery_only": True,
+                "nested": {"availability": "provider-value"},
+            },
+        }
+        explicit_hash = DiscoveredContent.from_payload(explicit_payload).material_hash()
+        await connection.execute(
+            """
+            INSERT INTO ingestion_candidates (
+                id, source_id, native_id, payload, payload_hash, observed_at,
+                suggested_feed_sort_at, status, attempt_count
+            ) VALUES (
+                $1, '40000000-0000-0000-0000-000000000004',
+                'v26-conflicting-metadata', $2::jsonb, $3, now(), now(), 'pending', 0
+            )
+            """,
+            uuid4(),
+            json.dumps(explicit_payload),
+            explicit_hash,
+        )
+
+        _run_alembic(dsn, "downgrade", "20260922_29")
+        assert await connection.fetchval("SELECT version_num FROM alembic_version") == "20260922_29"
+        assert not await connection.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM app_schema_contracts WHERE contract = $1)",
+            REQUIRED_SCHEMA_CONTRACT,
+        )
+        assert await connection.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM app_schema_contracts "
+            "WHERE contract = 'reader-runtime-v25')"
+        )
+        assert await runtime_readiness_failures(settings, engine) == ["schema_contract_missing"]
+        assert await connection.fetchrow(source_state_sql) == source_state
+        rolled_back = await connection.fetch(candidate_sql, names)
+        assert rolled_back == before
+        assert (
+            json.loads(
+                await connection.fetchval(
+                    "SELECT payload FROM ingestion_candidates WHERE native_id = 'legacy-pending'"
+                )
+            )
+            == {}
+        )
+        downgraded = json.loads(
+            await connection.fetchval(
+                "SELECT payload FROM ingestion_candidates "
+                "WHERE native_id = 'v26-conflicting-metadata'"
+            )
+        )
+        assert downgraded == {
+            **{
+                key: value
+                for key, value in explicit_payload.items()
+                if key not in {"availability", "observation", "raw_metadata"}
+            },
+            "raw_metadata": {"nested": {"availability": "provider-value"}},
+        }
+        assert _historical_candidate_hash(downgraded) == explicit_hash
+    finally:
+        await engine.dispose()
+        await connection.execute(
+            "DELETE FROM ingestion_candidates WHERE native_id = ANY($1::text[])",
+            [*names, "v26-conflicting-metadata"],
+        )
+        await connection.execute(
+            "DELETE FROM feed_sources WHERE id IN "
+            "('92000000-0000-0000-0000-000000000009', '93000000-0000-0000-0000-000000000009')"
+        )
 
 
 async def _assert_concurrent_idempotency_contract(

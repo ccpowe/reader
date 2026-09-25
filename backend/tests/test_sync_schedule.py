@@ -21,6 +21,7 @@ from app.domain.enums import (
 )
 from app.ingestion.candidate_queue import CandidateUpsertResult
 from app.ingestion.models import (
+    ContentAvailability,
     DiscoveredContent,
     DiscoveredMedia,
     SourceScanError,
@@ -424,7 +425,7 @@ async def test_unavailable_baseline_video_does_not_create_a_home_entry() -> None
         title="Unavailable video",
         external_url="https://www.youtube.com/watch?v=private-video",
         published_at=None,
-        raw_metadata={"availability": "unavailable"},
+        availability=ContentAvailability.UNAVAILABLE,
     )
     candidate = SimpleNamespace(
         payload=item.to_payload(),

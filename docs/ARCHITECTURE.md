@@ -37,6 +37,8 @@ RSS／网站、YouTube、X 供应商、排行提供方和模型提供方是外�
 
 这些是当前代码的职责划分。API 路由直接使用 SQLAlchemy Session 和 ORM；`services/`、`ingestion/`、`translation/` 之间也存在直接调用。修改模块边界时需要核对实际引用和事务关系，不能仅凭目录名假定已有独立服务或严格分层隔离。
 
+[X 关系表示](../backend/src/app/domain/x_relations.py) 是接入、候选处理和 API 共用的纯领域模块，负责关系规范化、缺失证据时的保留合并与预览，不依赖数据库或 HTTP 服务。X adapter 和离线关系补全不通过业务服务层导入这些表示。
+
 ## 数据归属
 
 业务模型定义在 [models.py](../backend/src/app/storage/models.py)，账户模型定义在 [auth_models.py](../backend/src/app/storage/auth_models.py)。
@@ -87,6 +89,10 @@ Android 阅读宿主使用 `LOAD_NO_CACHE`，并在进程内第一次 WebView �
 规则激活、选定 feed 与 feed 失效重探测分别调用明确的扫描重置操作，统一清除旧端点游标和 pending checkpoint，只保留 `head_ids`／`item_hashes` 去重锚点，不改变初扫基线。规则激活释放旧扫描租约并结束旧运行；选定 feed 则保留当前租约以继续本轮扫描。Web 结构故障计数、故障批次及 author／repair 触发由 [web_scan_health.py](../backend/src/app/services/web_scan_health.py) 在调用方事务内处理；它与只读的来源健康查询不同，不负责 Agent 的激活等待与恢复流程。
 
 初次扫描发现的候选在交给异步处理器前会持久标记为基线，之后同步状态先完成也不会把这批历史内容变成频道新增。后续首次进入来源的内容在来源级事务锁内取得更新序号；重复抓取、已有内容的另一上游条目标识以及内容修改不产生新的提醒。Reddit 的首个 `hot` 快照使用同步状态中的持久基线标记，后续快照即使早于首批候选处理完成，也按增量处理。
+
+[候选载荷](../backend/src/app/ingestion/models.py) 显式保存 `availability`（`available`／`unavailable`）和 `observation`（`full`／`listing`）；`raw_metadata` 不再决定候选消费策略。列表观察缺少正文、作者、日期或媒体时保留已有内容，完整观察仍按原规则替换；不可用条目首次发现不创建卡片，已有条目保留内容并投影不可用状态，恢复可用后可正常更新。
+
+`20260925_30` 迁移将已有队列载荷中的旧标记转换为显式字段，不改变候选状态、租约、尝试次数和基线属性。内容变化哈希（`material_hash`）保留已安装的编码，显式字段只在哈希材料中映射为历史键，避免载荷结构变化触发重复入队或使 checkpoint 基线失效；运行时不回读旧 metadata 标记。新进程要求 `reader-runtime-v26`，切换与回退时必须先停止旧的候选生产者和消费者，见[部署顺序](deployment.md#4-启动-api-与-worker)。
 
 来源 adapter 统一由扫描器选择：RSS、Web、YouTube 和 X 各有实现。Web 来源优先采用已确认的 RSS／Atom feed；需要发现时执行有界探测，无可用 feed 才进入规则编写流程。临时失败或访问阻断会保留相应状态，不能当成“确认没有 feed”。相关入口为 [feed_discovery.py](../backend/src/app/ingestion/feed_discovery.py) 和 [web_feeds.py](../backend/src/app/services/web_feeds.py)。
 

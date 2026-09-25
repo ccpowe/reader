@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from app.ingestion.models import SourceScanRequest
+from app.ingestion.models import ContentAvailability, SourceScanRequest
 from app.ingestion.sources.youtube_data import YouTubeSourceAdapter, YouTubeSourceConfig
 
 
@@ -237,7 +237,7 @@ async def test_known_unavailable_video_is_retained_as_a_status_update() -> None:
 
     assert page.completed is True
     assert page.items[0].native_id == "known-video"
-    assert page.items[0].raw_metadata["availability"] == "unavailable"
+    assert page.items[0].availability == ContentAvailability.UNAVAILABLE
 
 
 @pytest.mark.asyncio

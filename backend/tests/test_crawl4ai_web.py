@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from app.core.settings import Settings
-from app.ingestion.models import SourceScanError, SourceScanRequest
+from app.ingestion.models import ContentObservation, SourceScanError, SourceScanRequest
 from app.ingestion.sources.web_blog import WebBlogSourceAdapter, WebBlogSourceConfig, _url_native_id
 from app.ingestion.url_safety import PublicAsyncClient
 from app.ingestion.web_rules import WebRuleError, parse_web_rule, validate_web_rule
@@ -125,7 +125,7 @@ async def test_native_detail_failure_does_not_drop_listing_update(monkeypatch):
         page = await adapter(client, rule).scan_page(SourceScanRequest(initial=True))
     assert len(page.items) == 1
     assert page.items[0].excerpt_html == "<p>Summary 1</p>"
-    assert page.items[0].raw_metadata["web_discovery_only"] is True
+    assert page.items[0].observation == ContentObservation.LISTING
 
 
 async def test_native_pagination_and_same_page_offsets_replay_stable_boundaries(monkeypatch):
@@ -473,5 +473,5 @@ async def test_sanitized_empty_detail_is_still_discovery_only(monkeypatch, detai
     }
     async with httpx.AsyncClient() as client:
         page = await adapter(client, rule).scan_page(SourceScanRequest(initial=True))
-    assert page.items[0].raw_metadata["web_discovery_only"] is True
+    assert page.items[0].observation == ContentObservation.LISTING
     assert page.items[0].excerpt_html == "<p>Summary 1</p>"

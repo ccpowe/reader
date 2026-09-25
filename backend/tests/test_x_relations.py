@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import httpx
 
+from app.domain.x_relations import normalize_x_relations, x_preview
 from app.ingestion.sources.scweet_x import ScweetXSourceAdapter, ScweetXSourceConfig
-from app.services.x_relations import normalize_x_relations, x_preview
 
 
 def tweet(tweet_id="200", author_id="42", **legacy):
@@ -105,14 +105,14 @@ def test_legacy_record_remains_independent_with_short_preview():
 
 
 def test_preview_does_not_split_combining_characters_or_emoji():
-    from app.services.x_relations import short_text
+    from app.domain.x_relations import short_text
 
     text = "👩‍👩‍👧‍👦é" * 100
     assert short_text(text, 3) == "👩‍👩‍👧‍👦é👩‍👩‍👧‍👦…"
 
 
 def test_provider_fallback_does_not_erase_collected_relationships():
-    from app.services.x_relations import preserve_x_metadata
+    from app.domain.x_relations import preserve_x_metadata
 
     old = {"x": normalize_x_relations({"raw": tweet(in_reply_to_status_id_str="199")})}
     incoming = {"x": normalize_x_relations({"tweet_id": "200"}), "is_reply": False}
