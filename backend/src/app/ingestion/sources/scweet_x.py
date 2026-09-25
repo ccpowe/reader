@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -249,7 +250,10 @@ class ScweetXSourceAdapter(SourceAdapter):
         try:
             parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         except ValueError:
-            return None
+            try:
+                parsed = parsedate_to_datetime(str(value))
+            except (ValueError, TypeError, OverflowError):
+                return None
         return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
 

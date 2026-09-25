@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import httpx
 import pytest
 
@@ -230,3 +232,28 @@ def test_x_engagement_changes_do_not_change_material_hash() -> None:
 
     assert first is not None and second is not None
     assert first.material_hash() == second.material_hash()
+
+
+@pytest.mark.parametrize(
+    ("timestamp", "expected"),
+    [
+        ("Fri Sep 25 03:53:26 +0000 2026", datetime(2026, 9, 25, 3, 53, 26, tzinfo=UTC)),
+        ("Fri Sep 25 11:53:26 +0800 2026", datetime(2026, 9, 25, 3, 53, 26, tzinfo=UTC)),
+        ("2026-09-25T03:53:26Z", datetime(2026, 9, 25, 3, 53, 26, tzinfo=UTC)),
+        ("not a date", None),
+        (None, None),
+    ],
+)
+def test_scweet_content_preserves_publication_time(timestamp, expected) -> None:
+    adapter = ScweetXSourceAdapter.__new__(ScweetXSourceAdapter)
+    adapter._config = ScweetXSourceConfig("arena", "http://scweet", "token")
+    item = adapter._to_content(
+        {
+            "tweet_id": "2103332020722311605",
+            "tweet_url": "https://x.com/arena/status/2103332020722311605",
+            "text": "Grok 4.7 in Agent Arena",
+            "timestamp": timestamp,
+        }
+    )
+    assert item is not None
+    assert item.published_at == expected

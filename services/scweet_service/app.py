@@ -69,6 +69,7 @@ class ScweetRuntime:
     """One serial client: a single account must not run concurrent jobs."""
 
     def __init__(self) -> None:
+        from profile_timeline import ProfileTimelineEngine
         from Scweet.auth import load_cookies_json
 
         cookie_file = os.environ.get("SCWEET_COOKIES_FILE", "/run/secrets/scweet-cookies.json")
@@ -87,6 +88,16 @@ class ScweetRuntime:
             db_path=state_db,
             manifest_scrape_on_init=True,
             config=ScweetConfig(manifest_ttl_s=manifest_ttl),
+        )
+        # Replace only the profile-timeline engine; reuse account/session state
+        # and leave Scweet's search and profile lookup paths unchanged.
+        engine = self._client._api_engine
+        self._client._runner.profile_timeline_engine = ProfileTimelineEngine(
+            config=engine.config,
+            accounts_repo=engine.accounts_repo,
+            manifest_provider=engine.manifest_provider,
+            session_factory=engine.session_factory,
+            transaction_id_provider=engine.transaction_id_provider,
         )
         self._assert_account_configured()
         self._lock = asyncio.Lock()
@@ -141,9 +152,8 @@ class ScweetRuntime:
         if fetched:
             return fetched
 
-        # Some X profile timelines currently return cursor-only module pages
-        # that Scweet cannot parse. SearchTimeline uses a different GraphQL
-        # shape and is a bounded recovery path for recent source ingestion.
+        # X can return an empty profile timeline despite recent searchable posts.
+        # SearchTimeline is a bounded recovery path, not a completeness check.
         today = datetime.now(UTC).date()
         fallback = self._client.search(
             "",

@@ -16,7 +16,7 @@ WORKDIR /srv/scweet-service
 
 COPY --from=scweet-source /opt/scweet /opt/scweet
 COPY scweet_service/requirements.lock ./requirements.lock
-COPY scweet_service/app.py ./app.py
+COPY scweet_service/app.py scweet_service/profile_timeline.py ./
 
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
