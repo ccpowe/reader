@@ -14,7 +14,7 @@
 | `src/app/api/`、`src/app/services/` | HTTP 路由、请求／响应模型与业务服务；订阅事务入口为 `services/subscriptions.py`，来源健康查询为 `services/source_health.py` |
 | `src/app/core/` | 配置和认证；入口为 `settings.py`、`auth.py`、`server_access.py` |
 | `src/app/storage/` | 数据库会话、业务与账户模型、锁和 schema 就绪检查；入口为 `database.py`、`models.py`、`auth_models.py`、`schema.py` |
-| `src/app/workers/` | 后台循环，入口为 `main.py`；`sync.py` 扫描来源，`candidates.py` 处理候选，`health.py` 维护健康状态 |
+| `src/app/workers/` | 后台循环，入口为 `main.py`；`sync.py` 负责来源扫描 I/O 与事务，`services/scan_state.py` 集中扫描状态迁移，`services/web_scan_health.py` 处理 Web 结构健康与修复触发；`candidates.py` 处理候选，`health.py` 维护 Worker 健康状态 |
 | `src/app/ingestion/` | 内容源接入、抓取与提取；`sources/` 为来源适配，`web_rules.py` 为规则 schema 与真实执行反馈，`feed_discovery.py` 为 feed 探测，`browser_runtime.py` 为可选浏览器进程与隔离入口 |
 | `src/app/web_rule_agent/`、`src/app/workers/web_rules.py` | 网页规则 Agent 与 Worker 交接；`runtime.py` 为执行入口，`cli_browser.py` 运行任务内持久 CLI 探索，`memory.py` 管理工作证据、执行结果与读取进度 |
 | `src/app/browser_tasks/` | 可选容器浏览器任务的内部协议、Worker 客户端、adapter、控制器和回收器；公共 DTO 入口为 `protocol.py` |

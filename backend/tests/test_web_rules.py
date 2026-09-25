@@ -102,7 +102,7 @@ async def test_missing_rule_failure_stops_retries_until_authoring(monkeypatch):
     session.scalar.return_value = state
     session.get.side_effect = [source, run]
     enqueue = AsyncMock()
-    monkeypatch.setattr("app.workers.sync.ensure_web_rule_job", enqueue)
+    monkeypatch.setattr("app.services.web_scan_health.ensure_web_rule_job", enqueue)
 
     @asynccontextmanager
     async def factory():

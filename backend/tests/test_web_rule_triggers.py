@@ -12,8 +12,9 @@ from app.domain.enums import SourceKind, SourceStatus, SyncPhase
 from app.ingestion.models import SourceScanError, SourceScanRequest
 from app.ingestion.sources.web_blog import WebBlogSourceAdapter, WebBlogSourceConfig
 from app.ingestion.web_rules import parse_web_rule, web_rule_failure_feedback
+from app.services.scan_state import retry_delay
 from app.services.source_health import project_web_rule_health, web_rule_health_projections
-from app.workers.sync import _record_web_structure_health, _retry_delay
+from app.services.web_scan_health import record_web_structure_health
 
 URL = "https://example.com/blog"
 RULE = {
@@ -60,10 +61,10 @@ async def test_repair_requires_two_head_failures_and_recovery_closes_episode(
 ):
     source, state = source_state()
     session, enqueue = AsyncMock(), AsyncMock()
-    monkeypatch.setattr("app.workers.sync.ensure_web_rule_job", enqueue)
+    monkeypatch.setattr("app.services.web_scan_health.ensure_web_rule_job", enqueue)
 
     async def record(code, evidence):
-        await _record_web_structure_health(
+        await record_web_structure_health(
             session,
             source,
             state,
@@ -114,8 +115,8 @@ async def test_non_head_and_transport_failures_never_dispatch_repair(monkeypatch
     state.web_rule_structural_failures = 1
     episode = state.web_rule_failure_episode_id
     enqueue = AsyncMock()
-    monkeypatch.setattr("app.workers.sync.ensure_web_rule_job", enqueue)
-    await _record_web_structure_health(
+    monkeypatch.setattr("app.services.web_scan_health.ensure_web_rule_job", enqueue)
+    await record_web_structure_health(
         AsyncMock(),
         source,
         state,
@@ -162,7 +163,7 @@ async def test_verified_empty_tail_is_complete_but_empty_head_is_structural(monk
     assert caught.value.evidence["is_head"] is True
     assert caught.value.evidence["extracted_rows"] == 0
     assert not caught.value.long_lived
-    assert _retry_delay(caught.value, 1).total_seconds() < 5 * 60
+    assert retry_delay(caught.value, 1).total_seconds() < 5 * 60
 
 
 @pytest.mark.parametrize(
@@ -378,7 +379,7 @@ async def test_repeated_usable_head_missing_fields_never_queues_repair(
 ):
     source, state = source_state(episode=uuid4())
     enqueue = AsyncMock()
-    monkeypatch.setattr("app.workers.sync.ensure_web_rule_job", enqueue)
+    monkeypatch.setattr("app.services.web_scan_health.ensure_web_rule_job", enqueue)
 
     async def fetch(_client, url, **kwargs):
         return httpx.Response(
@@ -409,7 +410,7 @@ async def test_repeated_usable_head_missing_fields_never_queues_repair(
                 continue
             page = await adapter.scan_page(SourceScanRequest(conditional=False))
             assert page.items and page.warning_code == "web_rule_partial_parse"
-            await _record_web_structure_health(
+            await record_web_structure_health(
                 AsyncMock(),
                 source,
                 state,

@@ -15,6 +15,7 @@ from app.ingestion.models import SourceScanError, SourceScanPage, SourceScanRequ
 from app.ingestion.sources.web_blog import WebBlogSourceAdapter, WebBlogSourceConfig
 from app.ingestion.web_rules import parse_web_rule
 from app.services import web_rules
+from app.services.scan_state import ScanProgress
 from app.storage.models import (
     Content,
     FeedSource,
@@ -98,10 +99,14 @@ async def test_rule_activation_rejects_stale_scan_and_preserves_versions(monkeyp
                 sync.SourceClaim(source_id, token),
                 run_id,
                 SourceScanPage(items=(), provider_mode="old", raw_items=0, completed=True),
-                candidate_items=(),
-                max_changes=10,
-                baseline_checkpoint={},
-                mutate=lambda *_args: pytest.fail("stale scanner reached state mutation"),
+                progress=ScanProgress(
+                    source=source,
+                    state=state,
+                    max_pages=2,
+                    max_raw_items=100,
+                    max_changes=10,
+                    max_response_bytes=1024,
+                ),
             )
         revised = {**RULE, "id": "native-revised"}
         validator.return_value = {"status": "fail", "code": "web_structure_changed"}
@@ -218,8 +223,12 @@ async def test_native_listing_replay_and_new_update_persist_without_body(
 
 @pytest.mark.postgres
 async def test_retirement_migration_preserves_subscriptions_and_content(monkeypatch):
+    import json
+    from contextlib import AsyncExitStack
+
     import asyncpg
     from sqlalchemy import delete, text
+    from sqlalchemy.ext.asyncio import create_async_engine
     from test_postgres_migrations import (
         _assert_disposable_database,
         _run_alembic,
@@ -227,12 +236,13 @@ async def test_retirement_migration_preserves_subscriptions_and_content(monkeypa
         _test_guard_token,
     )
 
-    from app.storage.models import SourceEntry, SourceSubscription, UserSavedContent, WebFrontier
+    from app.storage.database import build_session_factory
+    from app.storage.models import SourceSubscription, UserSavedContent, WebFrontier
 
     dsn = _test_dsn()
     connection = await asyncpg.connect(dsn)
     await _assert_disposable_database(connection, _test_guard_token())
-    user_id, rss_id, uninitialized_id = uuid4(), uuid4(), uuid4()
+    user_id, rss_id, uninitialized_id, source_id = uuid4(), uuid4(), uuid4(), uuid4()
     now = datetime.now(UTC)
     try:
         # This guarded, disposable database is serialized by the test runner.
@@ -247,87 +257,111 @@ async def test_retirement_migration_preserves_subscriptions_and_content(monkeypa
             "INSERT INTO profiles (id) VALUES ($1)",
             user_id,
         )
-        async with _database() as (factory, source_id):
-            async with factory() as session:
-                source = await session.get(FeedSource, source_id)
-                source.kind = SourceKind.WEB
-                source.config = {
-                    "web_rule": {"article_body_selectors": ["article"]},
-                    "web_rule_versions": [{"rule": {"id": "retired"}}],
-                    "web_rule_active_version": "old",
-                    "web_rule_candidate": {"rule": {}},
-                    "profile_id": "langchain_blog",
-                    "feed_url": "https://example.com/rss",
-                    "unrelated_setting": "keep",
-                }
-                session.add_all(
-                    [
-                        FeedSource(
-                            id=rss_id,
-                            kind=SourceKind.RSS,
-                            canonical_key=f"rss-control:{rss_id}",
-                            canonical_url=URL,
-                            display_name="RSS control",
-                            config={"keep": "rss"},
-                        ),
-                        FeedSource(
-                            id=uninitialized_id,
-                            kind=SourceKind.WEB,
-                            canonical_key=f"web-no-state:{uninitialized_id}",
-                            canonical_url="https://example.com/news",
-                            display_name="No state",
-                        ),
-                    ]
-                )
-                await session.flush()
-                content = Content(
-                    authority_source_id=source_id,
-                    kind="article",
-                    title="Preserved article",
-                    body_html="<p>Keep body</p>",
-                )
-                session.add(content)
-                await session.flush()
-                content_id = content.id
-                session.add_all(
-                    [
-                        SourceEntry(
-                            source_id=source_id,
-                            content_id=content_id,
-                            native_id="kept",
-                            title="Preserved article",
-                            external_url="https://example.com/kept",
-                            feed_sort_at=now,
-                        ),
-                        SourceSubscription(user_id=user_id, source_id=source_id),
-                        UserSavedContent(user_id=user_id, content_id=content_id),
-                        SourceSyncRun(source_id=source_id, status=SyncRunStatus.RUNNING),
-                        WebFrontier(
-                            source_id=source_id,
-                            original_url="https://example.com/old",
-                            normalized_url="https://example.com/old",
-                            url_hash="a" * 64,
-                        ),
-                    ]
-                )
-                # The fixture deliberately runs against revision 24. Use only
-                # that schema's columns, independently of newer ORM additions.
-                await session.execute(
-                    text("""
-                        INSERT INTO source_sync_states (
-                            source_id, phase, initial_sync_completed,
-                            committed_checkpoint, pending_checkpoint, continuation,
-                            lease_token, lease_expires_at, next_scan_at,
-                            consecutive_failures, consecutive_limit_runs, gap_detected
-                        ) VALUES (
-                            :source_id, 'idle', true,
-                            '{"head_ids":["old"],"feed_url":"old"}', '{"old": true}',
-                            '{"old": true}', :token, :expires, :now, 0, 0, false
-                        ), (
-                            :rss_id, 'idle', false, '{"rss":"keep"}', '{}', NULL,
-                            NULL, NULL, :now, 0, 0, false
-                        )
+        async with AsyncExitStack() as resources:
+            engine = create_async_engine(dsn.replace("postgresql://", "postgresql+asyncpg://", 1))
+            resources.push_async_callback(engine.dispose)
+            factory = build_session_factory(engine)
+            content_id = uuid4()
+            # Historical fixtures must not insert through current ORM models:
+            # revision 24 predates channel-update columns and their defaults.
+            async with engine.begin() as fixture:
+                for identifier, kind, config in (
+                    (
+                        source_id,
+                        "web",
+                        {
+                            "web_rule": {"article_body_selectors": ["article"]},
+                            "web_rule_versions": [{"rule": {"id": "retired"}}],
+                            "web_rule_active_version": "old",
+                            "web_rule_candidate": {"rule": {}},
+                            "profile_id": "langchain_blog",
+                            "feed_url": "https://example.com/rss",
+                            "unrelated_setting": "keep",
+                        },
+                    ),
+                    (rss_id, "rss", {"keep": "rss"}),
+                    (uninitialized_id, "web", {}),
+                ):
+                    await fixture.execute(
+                        text("""
+                        INSERT INTO feed_sources
+                            (id, kind, canonical_key, canonical_url, config, visibility, status)
+                        VALUES (:id, :kind, :key, :url, CAST(:config AS jsonb), 'shared', 'pending')
                     """),
+                        {
+                            "id": identifier,
+                            "kind": kind,
+                            "key": f"historical:{identifier}",
+                            "url": URL,
+                            "config": json.dumps(config),
+                        },
+                    )
+                await fixture.execute(
+                    text("""
+                    INSERT INTO contents
+                        (id, authority_source_id, kind, title, body_html, extraction_status)
+                    VALUES (:id, :source, 'article', 'Preserved article',
+                            '<p>Keep body</p>', 'not_needed')
+                """),
+                    {"id": content_id, "source": source_id},
+                )
+                await fixture.execute(
+                    text("""
+                    INSERT INTO source_entries
+                        (id, source_id, content_id, native_id, title, external_url,
+                         feed_sort_at, raw_metadata)
+                    VALUES (:id, :source, :content, 'kept', 'Preserved article',
+                            'https://example.com/kept', :now, '{}')
+                """),
+                    {"id": uuid4(), "source": source_id, "content": content_id, "now": now},
+                )
+                await fixture.execute(
+                    text("""
+                    INSERT INTO source_subscriptions (id, user_id, source_id, is_enabled)
+                    VALUES (:id, :user, :source, true)
+                """),
+                    {"id": uuid4(), "user": user_id, "source": source_id},
+                )
+                await fixture.execute(
+                    text("""
+                    INSERT INTO user_saved_contents (id, user_id, content_id)
+                    VALUES (:id, :user, :content)
+                """),
+                    {"id": uuid4(), "user": user_id, "content": content_id},
+                )
+                await fixture.execute(
+                    text("""
+                    INSERT INTO source_sync_runs (id, source_id, status, metrics)
+                    VALUES (:id, :source, 'running', '{}')
+                """),
+                    {"id": uuid4(), "source": source_id},
+                )
+                await fixture.execute(
+                    text("""
+                    INSERT INTO web_frontier
+                        (id, source_id, original_url, normalized_url, url_hash,
+                         confidence, status, evidence, attempt_count)
+                    VALUES (:id, :source, 'https://example.com/old', 'https://example.com/old',
+                            :hash, 0, 'pending', '{}', 0)
+                """),
+                    {"id": uuid4(), "source": source_id, "hash": "a" * 64},
+                )
+                await fixture.execute(
+                    text("""
+                    INSERT INTO source_sync_states (
+                        source_id, phase, initial_sync_completed,
+                        committed_checkpoint, pending_checkpoint, continuation,
+                        lease_token, lease_expires_at, next_scan_at,
+                        consecutive_failures, consecutive_limit_runs, gap_detected
+                    ) VALUES (
+                        :source_id, 'idle', true,
+                        '{"head_ids":["old"],"feed_url":"old"}', '{"old": true}',
+                        '{"old": true}', :token, :expires, :now, 0, 0, false
+                    ), (
+                        :rss_id, 'idle', false, '{"rss":"keep"}', '{}', NULL,
+                        NULL, NULL, :now, 0, 0, false
+                    )
+                """),
                     {
                         "source_id": source_id,
                         "rss_id": rss_id,
@@ -336,29 +370,31 @@ async def test_retirement_migration_preserves_subscriptions_and_content(monkeypa
                         "now": now,
                     },
                 )
-                for status in ("pending", "processing", "failed", "completed"):
-                    session.add(
-                        IngestionCandidate(
-                            source_id=source_id,
-                            native_id=status,
-                            payload={"old": True},
-                            payload_hash="a" * 64,
-                            observed_at=now,
-                            suggested_feed_sort_at=now,
-                            status=status,
-                        )
+                for identifier, status, payload in (
+                    *(
+                        (source_id, status, {"old": True})
+                        for status in ("pending", "processing", "failed", "completed")
+                    ),
+                    (rss_id, "pending", {"keep": True}),
+                ):
+                    await fixture.execute(
+                        text("""
+                        INSERT INTO ingestion_candidates
+                            (id, source_id, native_id, payload, payload_hash, observed_at,
+                             suggested_feed_sort_at, status, attempt_count)
+                        VALUES (:id, :source, :native, CAST(:payload AS jsonb), :hash,
+                                :now, :now, :status, 0)
+                    """),
+                        {
+                            "id": uuid4(),
+                            "source": identifier,
+                            "native": status,
+                            "payload": json.dumps(payload),
+                            "hash": "a" * 64,
+                            "now": now,
+                            "status": status,
+                        },
                     )
-                session.add(
-                    IngestionCandidate(
-                        source_id=rss_id,
-                        native_id="rss",
-                        payload={"keep": True},
-                        payload_hash="b" * 64,
-                        observed_at=now,
-                        suggested_feed_sort_at=now,
-                    )
-                )
-                await session.commit()
             _run_alembic(dsn, "upgrade", "20260909_25")
             _run_alembic(dsn, "upgrade", "head")
             async with factory() as session:
@@ -435,5 +471,9 @@ async def test_retirement_migration_preserves_subscriptions_and_content(monkeypa
         # A failed migration assertion must not leave subsequent tests on an
         # old schema and disguise their actual behavior with missing columns.
         _run_alembic(dsn, "upgrade", "head")
+        await connection.execute(
+            "DELETE FROM feed_sources WHERE id = ANY($1::uuid[])",
+            [source_id, rss_id, uninitialized_id],
+        )
         await connection.execute("DELETE FROM profiles WHERE id = $1", user_id)
         await connection.close()

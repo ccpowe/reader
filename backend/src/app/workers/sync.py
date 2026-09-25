@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import random
-from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse, urlunparse
 from uuid import UUID, uuid4
 
@@ -17,20 +14,10 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.settings import Settings, get_settings
-from app.domain.enums import (
-    ContentKind,
-    SourceKind,
-    SourceStatus,
-    SyncPhase,
-    SyncRunStatus,
-)
-from app.ingestion.candidate_queue import (
-    CandidateUpsertResult,
-    upsert_candidates,
-    upsert_web_frontier,
-)
+from app.domain.enums import ContentKind, SourceKind, SourceStatus, SyncRunStatus
+from app.ingestion.candidate_queue import upsert_candidates, upsert_web_frontier
 from app.ingestion.feed_discovery import discover_web_feed
-from app.ingestion.models import SourceScanError, SourceScanPage, SourceScanRequest
+from app.ingestion.models import SourceScanError, SourceScanPage
 from app.ingestion.sources.apify_x import ApifyXSourceAdapter, ApifyXSourceConfig
 from app.ingestion.sources.base import SourceAdapter
 from app.ingestion.sources.rss import RSSSourceAdapter, RSSSourceConfig
@@ -40,8 +27,20 @@ from app.ingestion.sources.youtube_data import YouTubeSourceAdapter, YouTubeSour
 from app.ingestion.url_safety import PublicAsyncClient
 from app.ingestion.web_feed import configured_web_feed_url, web_feed_probe_required
 from app.ingestion.web_rules import WebRuleError, parse_web_rule
+from app.services.scan_state import (
+    PageDisposition,
+    ScanProgress,
+    checkpoint_hashes,
+    claim_scan,
+    empty_run_metrics,
+    finish_incomplete_run,
+    mark_web_head_observed,
+    record_scan_failure,
+    recovered_run_values,
+    start_scan,
+)
 from app.services.web_feeds import save_web_feed_discovery, schedule_web_feed_probes
-from app.services.web_rule_jobs import ensure_web_rule_job
+from app.services.web_scan_health import record_web_structure_health
 from app.storage.models import (
     FeedSource,
     ProviderQuotaUsage,
@@ -51,7 +50,6 @@ from app.storage.models import (
 )
 
 logger = logging.getLogger(__name__)
-_RESTART_CURSOR = {"_restart_from_head": True}
 
 
 @dataclass(frozen=True)
@@ -118,8 +116,7 @@ async def claim_due_sources(session, *, limit: int = 20) -> list[SourceClaim]:
         ):
             continue
         token = uuid4()
-        state.lease_token = token
-        state.lease_expires_at = now + timedelta(seconds=settings.ingestion_scan_lease_seconds)
+        claim_scan(state, token, now, settings.ingestion_scan_lease_seconds)
         claims.append(SourceClaim(state.source_id, token))
     await session.commit()
     return claims
@@ -214,16 +211,8 @@ async def scan_claimed_source(session_factory, claim: SourceClaim) -> None:
                     client,
                     use_youtube_data_api=use_youtube_data_api,
                 )
-                if not state.initial_sync_completed:
-                    await _run_initial_scan(session_factory, claim, run_id, source, state, adapter)
-                # A degraded provider fallback (notably YouTube Atom) must not
-                # orphan an authoritative continuation.  Health and backlog
-                # are independent concerns even though ``phase`` is a single
-                # display field, so durable continuation always wins here.
-                elif state.continuation:
-                    await _run_catch_up(session_factory, claim, run_id, source, state, adapter)
-                else:
-                    await _run_head_scan(session_factory, claim, run_id, source, state, adapter)
+                # A durable continuation wins even when the provider is degraded.
+                await _scan_pages(session_factory, claim, run_id, source, state, adapter)
     except TimeoutError:
         await _record_scan_failure(
             session_factory,
@@ -260,26 +249,21 @@ async def _start_run(session_factory, claim: SourceClaim):
                 SourceSyncRun.source_id == source.id,
                 SourceSyncRun.status == SyncRunStatus.RUNNING,
             )
-            .values(
-                status=SyncRunStatus.PARTIAL,
-                finished_at=now,
-                error_code="lease_recovered",
-                error_message="A previous scanner lease expired before completion.",
-            )
+            .values(**recovered_run_values(now))
         )
         run = SourceSyncRun(
             source_id=source.id,
             status=SyncRunStatus.RUNNING,
-            metrics=_empty_metrics(),
+            metrics=empty_run_metrics(),
         )
         session.add(run)
-        state.last_attempt_at = now
+        start_scan(state, now)
         await session.commit()
         # Detach plain source/state snapshots before upstream I/O.
         return source, state, run.id
 
 
-async def _run_initial_scan(
+async def _scan_pages(
     session_factory,
     claim: SourceClaim,
     run_id: UUID,
@@ -288,378 +272,30 @@ async def _run_initial_scan(
     adapter: SourceAdapter,
 ) -> None:
     settings = get_settings()
-    initial_raw = (
-        15
-        if source.kind in {SourceKind.YOUTUBE, SourceKind.X}
-        else settings.ingestion_raw_items_per_sync
+    progress = ScanProgress(
+        source=source,
+        state=state,
+        max_pages=settings.ingestion_max_pages_per_sync,
+        max_raw_items=settings.ingestion_raw_items_per_sync,
+        max_changes=settings.ingestion_max_items_per_sync,
+        max_response_bytes=settings.ingestion_max_response_bytes,
     )
-    page = await adapter.scan_page(
-        SourceScanRequest(
-            checkpoint={},
-            initial=True,
-            conditional=False,
-            max_raw_items=initial_raw,
-            max_response_bytes=settings.ingestion_max_response_bytes,
-        )
-    )
-
-    def mutate(
-        durable_state: SourceSyncState,
-        durable_source: FeedSource,
-        run: SourceSyncRun,
-        outcome: CandidateUpsertResult,
-        now: datetime,
-    ) -> None:
-        durable_state.initial_sync_completed = True
-        durable_state.committed_checkpoint = _with_unchanged_streak(
-            page.checkpoint, changed=outcome.changed, previous={}
-        )
-        durable_state.pending_checkpoint = {}
-        durable_state.continuation = None
-        durable_state.provider_mode = page.provider_mode
-        durable_state.last_complete_at = now if page.authoritative else None
-        durable_state.phase = (
-            SyncPhase.DEGRADED
-            if page.warning_code or page.gap_detected or not page.authoritative
-            else SyncPhase.IDLE
-        )
-        _apply_page_health(durable_state, page)
-        durable_state.next_scan_at = _next_normal_scan(durable_source, durable_state, now)
-        _release_lease(durable_state)
-        durable_source.status = SourceStatus.ACTIVE
-        _finish_run(
-            run,
-            page,
-            now,
-            partial=bool(page.warning_code or page.gap_detected or page.limit_reached),
-        )
-
-    await _persist_page(
-        session_factory,
-        claim,
-        run_id,
-        page,
-        candidate_items=page.items[:10],
-        max_changes=min(10, settings.ingestion_max_items_per_sync),
-        baseline_checkpoint={},
-        mutate=mutate,
-    )
-
-
-async def _run_head_scan(
-    session_factory,
-    claim: SourceClaim,
-    run_id: UUID,
-    source: FeedSource,
-    state: SourceSyncState,
-    adapter: SourceAdapter,
-) -> None:
-    settings = get_settings()
-    committed = dict(state.committed_checkpoint)
-    head_checkpoint: dict[str, Any] | None = None
-    cursor: dict[str, Any] | None = None
-    changed = 0
-    raw_items = 0
-    pages = 0
-    while pages < settings.ingestion_max_pages_per_sync:
-        raw_remaining = settings.ingestion_raw_items_per_sync - raw_items
-        if raw_remaining <= 0:
-            break
-        page = await adapter.scan_page(
-            SourceScanRequest(
-                checkpoint=committed,
-                continuation=cursor,
-                initial=False,
-                conditional=cursor is None and state.phase == SyncPhase.IDLE,
-                max_raw_items=raw_remaining,
-                max_response_bytes=settings.ingestion_max_response_bytes,
-            )
-        )
-        pages += 1
-        raw_items += page.raw_items
-        if head_checkpoint is None:
-            head_checkpoint = page.checkpoint
-        candidate_remaining = settings.ingestion_max_items_per_sync - changed
-        terminal: dict[str, bool] = {"done": False, "stop": False}
-
-        def mutate(
-            durable_state: SourceSyncState,
-            durable_source: FeedSource,
-            run: SourceSyncRun,
-            outcome: CandidateUpsertResult,
-            now: datetime,
-        ) -> None:
-            nonlocal changed
-            changed += outcome.changed
-            coverage_complete = page.completed and not outcome.cap_reached
-            if not page.authoritative:
-                durable_state.committed_checkpoint = _merge_fallback_checkpoint(
-                    durable_state.committed_checkpoint, page.checkpoint
-                )
-                durable_state.provider_mode = page.provider_mode
-                durable_state.phase = SyncPhase.DEGRADED
-                _apply_page_health(durable_state, page)
-                durable_state.next_scan_at = _next_normal_scan(durable_source, durable_state, now)
-                _release_lease(durable_state)
-                _finish_run(run, page, now, partial=True)
-                terminal.update(done=True, stop=True)
-                return
-            if coverage_complete:
-                final_checkpoint = _with_unchanged_streak(
-                    head_checkpoint or page.checkpoint,
-                    changed=changed,
-                    previous=durable_state.committed_checkpoint,
-                )
-                durable_state.committed_checkpoint = final_checkpoint
-                durable_state.pending_checkpoint = {}
-                durable_state.continuation = None
-                durable_state.last_complete_at = now
-                durable_state.phase = (
-                    SyncPhase.DEGRADED if page.gap_detected or page.warning_code else SyncPhase.IDLE
-                )
-                durable_state.provider_mode = page.provider_mode
-                durable_state.consecutive_failures = 0
-                durable_state.consecutive_limit_runs = (
-                    durable_state.consecutive_limit_runs + 1 if page.limit_reached else 0
-                )
-                _apply_page_health(durable_state, page)
-                durable_state.next_scan_at = _next_normal_scan(durable_source, durable_state, now)
-                _release_lease(durable_state)
-                _finish_run(
-                    run,
-                    page,
-                    now,
-                    partial=bool(page.gap_detected or page.warning_code or page.limit_reached),
-                )
-                terminal.update(done=True, stop=True)
-                return
-
-            durable_state.pending_checkpoint = head_checkpoint or page.checkpoint
-            durable_state.phase = SyncPhase.CATCHING_UP
-            durable_state.provider_mode = page.provider_mode
-            next_cursor = _cursor_for_incomplete_page(cursor, page, outcome)
-            durable_state.continuation = {
-                "latest_checkpoint": head_checkpoint or page.checkpoint,
-                "tasks": [
-                    {
-                        "lane": "backlog",
-                        "cursor": next_cursor,
-                        "checkpoint": committed,
-                    }
-                ],
-            }
-            _apply_page_health(durable_state, page)
-            durable_state.next_scan_at = _next_normal_scan(durable_source, durable_state, now)
-            terminal["stop"] = (
-                outcome.cap_reached or changed >= settings.ingestion_max_items_per_sync
-            )
-
-        outcome = await _persist_page(
+    while request := progress.next_request():
+        page = await adapter.scan_page(request)
+        disposition = await _persist_page(
             session_factory,
             claim,
             run_id,
             page,
-            candidate_items=page.items,
-            max_changes=max(candidate_remaining, 0),
-            baseline_checkpoint=committed,
-            mutate=mutate,
+            progress=progress,
         )
-        if terminal["done"]:
+        if disposition == PageDisposition.COMPLETE:
             return
-        if terminal["stop"] or outcome.cap_reached:
-            await _finish_incomplete_run(
-                session_factory,
-                claim,
-                run_id,
-                limit_reached="candidates",
-            )
-            return
-        if page.completed:
-            return
-        cursor = page.next_continuation
-        if cursor is None:
-            break
-    await _finish_incomplete_run(
-        session_factory,
-        claim,
-        run_id,
-        limit_reached=(
-            "pages"
-            if pages >= settings.ingestion_max_pages_per_sync
-            else "raw_items"
-            if raw_items >= settings.ingestion_raw_items_per_sync
-            else "provider_continuation"
-        ),
-    )
-
-
-async def _run_catch_up(
-    session_factory,
-    claim: SourceClaim,
-    run_id: UUID,
-    source: FeedSource,
-    state: SourceSyncState,
-    adapter: SourceAdapter,
-) -> None:
-    settings = get_settings()
-    context = dict(state.continuation or {})
-    latest_checkpoint = dict(
-        context.get("latest_checkpoint")
-        if isinstance(context.get("latest_checkpoint"), dict)
-        else state.pending_checkpoint or state.committed_checkpoint
-    )
-    existing_tasks = [dict(task) for task in context.get("tasks", []) if isinstance(task, dict)]
-    tasks: list[dict[str, Any]] = [
-        {
-            "lane": "head",
-            "cursor": _RESTART_CURSOR,
-            "checkpoint": latest_checkpoint,
-            "fresh": True,
-        },
-        *existing_tasks,
-    ]
-    changed = 0
-    raw_items = 0
-    pages = 0
-    while tasks and pages < settings.ingestion_max_pages_per_sync:
-        task = tasks[0]
-        cursor = _provider_cursor(task.get("cursor"))
-        target_checkpoint = (
-            dict(task["checkpoint"]) if isinstance(task.get("checkpoint"), dict) else {}
-        )
-        raw_remaining = settings.ingestion_raw_items_per_sync - raw_items
-        if raw_remaining <= 0:
-            break
-        page = await adapter.scan_page(
-            SourceScanRequest(
-                checkpoint=target_checkpoint,
-                continuation=cursor,
-                initial=False,
-                conditional=False,
-                max_raw_items=raw_remaining,
-                max_response_bytes=settings.ingestion_max_response_bytes,
-            )
-        )
-        pages += 1
-        raw_items += page.raw_items
-        candidate_remaining = settings.ingestion_max_items_per_sync - changed
-        terminal: dict[str, bool] = {"done": False, "stop": False}
-        was_fresh_first_page = bool(task.get("fresh")) and cursor is None
-
-        def mutate(
-            durable_state: SourceSyncState,
-            durable_source: FeedSource,
-            run: SourceSyncRun,
-            outcome: CandidateUpsertResult,
-            now: datetime,
-        ) -> None:
-            nonlocal changed, latest_checkpoint, tasks
-            changed += outcome.changed
-            if not page.authoritative:
-                durable_state.committed_checkpoint = _merge_fallback_checkpoint(
-                    durable_state.committed_checkpoint, page.checkpoint
-                )
-                durable_state.phase = SyncPhase.DEGRADED
-                durable_state.provider_mode = page.provider_mode
-                _apply_page_health(durable_state, page)
-                durable_state.next_scan_at = _next_normal_scan(durable_source, durable_state, now)
-                _release_lease(durable_state)
-                _finish_run(run, page, now, partial=True)
-                terminal.update(done=True, stop=True)
-                return
-
-            if was_fresh_first_page:
-                latest_checkpoint = page.checkpoint
-            if outcome.cap_reached:
-                task["cursor"] = task.get("cursor") or _RESTART_CURSOR
-                task.pop("fresh", None)
-                terminal["stop"] = True
-            elif page.completed:
-                tasks = tasks[1:]
-            else:
-                task["cursor"] = page.next_continuation or _RESTART_CURSOR
-                task.pop("fresh", None)
-
-            if not tasks:
-                # A non-authoritative fallback may have refreshed its nested
-                # Atom checkpoint while this authoritative backlog was paused.
-                # Preserve that independent progress when committing the new
-                # authoritative head checkpoint.
-                final_checkpoint = _merge_fallback_checkpoint(
-                    latest_checkpoint,
-                    durable_state.committed_checkpoint,
-                )
-                durable_state.committed_checkpoint = _with_unchanged_streak(
-                    final_checkpoint,
-                    changed=changed,
-                    previous=durable_state.committed_checkpoint,
-                )
-                durable_state.pending_checkpoint = {}
-                durable_state.continuation = None
-                durable_state.last_complete_at = now
-                durable_state.phase = (
-                    SyncPhase.DEGRADED if page.gap_detected or page.warning_code else SyncPhase.IDLE
-                )
-                durable_state.provider_mode = page.provider_mode
-                durable_state.consecutive_failures = 0
-                durable_state.consecutive_limit_runs = (
-                    durable_state.consecutive_limit_runs + 1 if page.limit_reached else 0
-                )
-                _apply_page_health(durable_state, page)
-                durable_state.next_scan_at = _next_normal_scan(durable_source, durable_state, now)
-                _release_lease(durable_state)
-                _finish_run(
-                    run,
-                    page,
-                    now,
-                    partial=bool(page.gap_detected or page.warning_code or page.limit_reached),
-                )
-                terminal.update(done=True, stop=True)
-                return
-
-            durable_state.pending_checkpoint = state.pending_checkpoint or latest_checkpoint
-            durable_state.continuation = {
-                "latest_checkpoint": latest_checkpoint,
-                "tasks": [_serializable_task(value) for value in tasks],
-            }
-            durable_state.phase = SyncPhase.CATCHING_UP
-            durable_state.provider_mode = page.provider_mode
-            _apply_page_health(durable_state, page)
-            durable_state.next_scan_at = _next_normal_scan(durable_source, durable_state, now)
-            if changed >= settings.ingestion_max_items_per_sync:
-                terminal["stop"] = True
-
-        outcome = await _persist_page(
-            session_factory,
-            claim,
-            run_id,
-            page,
-            candidate_items=page.items,
-            max_changes=max(candidate_remaining, 0),
-            baseline_checkpoint=target_checkpoint,
-            mutate=mutate,
-        )
-        if terminal["done"]:
-            return
-        if terminal["stop"] or outcome.cap_reached:
-            await _finish_incomplete_run(
-                session_factory,
-                claim,
-                run_id,
-                limit_reached="candidates",
-            )
+        if disposition == PageDisposition.CANDIDATE_LIMIT:
+            await _finish_incomplete_run(session_factory, claim, run_id, limit_reached="candidates")
             return
     await _finish_incomplete_run(
-        session_factory,
-        claim,
-        run_id,
-        limit_reached=(
-            "pages"
-            if pages >= settings.ingestion_max_pages_per_sync
-            else "raw_items"
-            if raw_items >= settings.ingestion_raw_items_per_sync
-            else "provider_continuation"
-        ),
+        session_factory, claim, run_id, limit_reached=progress.incomplete_reason()
     )
 
 
@@ -668,14 +304,8 @@ async def _persist_page(
     claim: SourceClaim,
     run_id: UUID,
     page: SourceScanPage,
-    *,
-    candidate_items,
-    max_changes: int,
-    baseline_checkpoint: dict[str, Any],
-    mutate: Callable[
-        [SourceSyncState, FeedSource, SourceSyncRun, CandidateUpsertResult, datetime], None
-    ],
-) -> CandidateUpsertResult:
+    progress: ScanProgress,
+) -> PageDisposition:
     async with session_factory() as session:
         source = await session.get(FeedSource, claim.source_id, with_for_update=True)
         state = await session.scalar(
@@ -690,10 +320,10 @@ async def _persist_page(
         outcome = await upsert_candidates(
             session,
             source_id=source.id,
-            items=tuple(candidate_items),
+            items=tuple(progress.candidate_items(page)),
             observed_at=now,
-            max_changes=max_changes,
-            baseline_hashes=_checkpoint_hashes(baseline_checkpoint),
+            max_changes=progress.candidate_budget(),
+            baseline_hashes=checkpoint_hashes(progress.baseline_checkpoint()),
             counts_as_update=state.initial_sync_completed,
         )
         if page.web_links:
@@ -706,29 +336,13 @@ async def _persist_page(
             source.display_name = page.source_display_name.strip()[:300]
         if page.source_config_updates:
             source.config = {**source.config, **page.source_config_updates}
-        metrics = dict(run.metrics or {})
-        metrics["pages"] = int(metrics.get("pages", 0)) + 1
-        metrics["raw_items"] = int(metrics.get("raw_items", 0)) + page.raw_items
-        metrics["candidates_changed"] = int(metrics.get("candidates_changed", 0)) + outcome.changed
-        metrics["duplicates"] = int(metrics.get("duplicates", 0)) + outcome.duplicates
-        metrics["normalized_items"] = int(metrics.get("normalized_items", 0)) + len(page.items)
-        if page.limit_reached:
-            limits = list(metrics.get("limits", []))
-            if page.limit_reached not in limits:
-                limits.append(page.limit_reached)
-            metrics["limits"] = limits
-        run.metrics = metrics
-        run.provider_mode = page.provider_mode
-        state.last_attempt_at = now
-        mutate(state, source, run, outcome, now)
-        if page.provider_mode == "web_rss":
-            state.web_rule_structural_failures = 0
+        disposition = progress.apply_page(state, source, run, page, outcome, now)
         if (
             source.kind == SourceKind.WEB
             and page.web_listing_evidence.get("is_head")
             and not (run.metrics or {}).get("web_head_observed")
         ):
-            await _record_web_structure_health(
+            await record_web_structure_health(
                 session,
                 source,
                 state,
@@ -736,12 +350,9 @@ async def _persist_page(
                 evidence=page.web_listing_evidence,
                 now=now,
             )
-            metrics = dict(run.metrics or {})
-            metrics["web_listing"] = page.web_listing_evidence
-            metrics["web_head_observed"] = True
-            run.metrics = metrics
+            mark_web_head_observed(run, page.web_listing_evidence)
         await session.commit()
-        return outcome
+        return disposition
 
 
 async def _finish_incomplete_run(
@@ -764,19 +375,7 @@ async def _finish_incomplete_run(
         if state.lease_token != claim.lease_token:
             return
         now = datetime.now(UTC)
-        state.phase = SyncPhase.CATCHING_UP
-        state.consecutive_limit_runs += 1
-        state.next_scan_at = _next_normal_scan(durable_source, state, now)
-        _release_lease(state)
-        run.status = SyncRunStatus.PARTIAL
-        run.finished_at = now
-        metrics = dict(run.metrics or {})
-        metrics["coverage_complete"] = False
-        limits = list(metrics.get("limits", []))
-        if limit_reached not in limits:
-            limits.append(limit_reached)
-        metrics["limits"] = limits
-        run.metrics = metrics
+        finish_incomplete_run(durable_source, state, run, now=now, limit_reached=limit_reached)
         await session.commit()
 
 
@@ -797,46 +396,13 @@ async def _record_scan_failure(
         if state is None or source is None or state.lease_token != claim.lease_token:
             return
         now = datetime.now(UTC)
-        state.last_error_code = exc.code
-        state.last_error_message = str(exc)[:2000]
-        if exc.code == "web_rule_required":
-            state.phase = SyncPhase.DEGRADED
-            state.next_scan_at = None
-            status = SyncRunStatus.FAILED
-        elif exc.code == "cursor_invalid":
-            state.phase = SyncPhase.CATCHING_UP
-            state.continuation = {
-                "latest_checkpoint": state.pending_checkpoint or state.committed_checkpoint,
-                "tasks": [
-                    {
-                        "lane": "backlog",
-                        "cursor": _RESTART_CURSOR,
-                        "checkpoint": state.committed_checkpoint,
-                    }
-                ],
-            }
-            state.next_scan_at = _next_normal_scan(source, state, now)
-            status = SyncRunStatus.PARTIAL
-        else:
-            state.phase = SyncPhase.DEGRADED
-            state.consecutive_failures += 1
-            delay = _retry_delay(exc, state.consecutive_failures)
-            state.next_scan_at = now + delay
-            status = SyncRunStatus.FAILED
-        _release_lease(state)
-        if run is not None:
-            run.status = status
-            run.finished_at = now
-            run.error_code = exc.code
-            run.error_message = str(exc)[:2000]
-            if exc.evidence:
-                run.metrics = {**(run.metrics or {}), "web_listing": exc.evidence}
+        record_scan_failure(source, state, run, exc, now)
         if source.kind == SourceKind.WEB and not (
             exc.evidence.get("is_head")
             and run is not None
             and (run.metrics or {}).get("web_head_observed")
         ):
-            await _record_web_structure_health(
+            await record_web_structure_health(
                 session,
                 source,
                 state,
@@ -848,64 +414,6 @@ async def _record_scan_failure(
         logger.warning(
             "Source scan failed: source_id=%s code=%s error=%s", source.id, exc.code, exc
         )
-
-
-async def _record_web_structure_health(
-    session,
-    source: FeedSource,
-    state: SourceSyncState,
-    *,
-    code: str | None,
-    evidence: dict[str, Any],
-    now: datetime,
-) -> None:
-    """The caller owns source→state locks and commits this evidence with its scan."""
-    if configured_web_feed_url(source.canonical_url, source.config):
-        structural = code in {"web_rss_http_404", "web_rss_http_410", "invalid_feed"} and (
-            evidence.get("feed_head") is True
-        )
-        state.web_rule_structural_failures = (
-            (state.web_rule_structural_failures or 0) + 1 if structural else 0
-        )
-        if structural:
-            # A retired feed should be rechecked promptly instead of the normal
-            # day-long retry for a permanent provider HTTP error.
-            state.next_scan_at = now + timedelta(minutes=2)
-        if state.web_rule_structural_failures >= 2:
-            record = dict(source.config["web_feed_discovery"])
-            record.update(status="retry", invalidated_at=now.isoformat(), failure_code=code)
-            source.config = {
-                **source.config,
-                "web_feed_discovery": record,
-                "web_rule_revision": int(source.config.get("web_rule_revision") or 0) + 1,
-            }
-            state.committed_checkpoint = {
-                key: value
-                for key, value in state.committed_checkpoint.items()
-                if key in {"head_ids", "item_hashes"}
-            }
-            state.pending_checkpoint, state.continuation = {}, None
-            state.web_rule_structural_failures = 0
-            state.last_error_code = "web_feed_discovery_retry"
-            state.last_error_message = "The selected feed changed; checking the website again."
-        return
-    structural = (
-        code in {"web_structure_changed", "web_rule_missing_fields", "web_rule_action_failed"}
-        and evidence.get("is_head") is True
-        and not (code == "web_rule_missing_fields" and evidence.get("valid_pairs", 0) > 0)
-    )
-    if structural:
-        state.web_rule_structural_failures = (state.web_rule_structural_failures or 0) + 1
-        if state.web_rule_failure_episode_id is None:
-            state.web_rule_failure_episode_id = uuid4()
-        if state.web_rule_structural_failures >= 2:
-            await ensure_web_rule_job(session, source=source, state=state, reason="repair", now=now)
-    else:
-        state.web_rule_structural_failures = 0
-        if evidence.get("is_head") and evidence.get("valid_pairs", 0) > 0:
-            state.web_rule_failure_episode_id = None
-        if code == "web_rule_required":
-            await ensure_web_rule_job(session, source=source, state=state, reason="author", now=now)
 
 
 async def _record_unhandled_failure(session_factory, claim: SourceClaim, exc: Exception) -> None:
@@ -1065,139 +573,6 @@ async def _reserve_youtube_quota(session_factory, *, units: int = 4) -> bool:
         reserved = await session.scalar(statement)
         await session.commit()
         return reserved is not None
-
-
-def _empty_metrics() -> dict[str, Any]:
-    return {
-        "pages": 0,
-        "raw_items": 0,
-        "normalized_items": 0,
-        "candidates_changed": 0,
-        "duplicates": 0,
-        "limits": [],
-    }
-
-
-def _finish_run(run: SourceSyncRun, page: SourceScanPage, now: datetime, *, partial: bool) -> None:
-    run.status = SyncRunStatus.PARTIAL if partial else SyncRunStatus.SUCCESS
-    run.finished_at = now
-    run.error_code = page.warning_code
-    run.error_message = page.warning_message
-    metrics = dict(run.metrics or {})
-    metrics["coverage_complete"] = bool(
-        page.authoritative and page.completed and not page.gap_detected
-    )
-    metrics["gap_detected"] = page.gap_detected
-    run.metrics = metrics
-
-
-def _apply_page_health(state: SourceSyncState, page: SourceScanPage) -> None:
-    state.gap_detected = page.gap_detected
-    state.gap_details = page.gap_details
-    state.last_error_code = page.warning_code
-    state.last_error_message = page.warning_message
-    if not page.warning_code:
-        state.consecutive_failures = 0
-
-
-def _release_lease(state: SourceSyncState) -> None:
-    state.lease_token = None
-    state.lease_expires_at = None
-
-
-def _cursor_for_incomplete_page(
-    input_cursor: dict[str, Any] | None,
-    page: SourceScanPage,
-    outcome: CandidateUpsertResult,
-) -> dict[str, Any]:
-    if outcome.cap_reached:
-        return input_cursor or _RESTART_CURSOR
-    return page.next_continuation or input_cursor or _RESTART_CURSOR
-
-
-def _provider_cursor(value: Any) -> dict[str, Any] | None:
-    if not isinstance(value, dict) or value.get("_restart_from_head"):
-        return None
-    return dict(value)
-
-
-def _serializable_task(task: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "lane": str(task.get("lane") or "backlog"),
-        "cursor": task.get("cursor") or _RESTART_CURSOR,
-        "checkpoint": task.get("checkpoint") if isinstance(task.get("checkpoint"), dict) else {},
-    }
-
-
-def _checkpoint_hashes(checkpoint: dict[str, Any]) -> dict[str, str]:
-    hashes: dict[str, str] = {}
-    for key, value in checkpoint.items():
-        if key == "item_hashes" and isinstance(value, dict):
-            hashes.update(
-                {str(native_id): str(item_hash) for native_id, item_hash in value.items()}
-            )
-        elif isinstance(value, dict):
-            hashes.update(_checkpoint_hashes(value))
-    return hashes
-
-
-def _with_unchanged_streak(
-    checkpoint: dict[str, Any], *, changed: int, previous: dict[str, Any]
-) -> dict[str, Any]:
-    result = dict(checkpoint)
-    previous_streak = int(previous.get("unchanged_runs") or 0)
-    result["unchanged_runs"] = previous_streak + 1 if changed == 0 else 0
-    result["last_change_count"] = changed
-    return result
-
-
-def _merge_fallback_checkpoint(
-    committed: dict[str, Any], fallback: dict[str, Any]
-) -> dict[str, Any]:
-    result = dict(committed)
-    for key, value in fallback.items():
-        if key == "atom" or key not in result:
-            result[key] = value
-    return result
-
-
-def _normal_interval_minutes(source: FeedSource, state: SourceSyncState) -> int:
-    if source.kind == SourceKind.RSS or (
-        source.kind == SourceKind.WEB
-        and configured_web_feed_url(
-            getattr(source, "canonical_url", ""), getattr(source, "config", {})
-        )
-    ):
-        target, minimum, maximum = 60, 30, 120
-    elif source.kind == SourceKind.YOUTUBE:
-        target, minimum, maximum = 60, 60, 120
-    else:
-        target, minimum, maximum = 120, 60, 240
-    streak = int(state.committed_checkpoint.get("unchanged_runs") or 0)
-    if state.phase == SyncPhase.CATCHING_UP:
-        return target
-    if streak >= 3:
-        return maximum
-    recent_changes = int(state.committed_checkpoint.get("last_change_count") or 0)
-    if recent_changes >= 10:
-        return minimum
-    if recent_changes >= 3:
-        return max(minimum, (minimum + target) // 2)
-    return min(max(target, minimum), maximum)
-
-
-def _next_normal_scan(source: FeedSource, state: SourceSyncState, now: datetime) -> datetime:
-    minutes = _normal_interval_minutes(source, state)
-    return now + timedelta(minutes=minutes * random.uniform(0.9, 1.1))
-
-
-def _retry_delay(exc: SourceScanError, failures: int) -> timedelta:
-    if exc.retry_after_seconds is not None:
-        return timedelta(seconds=max(exc.retry_after_seconds, 60))
-    if exc.long_lived:
-        return timedelta(hours=24)
-    minutes = (2, 10, 30, 120, 360)[min(max(failures - 1, 0), 4)]
-    return timedelta(minutes=minutes * random.uniform(0.9, 1.1))
 
 
 def _should_update_display_name(source: FeedSource) -> bool:

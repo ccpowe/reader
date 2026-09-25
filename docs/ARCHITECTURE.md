@@ -29,7 +29,7 @@ RSS／网站、YouTube、X 供应商、排行提供方和模型提供方是外�
 | 前端数据与页面 | 发起业务请求、管理服务端数据缓存、展示原文和异步结果 | [lib/api.ts](../mobile/lib/api.ts)、[state/](../mobile/state/) 连接页面与后端；缓存键包含服务器和用户身份 |
 | 阅读与翻译界面 | 加载原网页、按需提取和清洗阅读正文，发现可翻译文本、安排可见内容请求并处理导航和视频切换 | [ArticleReaderScreen.tsx](../mobile/screens/ArticleReaderScreen.tsx)、[TranslatableWebView.tsx](../mobile/components/TranslatableWebView.tsx)、[webReaderExtraction.ts](../mobile/domain/webReaderExtraction.ts) 与翻译调度器协作 |
 | API 与业务服务 | 校验请求和用户权限，处理订阅、资料、排行、收藏等业务，组装响应 | [api/](../backend/src/app/api/) 保留 HTTP 契约；[subscriptions.py](../backend/src/app/services/subscriptions.py) 拥有订阅事务，[source_health.py](../backend/src/app/services/source_health.py) 解释来源健康状态；其他业务继续使用共享持久层及服务 |
-| 来源接入与入库 | 来源身份规范化、上游请求、分页、候选去重、内容与媒体入库 | [ingestion/](../backend/src/app/ingestion/)、[workers/sync.py](../backend/src/app/workers/sync.py)、[workers/candidates.py](../backend/src/app/workers/candidates.py) |
+| 来源接入与入库 | 来源身份规范化、上游请求、分页、候选去重、内容与媒体入库 | [workers/sync.py](../backend/src/app/workers/sync.py) 拥有扫描 I/O 和事务，[scan_state.py](../backend/src/app/services/scan_state.py) 拥有扫描状态迁移，[web_scan_health.py](../backend/src/app/services/web_scan_health.py) 解释 Web 结构健康并触发修复；[ingestion/](../backend/src/app/ingestion/) 提供来源适配，[workers/candidates.py](../backend/src/app/workers/candidates.py) 消费候选 |
 | 翻译 | 请求策略、需求与缓存身份、任务领取、批处理、实时合并、配额和结果生命周期 | [requests.py](../backend/src/app/translation/requests.py) 协调用户请求，[projection.py](../backend/src/app/translation/projection.py) 区分只读查询与需求创建；执行器由 API 或 Worker 驱动 |
 | 网页规则 Agent | 针对单个来源保存有界证据和发现，生成、执行并评估列表规则后交接激活 | [web_rule_agent/](../backend/src/app/web_rule_agent/)、[workers/web_rules.py](../backend/src/app/workers/web_rules.py) 调用受限工具和规则服务；[browser.py](../backend/src/app/web_rule_agent/browser.py) 统一探索页面接口 |
 | 模型适配 | 构造外部聊天模型客户端，集中处理供应商配置 | [llm/factory.py](../backend/src/app/llm/factory.py) 被翻译和规则 Agent 复用；两者分别管理提示词、任务和预算 |
@@ -76,11 +76,15 @@ Android 阅读宿主使用 `LOAD_NO_CACHE`，并在进程内第一次 WebView �
 ### 订阅、扫描与内容入库
 
 1. [来源 API](../backend/src/app/api/sources.py) 规范化并校验来源身份，再调用[订阅用例](../backend/src/app/services/subscriptions.py)。`subscribe_to_source` 提交普通来源订阅；`subscribe_to_reddit_source` 在同一事务内完成用户额度检查、来源／订阅建立和三种排行快照初始化。内部准备操作只 flush，业务入口负责提交及异常回滚，HTTP 不组合事务。
-2. [来源扫描器](../backend/src/app/workers/sync.py) 领取到期来源的租约，执行初次扫描、增量扫描或断点续扫，将发现的条目交给持久候选队列。
+2. [来源扫描器](../backend/src/app/workers/sync.py) 领取到期来源的租约，由 `ScanProgress` 根据初扫标记和持久 continuation 选择初扫、首窗更新或历史续扫，生成有界分页请求。Worker 在事务外调用 adapter，再按来源→扫描状态的顺序加锁，在同一事务内完成候选入队、状态推进和必要的 Web 健康记录。
 3. [候选处理器](../backend/src/app/workers/candidates.py) 领取候选，按来源与条目标识完成去重，写入内容、来源条目和媒体，再更新处理状态。
 4. 配置了默认翻译引擎时，入库会为标题建立较低优先级的翻译工作；原文先入库，入库流程不等待模型完成翻译。
 
 来源列表的健康查询由 [source_health.py](../backend/src/app/services/source_health.py) 统一匹配当前规则版本与故障批次，再解释 feed 探测、规则任务、访问受阻及引擎暂停的优先级；查询不修改扫描证据或调度状态。来源的扫描进度、健康与规则任务仍是不同维度，不能仅凭展示用 `sync_phase` 推断是否存在历史续扫。
+
+扫描进度与健康迁移集中在 [scan_state.py](../backend/src/app/services/scan_state.py)：`ScanProgress.next_request`／`apply_page` 管理单次扫描的分页预算与进度，明确返回继续、完成或候选额度耗尽；部分完成与失败操作管理续扫、下次调度及租约释放，不执行 I/O 或提交事务。增量扫描遇到候选额度截断时保留当前页以便重放，不提前推进 committed checkpoint；初扫仍只接纳有界的最新条目作为基线。来源处于 `degraded` 也仍优先恢复已有 continuation，非权威回退不丢弃权威历史任务，之后完成历史扫描时保留独立更新的 Atom 进度。
+
+规则激活、选定 feed 与 feed 失效重探测分别调用明确的扫描重置操作，统一清除旧端点游标和 pending checkpoint，只保留 `head_ids`／`item_hashes` 去重锚点，不改变初扫基线。规则激活释放旧扫描租约并结束旧运行；选定 feed 则保留当前租约以继续本轮扫描。Web 结构故障计数、故障批次及 author／repair 触发由 [web_scan_health.py](../backend/src/app/services/web_scan_health.py) 在调用方事务内处理；它与只读的来源健康查询不同，不负责 Agent 的激活等待与恢复流程。
 
 初次扫描发现的候选在交给异步处理器前会持久标记为基线，之后同步状态先完成也不会把这批历史内容变成频道新增。后续首次进入来源的内容在来源级事务锁内取得更新序号；重复抓取、已有内容的另一上游条目标识以及内容修改不产生新的提醒。Reddit 的首个 `hot` 快照使用同步状态中的持久基线标记，后续快照即使早于首批候选处理完成，也按增量处理。
 

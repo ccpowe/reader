@@ -11,8 +11,9 @@ from uuid import UUID
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.enums import SourceKind, SyncPhase, SyncRunStatus
+from app.domain.enums import SourceKind, SyncRunStatus
 from app.ingestion.web_rules import WebRuleError, execute_web_rule, parse_web_rule
+from app.services.scan_state import reset_for_rule_activation
 from app.storage.models import FeedSource, SourceSyncRun, SourceSyncState
 
 
@@ -160,13 +161,7 @@ async def _activate_validated_rule(
     source.config = config
     # Old cursors/feed discovery belong to the previous rule; restart the head
     # while retaining content identity and the existing deduplication store.
-    state.committed_checkpoint = {
-        key: value
-        for key, value in state.committed_checkpoint.items()
-        if key in {"head_ids", "item_hashes"}
-    }
-    state.lease_token = None
-    state.lease_expires_at = None
+    reset_for_rule_activation(state, now=now)
     await session.execute(
         update(SourceSyncRun)
         .where(SourceSyncRun.source_id == source.id, SourceSyncRun.status == SyncRunStatus.RUNNING)
@@ -177,16 +172,6 @@ async def _activate_validated_rule(
             error_message="Rule activation invalidated the old scanner lease.",
         )
     )
-    state.pending_checkpoint = {}
-    state.continuation = None
-    state.phase = SyncPhase.IDLE
-    state.last_error_code = None
-    state.last_error_message = None
-    state.consecutive_failures = 0
-    state.web_rule_structural_failures = 0
-    state.web_rule_failure_episode_id = None
-    state.provider_mode = "web_crawl4ai"
-    state.next_scan_at = now
     return {
         "status": "accepted",
         "version": config["web_rule_active_version"],

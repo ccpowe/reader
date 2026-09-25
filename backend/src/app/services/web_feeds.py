@@ -8,6 +8,7 @@ from sqlalchemy import and_, exists, func, or_, select
 from app.domain.enums import SourceKind, SourceStatus, SyncPhase, SyncRunStatus
 from app.ingestion.feed_discovery import FeedDiscoveryResult
 from app.ingestion.web_feed import WEB_FEED_DISCOVERY_VERSION, web_feed_probe_required
+from app.services.scan_state import reset_for_selected_feed
 from app.services.web_rule_jobs import cancel_web_rule_jobs_for_feed
 from app.storage.models import FeedSource, SourceSubscription, SourceSyncRun, SourceSyncState
 
@@ -128,23 +129,10 @@ async def save_web_feed_discovery(
         source.config = {**(source.config or {}), "web_feed_discovery": record}
         run.metrics = {**(run.metrics or {}), "feed_discovery": record}
         if result.status == "found":
-            # Cursors/validators belong to the old endpoint. URL identities are
-            # shared with Web extraction, so retain article anchors to detect a
-            # gap if the new feed cannot reach previously observed history.
+            # Selecting a new endpoint invalidates its cursors, not the shared
+            # article identity used to detect gaps in observed history.
             source.config = {**source.config, "web_rule_revision": rule_revision + 1}
-            state.committed_checkpoint = {
-                key: value
-                for key, value in state.committed_checkpoint.items()
-                if key in {"head_ids", "item_hashes"}
-            }
-            state.pending_checkpoint, state.continuation = {}, None
-            state.web_rule_structural_failures = 0
-            state.web_rule_failure_episode_id = None
-            state.provider_mode = "web_rss"
-            state.consecutive_failures = state.consecutive_limit_runs = 0
-            state.last_error_code = state.last_error_message = None
-            state.gap_detected = False
-            state.phase = SyncPhase.IDLE
+            reset_for_selected_feed(state)
             await cancel_web_rule_jobs_for_feed(session, source_id, now=now)
         await session.commit()
         return source, state

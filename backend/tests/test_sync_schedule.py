@@ -15,6 +15,7 @@ from app.domain.enums import (
     SourceKind,
     SourceStatus,
     SyncPhase,
+    SyncRunStatus,
     TranslationPriority,
     TranslationPurpose,
 )
@@ -26,6 +27,7 @@ from app.ingestion.models import (
     SourceScanPage,
 )
 from app.ingestion.url_safety import PublicAsyncClient
+from app.services import scan_state
 from app.workers import candidates, sync
 from app.workers.candidates import (
     _enqueue_default_title_translation,
@@ -46,13 +48,15 @@ def test_refresh_ranges_are_channel_specific() -> None:
         committed_checkpoint={"last_change_count": 12},
     )
 
-    assert sync._normal_interval_minutes(SimpleNamespace(kind=SourceKind.RSS), idle) == 60
-    assert sync._normal_interval_minutes(SimpleNamespace(kind=SourceKind.RSS), quiet) == 120
-    assert sync._normal_interval_minutes(SimpleNamespace(kind=SourceKind.YOUTUBE), quiet) == 120
-    assert sync._normal_interval_minutes(SimpleNamespace(kind=SourceKind.WEB), quiet) == 240
-    assert sync._normal_interval_minutes(SimpleNamespace(kind=SourceKind.X), idle) == 120
-    assert sync._normal_interval_minutes(SimpleNamespace(kind=SourceKind.RSS), busy) == 30
-    assert sync._normal_interval_minutes(SimpleNamespace(kind=SourceKind.WEB), busy) == 60
+    assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.RSS), idle) == 60
+    assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.RSS), quiet) == 120
+    assert (
+        scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.YOUTUBE), quiet) == 120
+    )
+    assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.WEB), quiet) == 240
+    assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.X), idle) == 120
+    assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.RSS), busy) == 30
+    assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.WEB), busy) == 60
 
 
 @pytest.mark.asyncio
@@ -77,14 +81,14 @@ async def test_only_operator_configured_scweet_uses_the_trusted_service_client()
 def test_retry_policy_uses_short_backoff_retry_after_and_long_lived_delay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(sync.random, "uniform", lambda *_args: 1.0)
+    monkeypatch.setattr(scan_state.random, "uniform", lambda *_args: 1.0)
 
-    assert sync._retry_delay(SourceScanError("temporary", "x"), 1) == timedelta(minutes=2)
-    assert sync._retry_delay(SourceScanError("temporary", "x"), 5) == timedelta(hours=6)
-    assert sync._retry_delay(SourceScanError("rate", "x", retry_after_seconds=900), 1) == timedelta(
-        minutes=15
-    )
-    assert sync._retry_delay(SourceScanError("auth", "x", long_lived=True), 1) == timedelta(
+    assert scan_state.retry_delay(SourceScanError("temporary", "x"), 1) == timedelta(minutes=2)
+    assert scan_state.retry_delay(SourceScanError("temporary", "x"), 5) == timedelta(hours=6)
+    assert scan_state.retry_delay(
+        SourceScanError("rate", "x", retry_after_seconds=900), 1
+    ) == timedelta(minutes=15)
+    assert scan_state.retry_delay(SourceScanError("auth", "x", long_lived=True), 1) == timedelta(
         hours=24
     )
 
@@ -143,31 +147,83 @@ async def test_candidate_claim_query_locks_only_the_candidate_table() -> None:
     session.commit.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_degraded_source_still_resumes_its_durable_continuation(monkeypatch) -> None:
-    source = SimpleNamespace(kind=SourceKind.RSS)
+def _scan_progress(
+    *,
+    kind=SourceKind.RSS,
+    initial=False,
+    committed=None,
+    pending=None,
+    continuation=None,
+    phase=SyncPhase.IDLE,
+    max_changes=40,
+):
+    source = SimpleNamespace(
+        kind=kind,
+        canonical_url="https://example.com/rss.xml",
+        config={},
+        status=SourceStatus.PENDING,
+    )
     state = SimpleNamespace(
-        initial_sync_completed=True,
+        initial_sync_completed=not initial,
+        committed_checkpoint=committed or {},
+        pending_checkpoint=pending or {},
+        continuation=continuation,
+        phase=phase,
+        provider_mode=None,
+        last_complete_at=None,
+        last_attempt_at=None,
+        gap_detected=False,
+        gap_details=None,
+        last_error_code=None,
+        last_error_message=None,
+        consecutive_failures=0,
+        consecutive_limit_runs=0,
+        web_rule_structural_failures=0,
+        lease_token=uuid4(),
+        lease_expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        next_scan_at=None,
+    )
+    run = SimpleNamespace(metrics={}, status=SyncRunStatus.RUNNING, provider_mode=None)
+    progress = scan_state.ScanProgress(
+        source=source,
+        state=state,
+        max_pages=4,
+        max_raw_items=120,
+        max_changes=max_changes,
+        max_response_bytes=1024,
+    )
+    return progress, source, state, run
+
+
+def test_degraded_scan_resumes_fresh_head_before_backlog() -> None:
+    previous = {"head_ids": ["old"]}
+    progress, source, state, run = _scan_progress(
+        committed=previous,
+        pending={"head_ids": ["prior-head"]},
         phase=SyncPhase.DEGRADED,
-        continuation={"tasks": [{"cursor": {"next": "page-2"}}]},
+        continuation={
+            "latest_checkpoint": {"head_ids": ["prior-head"]},
+            "tasks": [{"lane": "backlog", "cursor": {"page": 2}, "checkpoint": previous}],
+        },
     )
-    claim = sync.SourceClaim(uuid4(), uuid4())
-    catch_up = AsyncMock()
-    head_scan = AsyncMock()
-    monkeypatch.setattr(
-        sync,
-        "get_settings",
-        lambda: SimpleNamespace(ingestion_source_timeout_seconds=120),
+    request = progress.next_request()
+    assert request.checkpoint == {"head_ids": ["prior-head"]}
+    assert request.continuation is None and not request.conditional
+    page = SourceScanPage(
+        items=(), provider_mode="rss", raw_items=1, completed=True, checkpoint={"head_ids": ["new"]}
     )
-    monkeypatch.setattr(sync, "_start_run", AsyncMock(return_value=(source, state, uuid4())))
-    monkeypatch.setattr(sync, "_build_adapter", lambda *_args, **_kwargs: object())
-    monkeypatch.setattr(sync, "_run_catch_up", catch_up)
-    monkeypatch.setattr(sync, "_run_head_scan", head_scan)
-
-    await sync.scan_claimed_source(object(), claim)
-
-    catch_up.assert_awaited_once()
-    head_scan.assert_not_awaited()
+    assert (
+        progress.apply_page(
+            state, source, run, page, CandidateUpsertResult(1, 0, 1, False), datetime.now(UTC)
+        )
+        == scan_state.PageDisposition.CONTINUE
+    )
+    request = progress.next_request()
+    assert request.checkpoint == previous
+    assert request.continuation == {"page": 2}
+    assert state.phase == SyncPhase.CATCHING_UP
+    assert state.pending_checkpoint == {"head_ids": ["prior-head"]}
+    assert state.continuation["latest_checkpoint"] == {"head_ids": ["new"]}
 
 
 @pytest.mark.asyncio
@@ -195,20 +251,6 @@ async def test_youtube_soft_quota_is_reserved_atomically(monkeypatch) -> None:
     session.commit.assert_awaited_once()
 
 
-def test_candidate_cap_replays_the_same_page_instead_of_advancing_cursor() -> None:
-    page = SourceScanPage(
-        items=(),
-        provider_mode="rss",
-        raw_items=50,
-        completed=False,
-        next_continuation={"next": "page-2"},
-    )
-    input_cursor = {"current": "page-1"}
-    outcome = CandidateUpsertResult(changed=40, duplicates=0, processed_items=40, cap_reached=True)
-
-    assert sync._cursor_for_incomplete_page(input_cursor, page, outcome) == input_cursor
-
-
 def test_extraction_status_never_claims_a_nonexistent_future_worker() -> None:
     assert (
         _resolved_extraction_status(ContentKind.ARTICLE, "<p>Extracted article.</p>")
@@ -216,34 +258,6 @@ def test_extraction_status_never_claims_a_nonexistent_future_worker() -> None:
     )
     assert _resolved_extraction_status(ContentKind.ARTICLE, None) == ExtractionStatus.FAILED
     assert _resolved_extraction_status(ContentKind.POST, None) == ExtractionStatus.NOT_NEEDED
-
-
-def test_nested_fallback_checkpoint_hashes_are_available_for_deduplication() -> None:
-    checkpoint = {
-        "data_api": {"item_hashes": {"video": "hash-a"}},
-        "atom": {"item_hashes": {"other": "hash-b"}},
-    }
-
-    assert sync._checkpoint_hashes(checkpoint) == {
-        "video": "hash-a",
-        "other": "hash-b",
-    }
-
-
-def test_authoritative_checkpoint_commit_preserves_newer_atom_progress() -> None:
-    authoritative = {
-        "data_api": {"head_ids": ["new-api-head"]},
-        "atom": {"head_ids": ["old-atom-head"]},
-    }
-    durable_fallback = {
-        "data_api": {"head_ids": ["old-api-head"]},
-        "atom": {"head_ids": ["new-atom-head"]},
-    }
-
-    assert sync._merge_fallback_checkpoint(authoritative, durable_fallback) == {
-        "data_api": {"head_ids": ["new-api-head"]},
-        "atom": {"head_ids": ["new-atom-head"]},
-    }
 
 
 @pytest.mark.asyncio
