@@ -11,16 +11,19 @@ from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from app.api import translations
 from app.core.auth import AuthenticatedUser
 from app.domain.enums import (
+    TranslationPriority,
     TranslationPurpose,
     TranslationScope,
     TranslationStatus,
 )
+from app.translation import requests as translation_requests
 from app.translation.domain import (
+    TranslationDemand,
     TranslationEngine,
     TranslationProjection,
     TranslationProviderError,
 )
-from app.translation.interactive import InteractiveResolution
+from app.translation.interactive import ArtifactPersistence, InteractiveResolution
 from app.translation.projection import TranslationContext
 from app.translation.quota import TranslationQuotaExceeded, TranslationQuotaStorageUnavailable
 
@@ -115,7 +118,7 @@ async def test_segment_endpoint_scopes_web_text_and_captions_to_current_user(
                 ),
             }
 
-    monkeypatch.setattr(translations, "get_translation_context", fake_context)
+    monkeypatch.setattr(translation_requests, "get_translation_context", fake_context)
     payload = translations.ResolveTranslationSegmentsRequest(
         segments=[
             _segment("web:one", "Private page paragraph", "web_segment"),
@@ -187,8 +190,8 @@ async def test_segments_reserve_request_and_only_actual_miss_characters(
         await reserve_budget([])
         return InteractiveResolution({})
 
-    monkeypatch.setattr(translations, "get_translation_context", fake_context)
-    monkeypatch.setattr(translations, "resolve_interactive_texts", fake_resolve)
+    monkeypatch.setattr(translation_requests, "get_translation_context", fake_context)
+    monkeypatch.setattr(translation_requests, "resolve_interactive_texts", fake_resolve)
     payload = translations.ResolveTranslationSegmentsRequest(
         segments=[
             _segment("cache-hit", "already cached", "paragraph"),
@@ -250,8 +253,8 @@ async def test_segments_map_quota_errors_to_stable_responses_and_titles_do_not_c
         await reserve_budget([])
         return InteractiveResolution({})
 
-    monkeypatch.setattr(translations, "get_translation_context", fake_context)
-    monkeypatch.setattr(translations, "resolve_interactive_texts", fake_resolve)
+    monkeypatch.setattr(translation_requests, "get_translation_context", fake_context)
+    monkeypatch.setattr(translation_requests, "resolve_interactive_texts", fake_resolve)
     payload = translations.ResolveTranslationSegmentsRequest(
         segments=[_segment("segment", "text", "paragraph")]
     )
@@ -310,7 +313,7 @@ async def test_segments_map_database_checkout_timeout_to_stable_503(
     async def timed_out(*_args, **_kwargs):
         raise SQLAlchemyTimeoutError("QueuePool internal details")
 
-    monkeypatch.setattr(translations, "get_translation_context", timed_out)
+    monkeypatch.setattr(translation_requests, "get_translation_context", timed_out)
     payload = translations.ResolveTranslationSegmentsRequest(
         segments=[_segment("segment", "source", "web_segment")]
     )
@@ -351,7 +354,7 @@ async def test_segments_map_realtime_cache_checkout_timeout_to_stable_503(
             raise SQLAlchemyTimeoutError("QueuePool internal details")
 
     monkeypatch.setattr(
-        translations,
+        translation_requests,
         "get_translation_context",
         AsyncMock(return_value=context),
     )
@@ -388,7 +391,7 @@ async def test_segments_do_not_misclassify_unrelated_timeout(
     async def timed_out(*_args, **_kwargs):
         raise TimeoutError("unrelated timeout")
 
-    monkeypatch.setattr(translations, "get_translation_context", timed_out)
+    monkeypatch.setattr(translation_requests, "get_translation_context", timed_out)
     payload = translations.ResolveTranslationSegmentsRequest(
         segments=[_segment("segment", "source", "web_segment")]
     )
@@ -420,10 +423,11 @@ async def test_production_segments_route_retries_failed_ranking_title_once_per_c
         ),
         engine_label="DeepSeek V4 Flash",
     )
-    project_calls: list[bool] = []
+    cache_reads = 0
 
-    async def failed_projection(_session, items, *, context, ensure_missing):
-        project_calls.append(ensure_missing)
+    async def failed_projection(_session, items, *, context):
+        nonlocal cache_reads
+        cache_reads += 1
         return {
             candidate.item_id: TranslationProjection(
                 item_id=candidate.item_id,
@@ -453,8 +457,10 @@ async def test_production_segments_route_retries_failed_ranking_title_once_per_c
 
     provider = ProviderSpy()
     session = AsyncMock()
-    monkeypatch.setattr("app.translation.interactive.project_texts", failed_projection)
-    monkeypatch.setattr(translations, "get_translation_context", AsyncMock(return_value=context))
+    monkeypatch.setattr("app.translation.interactive.read_text_translations", failed_projection)
+    monkeypatch.setattr(
+        translation_requests, "get_translation_context", AsyncMock(return_value=context)
+    )
     payload = translations.ResolveTranslationSegmentsRequest(
         segments=[_segment("ranking-1:title", "Original ranking title", "ranking_title")]
     )
@@ -484,9 +490,108 @@ async def test_production_segments_route_retries_failed_ranking_title_once_per_c
     )
 
     assert provider.calls == 2, "each explicit click gets one direct provider attempt"
-    assert project_calls == [False, False]
+    assert cache_reads == 2
     assert first[0].translation_status == "failed"
     assert second[0].translation_status == "failed"
     # Each call ends the context read before interactive projection; the
     # interactive resolver then commits its own short cache transaction.
     assert session.commit.await_count == 6
+
+
+@pytest.mark.asyncio
+async def test_mixed_request_delivers_standard_result_but_suppresses_stale_web_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    engine = TranslationEngine(
+        engine_id="deepseek-v4-flash",
+        provider_name="deepseek",
+        model_name="deepseek-v4-flash",
+    )
+    context = TranslationContext(
+        target_locale="zh-CN", enabled=True, engine=engine, cache_generation="before"
+    )
+    reads = 0
+    persisted = AsyncMock()
+
+    async def current_context(*_args, **_kwargs):
+        nonlocal reads
+        reads += 1
+        return context if reads == 1 else replace(context, cache_generation="after")
+
+    class Coordinator:
+        async def resolve(self, items, *, context, provider, user_id, wait_seconds):
+            assert len(items) == 1
+            assert items[0].scope == TranslationScope.USER
+            return {
+                "web": TranslationProjection(
+                    item_id="web",
+                    source_hash="web-hash",
+                    target_locale="zh-CN",
+                    status=TranslationStatus.SUCCEEDED,
+                    translated_text="旧网页译文",
+                )
+            }
+
+    async def standard(_session, items, *, context, provider, reserve_budget, **_options):
+        assert len(items) == 1
+        assert items[0].scope == TranslationScope.SHARED
+        assert items[0].priority == int(TranslationPriority.PREFETCH)
+        assert session.commit.await_count == 1
+        return InteractiveResolution(
+            {
+                "ranking": TranslationProjection(
+                    item_id="ranking",
+                    source_hash="ranking-hash",
+                    target_locale="zh-CN",
+                    status=TranslationStatus.SUCCEEDED,
+                    translated_text="排名译文",
+                )
+            },
+            ArtifactPersistence(
+                demands=(
+                    TranslationDemand(
+                        item_id="ranking",
+                        text="Headline",
+                        purpose=TranslationPurpose.RANKING_TITLE,
+                        target_locale="zh-CN",
+                    ),
+                ),
+                engine=engine,
+                translated_texts={"ranking": "排名译文"},
+            ),
+        )
+
+    monkeypatch.setattr(translation_requests, "get_translation_context", current_context)
+    monkeypatch.setattr(translation_requests, "resolve_interactive_texts", standard)
+    monkeypatch.setattr(translation_requests, "persist_interactive_artifacts", persisted)
+    session = AsyncMock()
+    background_tasks = BackgroundTasks()
+    response = await translations.resolve_translation_segments(
+        translations.ResolveTranslationSegmentsRequest(
+            segments=[
+                _segment("web", "Private page", "web_segment"),
+                _segment("ranking", "Headline", "ranking_title"),
+            ]
+        ),
+        request=SimpleNamespace(
+            headers={},
+            app=SimpleNamespace(
+                state=SimpleNamespace(
+                    realtime_translation_coordinator=Coordinator(),
+                    translation_providers={},
+                    session_factory=object(),
+                )
+            ),
+        ),
+        background_tasks=background_tasks,
+        current_user=AuthenticatedUser(id=user_id, email=None, claims={}),
+        session=session,
+    )
+    assert session.commit.await_count == 2
+    assert response[0].translated_text is None
+    assert response[0].error_code == "translation_route_changed"
+    assert response[1].translated_text == "排名译文"
+    persisted.assert_not_awaited()
+    await background_tasks()
+    persisted.assert_awaited_once()

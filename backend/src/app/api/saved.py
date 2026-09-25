@@ -31,9 +31,9 @@ from app.storage.models import (
 from app.translation.domain import TranslationProjection
 from app.translation.projection import (
     TitleInput,
-    TitleTranslationContext,
-    get_title_translation_context,
-    project_titles,
+    TranslationContext,
+    ensure_title_translations,
+    get_translation_context,
     translation_response_values,
 )
 
@@ -154,7 +154,7 @@ async def _query_saved_page(
     query: str | None = None,
 ) -> tuple[list[SavedItemResponse], str | None]:
     """Choose one source presentation for each durable saved Content in SQL."""
-    translation_context = await get_title_translation_context(session, current_user.id)
+    translation_context = await get_translation_context(session, current_user.id)
     active_subscription = and_(
         SourceSubscription.source_id == FeedSource.id,
         SourceSubscription.user_id == current_user.id,
@@ -228,7 +228,7 @@ async def _query_saved_page(
     page_rows = list(rows)
     has_more = len(page_rows) > limit
     page_rows = page_rows[:limit]
-    title_projections = await project_titles(
+    title_projections = await ensure_title_translations(
         session,
         [
             TitleInput(item_id=str(content.id), text=content.title)
@@ -261,11 +261,11 @@ def _saved_item_response(
     content: Content,
     source: FeedSource,
     subscription: SourceSubscription | None,
-    translation_context: TitleTranslationContext | None = None,
+    translation_context: TranslationContext | None = None,
     projection: TranslationProjection | None = None,
 ) -> SavedItemResponse:
     if translation_context is None:
-        translation_context = TitleTranslationContext(
+        translation_context = TranslationContext(
             target_locale="zh-CN",
             enabled=False,
             engine=None,

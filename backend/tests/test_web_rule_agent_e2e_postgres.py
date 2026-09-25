@@ -21,7 +21,7 @@ from app.ingestion.models import SourceScanRequest
 from app.ingestion.source_identity import canonical_web_identity
 from app.ingestion.sources.web_blog import WebBlogSourceAdapter, WebBlogSourceConfig
 from app.ingestion.web_rules import parse_web_rule
-from app.services.subscriptions import subscribe_to_shared_source
+from app.services.subscriptions import subscribe_to_source
 from app.storage.models import Content, FeedSource, SourceSyncState, WebRuleJob
 from app.web_rule_agent import cli_browser
 from app.workers import candidates, sync
@@ -195,7 +195,7 @@ async def test_subscribe_author_sync_new_item_and_structural_repair(monkeypatch,
                 await session.commit()
 
             async with factory() as session:
-                await subscribe_to_shared_source(
+                await subscribe_to_source(
                     session,
                     user_id=user_id,
                     identity=identity,
@@ -384,7 +384,7 @@ async def test_live_provider_authors_a_rule_and_model_free_replay():
                 }
                 await session.commit()
             async with factory() as session:
-                await subscribe_to_shared_source(
+                await subscribe_to_source(
                     session,
                     user_id=user_id,
                     identity=identity,

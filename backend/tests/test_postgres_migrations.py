@@ -32,7 +32,7 @@ from app.core.auth import AuthenticatedUser
 from app.core.settings import Settings
 from app.ingestion.source_identity import canonical_rss_identity
 from app.services import ranking_snapshots
-from app.services.subscriptions import subscribe_to_shared_source
+from app.services.subscriptions import subscribe_to_source
 from app.storage.database import build_session_factory
 from app.storage.schema import REQUIRED_SCHEMA_REVISION
 from app.translation.quota import (
@@ -581,7 +581,7 @@ async def _assert_concurrent_idempotency_contract(
 
     async def subscribe(folder_name: str):
         async with session_factory() as session:
-            return await subscribe_to_shared_source(
+            return await subscribe_to_source(
                 session,
                 user_id=user_id,
                 identity=identity,

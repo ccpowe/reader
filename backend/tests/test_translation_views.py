@@ -7,15 +7,15 @@ import pytest
 from app.domain.enums import TranslationProviderMode, TranslationStatus
 from app.translation.domain import TranslationEngine, TranslationProjection
 from app.translation.projection import (
-    TitleTranslationContext,
+    TranslationContext,
     get_translation_context,
     invalidate_translation_context,
     translation_response_values,
 )
 
 
-def _context(*, enabled: bool = True) -> TitleTranslationContext:
-    return TitleTranslationContext(
+def _context(*, enabled: bool = True) -> TranslationContext:
+    return TranslationContext(
         target_locale="zh-CN",
         enabled=enabled,
         engine=(

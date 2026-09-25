@@ -628,13 +628,8 @@ def _provider_io_timeout_seconds(lease_seconds: int) -> float:
     return max(float(lease_seconds) - 30.0, 1.0)
 
 
-async def ensure_reddit_snapshots(
-    session: AsyncSession,
-    subreddit: str,
-    *,
-    commit: bool = True,
-) -> None:
-    """Schedule all three boards when a community is subscribed."""
+async def ensure_reddit_snapshots(session: AsyncSession, subreddit: str) -> None:
+    """Flush the three boards as part of a Reddit subscription transaction."""
     now = datetime.now(UTC)
     requests = (
         RankingRequest(kind="reddit", subreddit=subreddit, sort="hot"),
@@ -667,8 +662,7 @@ async def ensure_reddit_snapshots(
                 set_={"last_accessed_at": now},
             )
         )
-    if commit:
-        await session.commit()
+    await session.flush()
 
 
 async def reconcile_reddit_snapshots(session: AsyncSession) -> None:

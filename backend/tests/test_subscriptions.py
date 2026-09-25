@@ -4,10 +4,6 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from app.services.subscriptions import (
-    SourceSubscriptionLimitExceeded,
-    enforce_reddit_subscription_limit,
-)
 from app.storage.profiles import ensure_profile
 
 
@@ -41,38 +37,6 @@ def test_discovery_from_another_source_or_version_cannot_skip_probe(status, mism
     config = {"web_feed_discovery": record}
     assert configured_web_feed_url(url, config) is None
     assert web_feed_probe_required(url, config)
-
-
-@pytest.mark.asyncio
-async def test_reddit_subscription_limit_is_serialized_and_enforced() -> None:
-    session = AsyncMock()
-    session.scalar.side_effect = [False, 20]
-
-    with pytest.raises(SourceSubscriptionLimitExceeded):
-        await enforce_reddit_subscription_limit(
-            session,
-            user_id=uuid4(),
-            canonical_key="reddit:newcommunity",
-            limit=20,
-        )
-
-    lock = str(session.execute.await_args.args[0].compile(dialect=postgresql.dialect()))
-    assert "pg_advisory_xact_lock" in lock
-
-
-@pytest.mark.asyncio
-async def test_existing_reddit_subscription_does_not_consume_another_slot() -> None:
-    session = AsyncMock()
-    session.scalar.return_value = True
-
-    await enforce_reddit_subscription_limit(
-        session,
-        user_id=uuid4(),
-        canonical_key="reddit:existing",
-        limit=20,
-    )
-
-    assert session.scalar.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -116,7 +80,7 @@ async def test_new_web_subscription_schedules_feed_probe_before_any_rule_job(mon
     identity = (canonical_web_identity if web else canonical_rss_identity)(
         "https://example.com/news"
     )
-    await subscriptions.subscribe_to_shared_source(
+    await subscriptions.subscribe_to_source(
         session,
         user_id=uuid4(),
         identity=identity,
@@ -174,13 +138,12 @@ async def test_existing_web_subscription_only_dispatches_after_feed_probe_not_fo
     monkeypatch.setattr(subscriptions, "_find_source", AsyncMock(return_value=source))
     monkeypatch.setattr(subscriptions, "_find_subscription", AsyncMock(return_value=subscription))
     monkeypatch.setattr(subscriptions, "ensure_web_rule_job", enqueue)
-    await subscriptions.subscribe_to_shared_source(
+    await subscriptions.subscribe_to_source(
         session,
         user_id=uuid4(),
         identity=canonical_web_identity(source.canonical_url),
         display_name=None,
         folder_name=None,
-        commit=False,
     )
     assert subscription.is_enabled
     if probe_status == "not_found":
@@ -193,7 +156,7 @@ async def test_existing_web_subscription_only_dispatches_after_feed_probe_not_fo
             assert state.last_error_code == "web_feed_discovering"
         elif not was_enabled:
             assert state.next_scan_at is not None
-    session.commit.assert_not_awaited()
+    session.commit.assert_awaited_once()
 
 
 async def test_resubscribing_during_feed_retry_preserves_fetch_error(monkeypatch):
@@ -224,13 +187,12 @@ async def test_resubscribing_during_feed_retry_preserves_fetch_error(monkeypatch
     monkeypatch.setattr(subscriptions, "_find_subscription", AsyncMock(return_value=subscription))
     enqueue = AsyncMock()
     monkeypatch.setattr(subscriptions, "ensure_web_rule_job", enqueue)
-    await subscriptions.subscribe_to_shared_source(
+    await subscriptions.subscribe_to_source(
         session,
         user_id=uuid4(),
         identity=canonical_web_identity(url),
         display_name=None,
         folder_name=None,
-        commit=False,
     )
     assert state.next_scan_at is not None
     assert state.phase == SyncPhase.DEGRADED

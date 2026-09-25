@@ -28,9 +28,9 @@ RSS／网站、YouTube、X 供应商、排行提供方和模型提供方是外�
 | 前端连接与认证 | 发现服务、确认服务身份、切换 runtime、恢复和刷新会话、隔离凭据 | [lib/connection/](../mobile/lib/connection/)、[readerAuth.ts](../mobile/lib/readerAuth.ts) 向页面和 API 客户端提供当前连接 |
 | 前端数据与页面 | 发起业务请求、管理服务端数据缓存、展示原文和异步结果 | [lib/api.ts](../mobile/lib/api.ts)、[state/](../mobile/state/) 连接页面与后端；缓存键包含服务器和用户身份 |
 | 阅读与翻译界面 | 加载原网页、按需提取和清洗阅读正文，发现可翻译文本、安排可见内容请求并处理导航和视频切换 | [ArticleReaderScreen.tsx](../mobile/screens/ArticleReaderScreen.tsx)、[TranslatableWebView.tsx](../mobile/components/TranslatableWebView.tsx)、[webReaderExtraction.ts](../mobile/domain/webReaderExtraction.ts) 与翻译调度器协作 |
-| API 与业务服务 | 校验请求和用户权限，处理订阅、资料、排行、收藏等业务，组装响应 | [api/](../backend/src/app/api/)、[services/](../backend/src/app/services/) 使用共享持久层及抓取、翻译服务 |
+| API 与业务服务 | 校验请求和用户权限，处理订阅、资料、排行、收藏等业务，组装响应 | [api/](../backend/src/app/api/) 保留 HTTP 契约；[subscriptions.py](../backend/src/app/services/subscriptions.py) 拥有订阅事务，[source_health.py](../backend/src/app/services/source_health.py) 解释来源健康状态；其他业务继续使用共享持久层及服务 |
 | 来源接入与入库 | 来源身份规范化、上游请求、分页、候选去重、内容与媒体入库 | [ingestion/](../backend/src/app/ingestion/)、[workers/sync.py](../backend/src/app/workers/sync.py)、[workers/candidates.py](../backend/src/app/workers/candidates.py) |
-| 翻译 | 需求与缓存身份、任务领取、批处理、实时合并、配额和结果生命周期 | [translation/](../backend/src/app/translation/) 调用 provider，并由 API 或 Worker 驱动 |
+| 翻译 | 请求策略、需求与缓存身份、任务领取、批处理、实时合并、配额和结果生命周期 | [requests.py](../backend/src/app/translation/requests.py) 协调用户请求，[projection.py](../backend/src/app/translation/projection.py) 区分只读查询与需求创建；执行器由 API 或 Worker 驱动 |
 | 网页规则 Agent | 针对单个来源保存有界证据和发现，生成、执行并评估列表规则后交接激活 | [web_rule_agent/](../backend/src/app/web_rule_agent/)、[workers/web_rules.py](../backend/src/app/workers/web_rules.py) 调用受限工具和规则服务；[browser.py](../backend/src/app/web_rule_agent/browser.py) 统一探索页面接口 |
 | 模型适配 | 构造外部聊天模型客户端，集中处理供应商配置 | [llm/factory.py](../backend/src/app/llm/factory.py) 被翻译和规则 Agent 复用；两者分别管理提示词、任务和预算 |
 | 持久层 | 数据模型、数据库会话、锁和 schema 就绪检查 | [storage/](../backend/src/app/storage/)、[migrations/](../backend/migrations/) 为 API、Worker 和管理命令共用 |
@@ -75,10 +75,12 @@ Android 阅读宿主使用 `LOAD_NO_CACHE`，并在进程内第一次 WebView �
 
 ### 订阅、扫描与内容入库
 
-1. [订阅服务](../backend/src/app/services/subscriptions.py) 解析来源身份并建立用户订阅，来源的同步状态与订阅分别维护。
+1. [来源 API](../backend/src/app/api/sources.py) 规范化并校验来源身份，再调用[订阅用例](../backend/src/app/services/subscriptions.py)。`subscribe_to_source` 提交普通来源订阅；`subscribe_to_reddit_source` 在同一事务内完成用户额度检查、来源／订阅建立和三种排行快照初始化。内部准备操作只 flush，业务入口负责提交及异常回滚，HTTP 不组合事务。
 2. [来源扫描器](../backend/src/app/workers/sync.py) 领取到期来源的租约，执行初次扫描、增量扫描或断点续扫，将发现的条目交给持久候选队列。
 3. [候选处理器](../backend/src/app/workers/candidates.py) 领取候选，按来源与条目标识完成去重，写入内容、来源条目和媒体，再更新处理状态。
 4. 配置了默认翻译引擎时，入库会为标题建立较低优先级的翻译工作；原文先入库，入库流程不等待模型完成翻译。
+
+来源列表的健康查询由 [source_health.py](../backend/src/app/services/source_health.py) 统一匹配当前规则版本与故障批次，再解释 feed 探测、规则任务、访问受阻及引擎暂停的优先级；查询不修改扫描证据或调度状态。来源的扫描进度、健康与规则任务仍是不同维度，不能仅凭展示用 `sync_phase` 推断是否存在历史续扫。
 
 初次扫描发现的候选在交给异步处理器前会持久标记为基线，之后同步状态先完成也不会把这批历史内容变成频道新增。后续首次进入来源的内容在来源级事务锁内取得更新序号；重复抓取、已有内容的另一上游条目标识以及内容修改不产生新的提醒。Reddit 的首个 `hot` 快照使用同步状态中的持久基线标记，后续快照即使早于首批候选处理完成，也按增量处理。
 
@@ -120,7 +122,9 @@ Codex 凭据归 Reader 独立管理：管理员显式导入一次专用 ChatGPT 
 
 凭据及刷新状态不进入 PostgreSQL、不下发客户端；Docker 将独立的 `codex-auth` 命名卷仅挂载给 API、Worker 及按需管理工具，使用同一个 UID 和可写私有目录。该锁依赖同一主机文件系统语义，不支持复制凭据后在多机独立刷新。容器重建保留卷，旧备份中的刷新令牌不保证可恢复使用。缓存继续按引擎、实际模型和提示版本区分，与令牌轮换无关。`reader-admin codex-auth` 的导入／状态／按需刷新操作不访问业务数据库；导入后需要建立启动时缺失的路由，Docker 包装命令会重启 API／Worker。配置、故障恢复及参考来源见[部署说明](deployment.md#codex-订阅翻译)。
 
-实际路由选择在 [resolve_translation_segments](../backend/src/app/api/translations.py)。翻译偏好与配额由后端读取和执行；用户不能通过片段 ID 指定另一个用户的缓存归属。网页片段和字幕的结果绑定用户、引擎与偏好代次，偏好变更时拒绝旧结果并清理对应临时缓存。
+实际执行策略由 [requests.resolve_segments](../backend/src/app/translation/requests.py) 选择：它负责偏好快照、用户作用域、配额接入、外部执行前结束事务、安排普通片段成功结果的延后持久化，以及返回前的偏好失效检查。HTTP 路由只适配身份、输入、响应与错误，并提供请求结束后的任务调度入口；用例不依赖 FastAPI。实时共享任务继续归协调器所有，不随单个 HTTP 订阅者取消。用户不能通过片段 ID 指定另一个用户的缓存归属。
+
+[projection.py](../backend/src/app/translation/projection.py) 的 `read_text_translations`／`read_title_translations` 只查询已有结果和工作，不创建或提升 Work；`ensure_text_translations`／`ensure_title_translations` 会为符合条件的缺失需求建立持久工作，由调用它的业务边界提交。标题收敛接口通过 `requests.resolve_accessible_titles` 完成订阅／收藏访问校验及事务；信息流、收藏读取继续显式建立标题需求，排行响应只读译文。网页片段和字幕的结果绑定用户、引擎与偏好代次，偏好变更时拒绝旧结果并清理对应临时缓存。
 
 WebView 内的 [网页脚本](../mobile/domain/webTranslation.ts) 和 [字幕脚本](../mobile/domain/youtubeTranslation.ts) 发现文本，由应用桥接层校验消息并交给调度器，再调用 Reader API。结果通过文档导航标识、文本状态和视频 `media_epoch` 校验后应用。脚本由 TypeScript 生成静态运行时资源，生成入口为 [generate-translation-runtime-sources.mjs](../mobile/scripts/generate-translation-runtime-sources.mjs)。
 

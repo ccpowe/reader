@@ -31,7 +31,7 @@ from app.translation.projection import (
     TextInput,
     TranslationContext,
     get_translation_context,
-    project_texts,
+    read_text_translations,
 )
 
 router = APIRouter(prefix="/rankings", tags=["rankings"])
@@ -203,11 +203,10 @@ async def _ranking_response(
                         purpose=TranslationPurpose.RANKING_DESCRIPTION,
                     )
                 )
-        projections = await project_texts(
+        projections = await read_text_translations(
             session,
             translation_inputs,
             context=context,
-            ensure_missing=False,
         )
     return RankingResponse(
         kind=data.kind,

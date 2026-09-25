@@ -25,7 +25,12 @@ from app.translation.domain import (
     TranslationProvider,
 )
 from app.translation.executor import translate_items_with_isolation
-from app.translation.projection import TextInput, TranslationContext, project_texts
+from app.translation.projection import (
+    TextInput,
+    TranslationContext,
+    ensure_text_translations,
+    read_text_translations,
+)
 from app.translation.store import persist_translation_artifacts
 
 logger = logging.getLogger(__name__)
@@ -36,14 +41,13 @@ async def _project_and_commit(
     items: list[TextInput],
     *,
     context: TranslationContext,
-    ensure_missing: bool,
+    create_work: bool,
 ) -> dict[str, TranslationProjection]:
     """End projection transactions before any external provider I/O."""
-    projections = await project_texts(
-        session,
-        items,
-        context=context,
-        ensure_missing=ensure_missing,
+    projections = await (
+        ensure_text_translations(session, items, context=context)
+        if create_work
+        else read_text_translations(session, items, context=context)
     )
     await session.commit()
     return projections
@@ -83,7 +87,7 @@ async def resolve_interactive_texts(
         session,
         items,
         context=context,
-        ensure_missing=False,
+        create_work=False,
     )
     promotion_items = [
         item
@@ -99,7 +103,7 @@ async def resolve_interactive_texts(
             session,
             promotion_items,
             context=context,
-            ensure_missing=True,
+            create_work=True,
         )
         projections.update(promoted)
 
@@ -121,7 +125,7 @@ async def resolve_interactive_texts(
             session,
             direct_items,
             context=context,
-            ensure_missing=True,
+            create_work=True,
         )
         return InteractiveResolution({**projections, **durable})
 
@@ -235,7 +239,7 @@ async def resolve_interactive_texts(
             session,
             retry_items,
             context=context,
-            ensure_missing=True,
+            create_work=True,
         )
         for item in retry_items:
             projection = durable.get(item.item_id)

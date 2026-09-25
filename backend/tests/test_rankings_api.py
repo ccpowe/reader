@@ -7,10 +7,9 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from app.api import rankings, sources
+from app.api import rankings
 from app.core.settings import Settings
-from app.domain.enums import SourceStatus, TranslationPurpose, TranslationStatus
-from app.ingestion.source_identity import canonical_reddit_identity
+from app.domain.enums import TranslationPurpose, TranslationStatus
 from app.main import create_app
 from app.services.ranking_snapshots import RankingData
 from app.services.rankings import RankingItem
@@ -143,40 +142,6 @@ def test_reddit_ranking_accepts_prefixed_max_length_community(monkeypatch) -> No
     assert access.await_args.args[2] == subreddit_name
 
 
-async def test_reddit_subscription_and_snapshots_commit_atomically(monkeypatch) -> None:
-    user = SimpleNamespace(id=uuid4())
-    session = AsyncMock()
-    source = SimpleNamespace(
-        id=uuid4(),
-        canonical_url="https://www.reddit.com/r/test",
-        status=SourceStatus.PENDING,
-    )
-    subscription = SimpleNamespace(id=uuid4())
-    sync_state = SimpleNamespace(next_scan_at=None)
-    subscribe = AsyncMock(return_value=(source, subscription, sync_state, True))
-    ensure = AsyncMock()
-    monkeypatch.setattr(sources, "enforce_reddit_subscription_limit", AsyncMock())
-    monkeypatch.setattr(sources, "subscribe_to_shared_source", subscribe)
-    monkeypatch.setattr(sources, "ensure_reddit_snapshots", ensure)
-    monkeypatch.setattr(
-        sources,
-        "canonical_reddit_identity",
-        lambda value: canonical_reddit_identity(value),
-    )
-
-    await sources.add_reddit_source(
-        sources.AddRedditSourceRequest(subreddit=" r/Test "),
-        current_user=user,
-        session=session,
-    )
-
-    assert subscribe.await_args.kwargs["commit"] is False
-    assert subscribe.await_args.kwargs["display_name"] == "r/test"
-    assert subscribe.await_args.kwargs["source_config"] == {"subreddit": "test"}
-    ensure.assert_awaited_once_with(session, "test", commit=False)
-    session.commit.assert_awaited_once()
-
-
 def test_ranking_response_returns_original_before_visible_translation_demand() -> None:
     item = RankingItem(
         rank=1,
@@ -266,8 +231,7 @@ async def test_ranking_returns_only_existing_successful_translation_artifacts(mo
     async def snapshot(*_args, **_kwargs):
         return data
 
-    async def cache_only(_session, translation_inputs, *, context, ensure_missing):
-        assert ensure_missing is False
+    async def cache_only(_session, translation_inputs, *, context):
         captured.extend(translation_inputs)
         cached_key = rankings._translation_key("hacker_news", items[0])
         return {
@@ -288,7 +252,7 @@ async def test_ranking_returns_only_existing_successful_translation_artifacts(mo
 
     monkeypatch.setattr(rankings, "get_snapshot", snapshot)
     monkeypatch.setattr(rankings, "get_translation_context", AsyncMock(return_value=context))
-    monkeypatch.setattr(rankings, "project_texts", cache_only)
+    monkeypatch.setattr(rankings, "read_text_translations", cache_only)
 
     response = await rankings.get_ranking(
         "hacker_news",

@@ -15,6 +15,7 @@ from app.domain.enums import SourceKind, SourceStatus, SourceVisibility, SyncPha
 from app.ingestion.source_identity import SourceIdentity
 from app.ingestion.web_feed import configured_web_feed_url, web_feed_probe_required
 from app.ingestion.web_rules import WebRuleError, parse_web_rule
+from app.services.ranking_snapshots import ensure_reddit_snapshots
 from app.services.web_rule_jobs import ensure_web_rule_job
 from app.storage.locks import acquire_user_transaction_lock
 from app.storage.models import FeedSource, SourceSubscription, SourceSyncState
@@ -31,7 +32,7 @@ class SourceSubscriptionLimitExceeded(RuntimeError):
         self.limit = limit
 
 
-async def enforce_reddit_subscription_limit(
+async def _check_reddit_subscription_limit(
     session: AsyncSession,
     *,
     user_id: UUID,
@@ -70,11 +71,10 @@ async def enforce_reddit_subscription_limit(
         or 0
     )
     if subscription_count >= limit:
-        await session.rollback()
         raise SourceSubscriptionLimitExceeded(limit)
 
 
-async def subscribe_to_shared_source(
+async def subscribe_to_source(
     session: AsyncSession,
     *,
     user_id: UUID,
@@ -83,7 +83,76 @@ async def subscribe_to_shared_source(
     folder_name: str | None,
     source_config: dict[str, Any] | None = None,
     subscription_display_name: str | None | object = _USE_SOURCE_DISPLAY_NAME,
-    commit: bool = True,
+) -> tuple[FeedSource, SourceSubscription, SourceSyncState, bool]:
+    """Commit a shared source and the caller's personal subscription."""
+    try:
+        result = await _prepare_source_subscription(
+            session,
+            user_id=user_id,
+            identity=identity,
+            display_name=display_name,
+            folder_name=folder_name,
+            source_config=source_config,
+            subscription_display_name=subscription_display_name,
+        )
+        await session.commit()
+        await _refresh_subscription_result(session, result)
+        return result
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def subscribe_to_reddit_source(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    identity: SourceIdentity,
+    folder_name: str | None,
+    limit: int,
+) -> tuple[FeedSource, SourceSubscription, SourceSyncState, bool]:
+    """Serialize quota and commit the subscription with its ranking boards."""
+    subreddit = identity.canonical_key.removeprefix("reddit:")
+    try:
+        await _check_reddit_subscription_limit(
+            session, user_id=user_id, canonical_key=identity.canonical_key, limit=limit
+        )
+        result = await _prepare_source_subscription(
+            session,
+            user_id=user_id,
+            identity=identity,
+            display_name=f"r/{subreddit}",
+            folder_name=folder_name,
+            source_config={"subreddit": subreddit},
+        )
+        await ensure_reddit_snapshots(session, subreddit)
+        await session.commit()
+        await _refresh_subscription_result(session, result)
+        return result
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def _refresh_subscription_result(
+    session: AsyncSession,
+    result: tuple[FeedSource, SourceSubscription, SourceSyncState, bool],
+) -> None:
+    source, subscription, sync_state, _ = result
+    await session.refresh(source)
+    await session.refresh(subscription)
+    await session.refresh(sync_state)
+
+
+async def _prepare_source_subscription(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    identity: SourceIdentity,
+    display_name: str | None,
+    folder_name: str | None,
+    source_config: dict[str, Any] | None = None,
+    subscription_display_name: str | None | object = _USE_SOURCE_DISPLAY_NAME,
 ) -> tuple[FeedSource, SourceSubscription, SourceSyncState, bool]:
     """Create/reuse a shared source and create the caller's subscription.
 
@@ -216,13 +285,7 @@ async def subscribe_to_shared_source(
         await session.flush()
         await ensure_web_rule_job(session, source=source, state=sync_state, reason="author")
 
-    if commit:
-        await session.commit()
-        await session.refresh(source)
-        await session.refresh(subscription)
-        await session.refresh(sync_state)
-    else:
-        await session.flush()
+    await session.flush()
     return source, subscription, sync_state, created_source
 
 

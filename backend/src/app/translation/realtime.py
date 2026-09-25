@@ -29,7 +29,7 @@ from app.translation.domain import (
 )
 from app.translation.executor import translate_items_with_isolation
 from app.translation.interactive import ArtifactPersistence, persist_interactive_artifacts
-from app.translation.projection import TextInput, TranslationContext, project_texts
+from app.translation.projection import TextInput, TranslationContext, read_text_translations
 from app.translation.quota import TranslationQuotaError, TranslationQuotaStorageUnavailable
 from app.translation.rich_text import uses_reader_format, validate_tokens
 
@@ -312,11 +312,10 @@ class RealtimeCoordinator:
         if self._session_factory is None:
             raise RuntimeError("Realtime translation requires a database session factory.")
         async with self._session_factory() as session:
-            projections = await project_texts(
+            projections = await read_text_translations(
                 session,
                 items,
                 context=context,
-                ensure_missing=False,
             )
             await session.commit()
             for item in items:

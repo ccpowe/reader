@@ -8,11 +8,11 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from app.api.sources import _project_web_rule_health, _web_rule_health_projections
 from app.domain.enums import SourceKind, SourceStatus, SyncPhase
 from app.ingestion.models import SourceScanError, SourceScanRequest
 from app.ingestion.sources.web_blog import WebBlogSourceAdapter, WebBlogSourceConfig
 from app.ingestion.web_rules import parse_web_rule, web_rule_failure_feedback
+from app.services.source_health import project_web_rule_health, web_rule_health_projections
 from app.workers.sync import _record_web_structure_health, _retry_delay
 
 URL = "https://example.com/blog"
@@ -216,12 +216,12 @@ def test_source_projection_ignores_historical_job_and_disabled_agent_when_health
     old_job = SimpleNamespace(
         base_rule_revision=1, reason="repair", failure_episode_id=uuid4(), status="failed"
     )
-    assert _project_web_rule_health(source, state, old_job, agent_unavailable=True) == (
+    assert project_web_rule_health(source, state, old_job, agent_unavailable=True) == (
         SyncPhase.IDLE,
         None,
     )
     state.web_rule_failure_episode_id = uuid4()
-    assert _project_web_rule_health(source, state, old_job, agent_unavailable=False) == (
+    assert project_web_rule_health(source, state, old_job, agent_unavailable=False) == (
         SyncPhase.IDLE,
         None,
     )
@@ -247,12 +247,12 @@ def test_source_projection_current_job_and_pause_precedence(
         failure_episode_id=state.web_rule_failure_episode_id,
         status=job_status,
     )
-    assert _project_web_rule_health(source, state, job, agent_unavailable=unavailable) == (
+    assert project_web_rule_health(source, state, job, agent_unavailable=unavailable) == (
         SyncPhase.DEGRADED,
         expected,
     )
     source.status = SourceStatus.PAUSED
-    assert _project_web_rule_health(source, state, job, agent_unavailable=unavailable) == (
+    assert project_web_rule_health(source, state, job, agent_unavailable=unavailable) == (
         SyncPhase.IDLE,
         None,
     )
@@ -270,12 +270,12 @@ def test_current_failed_rule_task_preserves_upstream_access_cause(code, missing,
         status="failed",
         last_error_code=code,
     )
-    assert _project_web_rule_health(source, state, job, agent_unavailable=unavailable) == (
+    assert project_web_rule_health(source, state, job, agent_unavailable=unavailable) == (
         SyncPhase.DEGRADED,
         code,
     )
     source.status = SourceStatus.PAUSED
-    assert _project_web_rule_health(source, state, job, agent_unavailable=unavailable) == (
+    assert project_web_rule_health(source, state, job, agent_unavailable=unavailable) == (
         SyncPhase.IDLE,
         None,
     )
@@ -290,7 +290,7 @@ def test_historical_access_error_does_not_replace_current_source_health():
         status="failed",
         last_error_code="web_challenge_required",
     )
-    assert _project_web_rule_health(source, state, job, agent_unavailable=False) == (
+    assert project_web_rule_health(source, state, job, agent_unavailable=False) == (
         SyncPhase.DEGRADED,
         "web_rule_authoring",
     )
@@ -312,7 +312,7 @@ def test_latest_scan_access_failure_remains_visible_during_an_older_repair_episo
         status=job_status,
         last_error_code="web_structure_changed",
     )
-    assert _project_web_rule_health(source, state, job, agent_unavailable=unavailable) == (
+    assert project_web_rule_health(source, state, job, agent_unavailable=unavailable) == (
         SyncPhase.DEGRADED,
         code,
     )
@@ -324,7 +324,7 @@ def test_pending_feed_probe_does_not_project_rule_agent_failure(previous_error):
     source.config.pop("web_feed_discovery")
     state.last_error_code = previous_error
     state.phase = SyncPhase.CATCHING_UP
-    assert _project_web_rule_health(source, state, None, agent_unavailable=True) == (
+    assert project_web_rule_health(source, state, None, agent_unavailable=True) == (
         SyncPhase.CATCHING_UP,
         "web_feed_discovering",
     )
@@ -334,7 +334,7 @@ def test_retrying_feed_probe_preserves_network_sync_error():
     source, state = source_state(has_rule=False)
     source.config["web_feed_discovery"]["status"] = "retry"
     state.phase, state.last_error_code = SyncPhase.DEGRADED, "network_error"
-    assert _project_web_rule_health(source, state, None, agent_unavailable=True) == (
+    assert project_web_rule_health(source, state, None, agent_unavailable=True) == (
         SyncPhase.DEGRADED,
         "network_error",
     )
@@ -353,7 +353,7 @@ def test_discovered_feed_health_ignores_historical_rule_episode(last_error):
         if last_error == "network_error"
         else (SyncPhase.IDLE, None)
     )
-    assert _project_web_rule_health(source, state, None, agent_unavailable=True) == expected
+    assert project_web_rule_health(source, state, None, agent_unavailable=True) == expected
 
 
 @pytest.mark.parametrize("status", ["found", "retry", None])
@@ -366,7 +366,7 @@ async def test_feed_sources_do_not_query_agent_runtime_or_historical_jobs(status
     else:
         source.config.pop("web_feed_discovery")
     session = AsyncMock()
-    projected = await _web_rule_health_projections(session, [(source, state)])
+    projected = await web_rule_health_projections(session, [(source, state)])
     assert source.id in projected
     session.get.assert_not_awaited()
     session.scalars.assert_not_awaited()

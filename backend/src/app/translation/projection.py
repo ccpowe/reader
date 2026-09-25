@@ -71,9 +71,6 @@ class TextInput:
     priority: int | None = None
 
 
-# Compatibility name for title-only callers while the projection API expands
-# to article, ranking, webpage, and caption surfaces.
-TitleTranslationContext = TranslationContext
 _CONTEXT_CACHE_MAX_USERS = 1_024
 _translation_context_cache: OrderedDict[UUID, tuple[float, TranslationContext]] = OrderedDict()
 
@@ -159,21 +156,39 @@ def invalidate_translation_context(user_id: UUID) -> None:
     _translation_context_cache.pop(user_id, None)
 
 
-async def get_title_translation_context(
-    session: AsyncSession,
-    user_id: UUID,
-) -> TranslationContext:
-    """Compatibility wrapper for existing feed and saved title callers."""
-    return await get_translation_context(session, user_id)
-
-
-async def project_texts(
+async def read_text_translations(
     session: AsyncSession,
     items: Sequence[TextInput],
     *,
     context: TranslationContext,
-    ensure_missing: bool = True,
     priority: TranslationPriority = TranslationPriority.INTERACTIVE,
+) -> dict[str, TranslationProjection]:
+    """Read artifacts and existing Work without creating or promoting Work."""
+    return await _project_texts(
+        session, items, context=context, priority=priority, ensure_missing=False
+    )
+
+
+async def ensure_text_translations(
+    session: AsyncSession,
+    items: Sequence[TextInput],
+    *,
+    context: TranslationContext,
+    priority: TranslationPriority = TranslationPriority.INTERACTIVE,
+) -> dict[str, TranslationProjection]:
+    """Read translations and ensure every missing segment has durable Work."""
+    return await _project_texts(
+        session, items, context=context, priority=priority, ensure_missing=True
+    )
+
+
+async def _project_texts(
+    session: AsyncSession,
+    items: Sequence[TextInput],
+    *,
+    context: TranslationContext,
+    priority: TranslationPriority,
+    ensure_missing: bool,
 ) -> dict[str, TranslationProjection]:
     """Resolve mixed-purpose segments without taking ownership of the transaction."""
     if not items:
@@ -229,16 +244,42 @@ async def project_texts(
     return resolution.projections
 
 
-async def project_titles(
+async def read_title_translations(
     session: AsyncSession,
     items: Sequence[TitleInput],
     *,
     context: TranslationContext,
-    ensure_missing: bool = True,
     priority: TranslationPriority = TranslationPriority.INTERACTIVE,
 ) -> dict[str, TranslationProjection]:
-    """Resolve titles; the application boundary commits any created demand."""
-    return await project_texts(
+    """Read title artifacts and Work without creating Work."""
+    return await _project_titles(
+        session, items, context=context, priority=priority, ensure_missing=False
+    )
+
+
+async def ensure_title_translations(
+    session: AsyncSession,
+    items: Sequence[TitleInput],
+    *,
+    context: TranslationContext,
+    priority: TranslationPriority = TranslationPriority.INTERACTIVE,
+) -> dict[str, TranslationProjection]:
+    """Read titles and ensure missing titles have durable Work."""
+    return await _project_titles(
+        session, items, context=context, priority=priority, ensure_missing=True
+    )
+
+
+async def _project_titles(
+    session: AsyncSession,
+    items: Sequence[TitleInput],
+    *,
+    context: TranslationContext,
+    priority: TranslationPriority,
+    ensure_missing: bool,
+) -> dict[str, TranslationProjection]:
+    """Keep title normalization and purpose identical for both paths."""
+    return await _project_texts(
         session,
         [
             TextInput(

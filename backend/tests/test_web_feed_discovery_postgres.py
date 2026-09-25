@@ -15,7 +15,7 @@ from app.domain.enums import SourceKind, SyncPhase, SyncRunStatus
 from app.ingestion.feed_discovery import FeedDiscoveryResult
 from app.ingestion.source_identity import canonical_web_identity, web_article_native_id
 from app.services import web_rule_jobs as jobs
-from app.services.subscriptions import subscribe_to_shared_source
+from app.services.subscriptions import subscribe_to_source
 from app.services.web_feeds import save_web_feed_discovery, schedule_web_feed_probes
 from app.storage.models import (
     Content,
@@ -163,7 +163,7 @@ async def test_subscribe_prefers_rss_and_syncs_updates_without_agent(
                 runtime.resume_at = None
                 await session.commit()
         async with factory() as session:
-            source, _, state, created = await subscribe_to_shared_source(
+            source, _, state, created = await subscribe_to_source(
                 session,
                 user_id=user_id,
                 identity=canonical_web_identity(URL),
@@ -255,7 +255,7 @@ async def test_no_feed_creates_one_author_job_and_does_not_reset_terminal_budget
             factory, jobs.finish_web_rule_job, claim=claim, status="failed", code="test_failure"
         )
         async with factory() as session:
-            await subscribe_to_shared_source(
+            await subscribe_to_source(
                 session,
                 user_id=user_id,
                 identity=canonical_web_identity(URL),

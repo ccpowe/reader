@@ -57,9 +57,7 @@ def test_channel_update_token_is_source_bound_and_rejects_invalid_bytes() -> Non
     assert _decode_channel_update_token(token) == (source_id, 17)
     with pytest.raises(HTTPException, match="Invalid channel update token"):
         _decode_channel_update_token("_w")
-    numeric_source = base64.urlsafe_b64encode(
-        b'{"source_id":123,"sequence":1}'
-    ).decode("ascii")
+    numeric_source = base64.urlsafe_b64encode(b'{"source_id":123,"sequence":1}').decode("ascii")
     with pytest.raises(HTTPException, match="Invalid channel update token"):
         _decode_channel_update_token(numeric_source)
 
@@ -98,11 +96,11 @@ async def test_source_filter_is_applied_before_feed_paging(monkeypatch) -> None:
     async def translation_context(*_args, **_kwargs):
         return object()
 
-    async def project_titles(*_args, **_kwargs):
+    async def ensure_titles(*_args, **_kwargs):
         return {}
 
-    monkeypatch.setattr(feed, "get_title_translation_context", translation_context)
-    monkeypatch.setattr(feed, "project_titles", project_titles)
+    monkeypatch.setattr(feed, "get_translation_context", translation_context)
+    monkeypatch.setattr(feed, "ensure_title_translations", ensure_titles)
 
     items, next_cursor = await feed._query_feed_page(
         Session(),  # type: ignore[arg-type]

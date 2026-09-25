@@ -202,7 +202,7 @@ async def test_reddit_snapshot_scheduling_is_safe_under_concurrent_subscriptions
         statement = str(call.args[0].compile(dialect=postgresql.dialect()))
         assert "ON CONFLICT (cache_key) DO UPDATE" in statement
         assert "last_accessed_at" in statement
-    session.commit.assert_awaited_once()
+    session.flush.assert_awaited_once()
 
 
 @pytest.mark.asyncio

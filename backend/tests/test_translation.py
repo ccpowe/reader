@@ -16,7 +16,7 @@ from app.domain.enums import (
     TranslationScope,
     TranslationStatus,
 )
-from app.translation.demand import TranslationResolution, default_translation_engine
+from app.translation.demand import default_translation_engine
 from app.translation.domain import (
     TranslationDemand,
     TranslationEngine,
@@ -35,7 +35,7 @@ from app.translation.factory import (
     close_translation_providers,
 )
 from app.translation.interactive import resolve_interactive_texts
-from app.translation.projection import TextInput, TranslationContext, project_texts
+from app.translation.projection import TextInput, TranslationContext
 from app.translation.providers.langchain import LangChainChatModelProvider
 from app.translation.store import (
     WorkOutcome,
@@ -276,10 +276,11 @@ async def test_interactive_miss_returns_provider_result_before_artifact_persiste
         priority=int(TranslationPriority.INTERACTIVE),
     )
     context = TranslationContext(target_locale="zh-CN", enabled=True, engine=_engine())
-    projection_calls: list[bool] = []
+    cache_reads = 0
 
-    async def cache_only_projection(_session, items, *, context, ensure_missing):
-        projection_calls.append(ensure_missing)
+    async def cache_only_projection(_session, items, *, context):
+        nonlocal cache_reads
+        cache_reads += 1
         return {
             candidate.item_id: TranslationProjection(
                 item_id=candidate.item_id,
@@ -305,7 +306,7 @@ async def test_interactive_miss_returns_provider_result_before_artifact_persiste
             ]
 
     monkeypatch.setattr(
-        "app.translation.interactive.project_texts",
+        "app.translation.interactive.read_text_translations",
         cache_only_projection,
     )
 
@@ -317,7 +318,7 @@ async def test_interactive_miss_returns_provider_result_before_artifact_persiste
         timeout_seconds=2,
     )
 
-    assert projection_calls == [False]
+    assert cache_reads == 1
     assert resolution.projections["caption"].status == TranslationStatus.SUCCEEDED
     assert resolution.projections["caption"].translated_text == "可见字幕"
     assert resolution.persistence is not None
@@ -334,11 +335,20 @@ async def test_interactive_timeout_falls_back_to_durable_work(
         purpose=TranslationPurpose.CAPTION,
     )
     context = TranslationContext(target_locale="zh-CN", enabled=True, engine=_engine())
-    projection_calls: list[bool] = []
+    reads = 0
+    work_created = 0
 
-    async def project(_session, items, *, context, ensure_missing):
-        projection_calls.append(ensure_missing)
-        status = TranslationStatus.PENDING if ensure_missing else None
+    async def read_projection(_session, items, *, context):
+        nonlocal reads
+        reads += 1
+        return projections(items, context=context, status=None)
+
+    async def ensure_projection(_session, items, *, context):
+        nonlocal work_created
+        work_created += 1
+        return projections(items, context=context, status=TranslationStatus.PENDING)
+
+    def projections(items, *, context, status):
         return {
             candidate.item_id: TranslationProjection(
                 item_id=candidate.item_id,
@@ -357,7 +367,8 @@ async def test_interactive_timeout_falls_back_to_durable_work(
             await asyncio.sleep(1)
             return []
 
-    monkeypatch.setattr("app.translation.interactive.project_texts", project)
+    monkeypatch.setattr("app.translation.interactive.read_text_translations", read_projection)
+    monkeypatch.setattr("app.translation.interactive.ensure_text_translations", ensure_projection)
 
     resolution = await resolve_interactive_texts(
         AsyncMock(),
@@ -367,53 +378,9 @@ async def test_interactive_timeout_falls_back_to_durable_work(
         timeout_seconds=0.001,
     )
 
-    assert projection_calls == [False, True]
+    assert (reads, work_created) == (1, 1)
     assert resolution.projections["caption"].status == TranslationStatus.PENDING
     assert resolution.persistence is None
-
-
-@pytest.mark.asyncio
-async def test_interactive_request_promotes_existing_work_into_its_current_lane(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    item = TextInput(
-        item_id="caption",
-        text="Current caption",
-        purpose=TranslationPurpose.CAPTION,
-        priority=int(TranslationPriority.INTERACTIVE),
-    )
-    context = TranslationContext(target_locale="zh-CN", enabled=True, engine=_engine())
-    ensure_calls: list[bool] = []
-
-    async def project(_session, candidates, *, context, ensure_missing):
-        ensure_calls.append(ensure_missing)
-        return {
-            candidate.item_id: TranslationProjection(
-                item_id=candidate.item_id,
-                source_hash="caption-hash",
-                target_locale=context.target_locale,
-                status=TranslationStatus.PENDING,
-                priority=(
-                    int(TranslationPriority.INTERACTIVE)
-                    if ensure_missing
-                    else int(TranslationPriority.INTERACTIVE)
-                ),
-            )
-            for candidate in candidates
-        }
-
-    monkeypatch.setattr("app.translation.interactive.project_texts", project)
-
-    resolution = await resolve_interactive_texts(
-        AsyncMock(),
-        [item],
-        context=context,
-        provider=None,
-        timeout_seconds=1,
-    )
-
-    assert ensure_calls == [False]
-    assert resolution.projections["caption"].priority == int(TranslationPriority.INTERACTIVE)
 
 
 @pytest.mark.asyncio
@@ -431,15 +398,20 @@ async def test_interactive_timeout_preserves_finished_microbatches(
     context = TranslationContext(target_locale="zh-CN", enabled=True, engine=_engine())
     durable_ids: list[str] = []
 
-    async def project(_session, candidates, *, context, ensure_missing):
-        if ensure_missing:
-            durable_ids.extend(candidate.item_id for candidate in candidates)
+    async def read_projection(_session, candidates, *, context):
+        return projections(candidates, context=context, status=None)
+
+    async def ensure_projection(_session, candidates, *, context):
+        durable_ids.extend(candidate.item_id for candidate in candidates)
+        return projections(candidates, context=context, status=TranslationStatus.PENDING)
+
+    def projections(candidates, *, context, status):
         return {
             candidate.item_id: TranslationProjection(
                 item_id=candidate.item_id,
                 source_hash=f"hash-{candidate.item_id}",
                 target_locale=context.target_locale,
-                status=TranslationStatus.PENDING if ensure_missing else None,
+                status=status,
             )
             for candidate in candidates
         }
@@ -459,7 +431,8 @@ async def test_interactive_timeout_preserves_finished_microbatches(
                 for candidate in candidates
             ]
 
-    monkeypatch.setattr("app.translation.interactive.project_texts", project)
+    monkeypatch.setattr("app.translation.interactive.read_text_translations", read_projection)
+    monkeypatch.setattr("app.translation.interactive.ensure_text_translations", ensure_projection)
 
     resolution = await resolve_interactive_texts(
         AsyncMock(),
@@ -499,8 +472,7 @@ async def test_interactive_request_cancellation_stops_unfinished_microbatches(
     started = 0
     cancelled = 0
 
-    async def project(_session, candidates, *, context, ensure_missing):
-        assert ensure_missing is False
+    async def project(_session, candidates, *, context):
         return {
             candidate.item_id: TranslationProjection(
                 item_id=candidate.item_id,
@@ -527,7 +499,7 @@ async def test_interactive_request_cancellation_stops_unfinished_microbatches(
                 raise
             return []
 
-    monkeypatch.setattr("app.translation.interactive.project_texts", project)
+    monkeypatch.setattr("app.translation.interactive.read_text_translations", project)
     request = asyncio.create_task(
         resolve_interactive_texts(
             AsyncMock(),
@@ -560,13 +532,13 @@ async def test_interactive_quota_failure_is_visible_while_durable_work_retries(
     )
     context = TranslationContext(target_locale="zh-CN", enabled=True, engine=_engine())
 
-    async def project(_session, items, *, context, ensure_missing):
+    async def project(_session, items, *, context):
         return {
             candidate.item_id: TranslationProjection(
                 item_id=candidate.item_id,
                 source_hash="caption-hash",
                 target_locale=context.target_locale,
-                status=TranslationStatus.PENDING if ensure_missing else None,
+                status=None,
             )
             for candidate in items
         }
@@ -583,7 +555,20 @@ async def test_interactive_quota_failure_is_visible_while_durable_work_retries(
                 retry_after_seconds=60,
             )
 
-    monkeypatch.setattr("app.translation.interactive.project_texts", project)
+    monkeypatch.setattr("app.translation.interactive.read_text_translations", project)
+
+    async def ensure(_session, items, *, context):
+        return {
+            candidate.item_id: TranslationProjection(
+                item_id=candidate.item_id,
+                source_hash="caption-hash",
+                target_locale=context.target_locale,
+                status=TranslationStatus.PENDING,
+            )
+            for candidate in items
+        }
+
+    monkeypatch.setattr("app.translation.interactive.ensure_text_translations", ensure)
 
     resolution = await resolve_interactive_texts(
         AsyncMock(),
@@ -609,10 +594,11 @@ async def test_interactive_request_retries_preexisting_failed_work_and_recovers(
         purpose=TranslationPurpose.CAPTION,
     )
     context = TranslationContext(target_locale="zh-CN", enabled=True, engine=_engine())
-    projection_calls: list[bool] = []
+    cache_reads = 0
 
-    async def project(_session, candidates, *, context, ensure_missing):
-        projection_calls.append(ensure_missing)
+    async def project(_session, candidates, *, context):
+        nonlocal cache_reads
+        cache_reads += 1
         return {
             candidate.item_id: TranslationProjection(
                 item_id=candidate.item_id,
@@ -635,7 +621,7 @@ async def test_interactive_request_retries_preexisting_failed_work_and_recovers(
                 for candidate in items
             ]
 
-    monkeypatch.setattr("app.translation.interactive.project_texts", project)
+    monkeypatch.setattr("app.translation.interactive.read_text_translations", project)
 
     resolution = await resolve_interactive_texts(
         AsyncMock(),
@@ -645,7 +631,7 @@ async def test_interactive_request_retries_preexisting_failed_work_and_recovers(
         timeout_seconds=2,
     )
 
-    assert projection_calls == [False]
+    assert cache_reads == 1
     assert resolution.projections["caption"].status == TranslationStatus.SUCCEEDED
     assert resolution.projections["caption"].translated_text == "恢复后的字幕"
     assert resolution.persistence is not None
@@ -662,10 +648,11 @@ async def test_interactive_failed_retry_does_not_restart_durable_retry_cycle(
         purpose=TranslationPurpose.CAPTION,
     )
     context = TranslationContext(target_locale="zh-CN", enabled=True, engine=_engine())
-    projection_calls: list[bool] = []
+    cache_reads = 0
 
-    async def project(_session, candidates, *, context, ensure_missing):
-        projection_calls.append(ensure_missing)
+    async def project(_session, candidates, *, context):
+        nonlocal cache_reads
+        cache_reads += 1
         return {
             candidate.item_id: TranslationProjection(
                 item_id=candidate.item_id,
@@ -689,7 +676,7 @@ async def test_interactive_failed_retry_does_not_restart_durable_retry_cycle(
                 retryable=True,
             )
 
-    monkeypatch.setattr("app.translation.interactive.project_texts", project)
+    monkeypatch.setattr("app.translation.interactive.read_text_translations", project)
 
     resolution = await resolve_interactive_texts(
         AsyncMock(),
@@ -699,7 +686,7 @@ async def test_interactive_failed_retry_does_not_restart_durable_retry_cycle(
         timeout_seconds=2,
     )
 
-    assert projection_calls == [False]
+    assert cache_reads == 1
     projection = resolution.projections["caption"]
     assert projection.status == TranslationStatus.FAILED
     assert projection.error_code == "transport_error"
@@ -1366,37 +1353,6 @@ def test_legacy_and_current_chat_routes_share_one_account_semaphore(monkeypatch)
 
     assert len(providers) == 2
     assert providers[0]._request_semaphore is providers[1]._request_semaphore
-
-
-@pytest.mark.asyncio
-async def test_projection_leaves_transaction_ownership_to_its_caller(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session = AsyncMock()
-
-    async def resolve(*_args, **_kwargs):
-        return TranslationResolution(
-            {
-                "one": TranslationProjection(
-                    item_id="one",
-                    source_hash="hash",
-                    target_locale="zh-CN",
-                    status=None,
-                )
-            },
-            work_changed=0,
-        )
-
-    monkeypatch.setattr("app.translation.projection.resolve_translation_demands", resolve)
-
-    await project_texts(
-        session,
-        [TextInput(item_id="one", text="Hello", purpose=TranslationPurpose.PARAGRAPH)],
-        context=TranslationContext(target_locale="zh-CN", enabled=True, engine=_engine()),
-        ensure_missing=False,
-    )
-
-    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

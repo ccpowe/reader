@@ -30,9 +30,9 @@ from app.storage.models import (
 from app.translation.domain import TranslationProjection
 from app.translation.projection import (
     TitleInput,
-    TitleTranslationContext,
-    get_title_translation_context,
-    project_titles,
+    TranslationContext,
+    ensure_title_translations,
+    get_translation_context,
     translation_response_values,
 )
 
@@ -163,7 +163,7 @@ async def _query_feed_page(
     cursor: tuple[datetime, UUID] | None,
 ) -> tuple[list[FeedItemResponse], str | None]:
     """Read one page with SQL-level content de-duplication and keyset paging."""
-    translation_context = await get_title_translation_context(session, current_user.id)
+    translation_context = await get_translation_context(session, current_user.id)
     filters = _feed_scope_filters(
         user_id=current_user.id,
         folder_name=folder_name,
@@ -252,7 +252,7 @@ async def _query_feed_page(
     page_rows = list(rows)
     has_more = len(page_rows) > limit
     page_rows = page_rows[:limit]
-    title_projections = await project_titles(
+    title_projections = await ensure_title_translations(
         session,
         [TitleInput(item_id=str(content.id), text=content.title) for _, content, *_ in page_rows],
         context=translation_context,
@@ -307,7 +307,7 @@ def _feed_item_response(
     source: FeedSource,
     subscription: SourceSubscription,
     saved: UserSavedContent | None,
-    translation_context: TitleTranslationContext,
+    translation_context: TranslationContext,
     projection: TranslationProjection | None,
     loaded_count: int = 1,
 ) -> FeedItemResponse:
@@ -373,7 +373,7 @@ async def get_article(
     session: AsyncSession = Depends(get_session),
 ) -> ArticleResponse:
     """Return an article from an active subscription or the caller's saved list."""
-    translation_context = await get_title_translation_context(session, current_user.id)
+    translation_context = await get_translation_context(session, current_user.id)
     active_subscription = exists(
         select(SourceSubscription.id).where(
             SourceSubscription.source_id == SourceEntry.source_id,
@@ -404,7 +404,7 @@ async def get_article(
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Article not found.")
     content, entry = result
-    title_projections = await project_titles(
+    title_projections = await ensure_title_translations(
         session,
         [TitleInput(item_id=str(content.id), text=content.title)],
         context=translation_context,

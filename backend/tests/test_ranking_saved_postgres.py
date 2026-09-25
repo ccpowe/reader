@@ -41,9 +41,7 @@ async def test_ranking_archive_concurrency_durability_and_user_isolation():
     try:
         await _assert_disposable_database(connection, _test_guard_token())
         for user in (first, second):
-            await connection.execute(
-                "INSERT INTO profiles (id) VALUES ($1)", user.id
-            )
+            await connection.execute("INSERT INTO profiles (id) VALUES ($1)", user.id)
             await connection.execute(
                 "INSERT INTO user_translation_preferences (user_id, is_enabled) "
                 "VALUES ($1, false) ON CONFLICT (user_id) DO UPDATE SET is_enabled = false",
@@ -154,7 +152,7 @@ async def test_reddit_saved_identity_is_reused_by_normal_ingestion():
     from app.domain.enums import ContentKind
     from app.ingestion.models import DiscoveredContent
     from app.ingestion.source_identity import canonical_reddit_identity
-    from app.services.subscriptions import subscribe_to_shared_source
+    from app.services.subscriptions import subscribe_to_reddit_source
     from app.workers.candidates import _get_or_create_content
 
     dsn = _test_dsn()
@@ -167,41 +165,33 @@ async def test_reddit_saved_identity_is_reused_by_normal_ingestion():
     url = f"https://www.reddit.com/r/{subreddit}/comments/abc123/post/"
     try:
         await _assert_disposable_database(connection, _test_guard_token())
-        await connection.execute(
-            "INSERT INTO profiles (id) VALUES ($1)", user_id
-        )
+        await connection.execute("INSERT INTO profiles (id) VALUES ($1)", user_id)
         async with factory() as session:
-            source, *_ = await subscribe_to_shared_source(
+            source, *_ = await subscribe_to_reddit_source(
                 session,
                 user_id=user_id,
                 identity=canonical_reddit_identity(subreddit),
-                display_name=subreddit,
                 folder_name=None,
+                limit=20,
             )
             source_id = source.id
             now = datetime.now(UTC)
-            session.add(
-                RankingSnapshot(
-                    cache_key=request.cache_key,
-                    kind="reddit",
-                    parameters=request.parameters,
-                    payload={
-                        "title": subreddit,
-                        "subtitle": "",
-                        "items": [
-                            {
-                                "rank": 1,
-                                "title": "Reddit post",
-                                "url": url,
-                                "native_id": "abc123",
-                            }
-                        ],
-                    },
-                    fetched_at=now,
-                    next_refresh_at=now,
-                    is_ready=True,
-                )
-            )
+            snapshot = await session.get(RankingSnapshot, request.cache_key)
+            snapshot.payload = {
+                "title": subreddit,
+                "subtitle": "",
+                "items": [
+                    {
+                        "rank": 1,
+                        "title": "Reddit post",
+                        "url": url,
+                        "native_id": "abc123",
+                    }
+                ],
+            }
+            snapshot.fetched_at = now
+            snapshot.next_refresh_at = now
+            snapshot.is_ready = True
             await session.commit()
         async with factory() as session:
             archived_id = await persist_ranking_item(
@@ -249,6 +239,102 @@ async def test_reddit_saved_identity_is_reused_by_normal_ingestion():
                 )
                 == 1
             )
+    finally:
+        await engine.dispose()
+        await connection.close()
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_reddit_subscription_rolls_back_snapshot_failure_and_reuses_quota(monkeypatch):
+    from app.ingestion.source_identity import canonical_reddit_identity
+    from app.services import subscriptions
+    from app.services.ranking_snapshots import ensure_reddit_snapshots
+    from app.services.subscriptions import (
+        SourceSubscriptionLimitExceeded,
+        subscribe_to_reddit_source,
+    )
+
+    dsn = _test_dsn()
+    connection = await asyncpg.connect(dsn)
+    engine = create_async_engine(dsn.replace("postgresql://", "postgresql+asyncpg://", 1))
+    factory = build_session_factory(engine)
+    user_id = uuid4()
+    subreddit = f"test{uuid4().hex[:12]}"
+    identity = canonical_reddit_identity(subreddit)
+    board_keys = [
+        RankingRequest(
+            kind="reddit", subreddit=subreddit, sort=sort, time_filter=time_filter
+        ).cache_key
+        for sort, time_filter in (("hot", None), ("rising", None), ("top", "week"))
+    ]
+
+    async def fail_after_snapshots(session, name):
+        await ensure_reddit_snapshots(session, name)
+        raise RuntimeError("snapshot setup failed")
+
+    try:
+        await _assert_disposable_database(connection, _test_guard_token())
+        with monkeypatch.context() as patch:
+            patch.setattr(subscriptions, "ensure_reddit_snapshots", fail_after_snapshots)
+            async with factory() as session:
+                with pytest.raises(RuntimeError, match="snapshot setup failed"):
+                    await subscribe_to_reddit_source(
+                        session, user_id=user_id, identity=identity, folder_name=None, limit=1
+                    )
+        assert (
+            await connection.fetchval(
+                "SELECT count(*) FROM feed_sources WHERE canonical_key = $1", identity.canonical_key
+            )
+            == 0
+        )
+        assert (
+            await connection.fetchval(
+                "SELECT count(*) FROM source_subscriptions WHERE user_id = $1", user_id
+            )
+            == 0
+        )
+        assert (
+            await connection.fetchval(
+                "SELECT count(*) FROM ranking_snapshots WHERE cache_key = ANY($1::text[])",
+                board_keys,
+            )
+            == 0
+        )
+
+        async with factory() as session:
+            source, subscription, _, created = await subscribe_to_reddit_source(
+                session, user_id=user_id, identity=identity, folder_name=None, limit=1
+            )
+            assert created
+        async with factory() as session:
+            again, same_subscription, _, created = await subscribe_to_reddit_source(
+                session, user_id=user_id, identity=identity, folder_name=None, limit=1
+            )
+            assert not created
+            assert again.id == source.id and same_subscription.id == subscription.id
+        assert (
+            await connection.fetchval(
+                "SELECT count(*) FROM ranking_snapshots WHERE cache_key = ANY($1::text[])",
+                board_keys,
+            )
+            == 3
+        )
+        assert (
+            await connection.fetchval(
+                "SELECT count(*) FROM source_subscriptions WHERE user_id = $1", user_id
+            )
+            == 1
+        )
+        async with factory() as session:
+            with pytest.raises(SourceSubscriptionLimitExceeded):
+                await subscribe_to_reddit_source(
+                    session,
+                    user_id=user_id,
+                    identity=canonical_reddit_identity(f"test{uuid4().hex[:12]}"),
+                    folder_name=None,
+                    limit=1,
+                )
     finally:
         await engine.dispose()
         await connection.close()

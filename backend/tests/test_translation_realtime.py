@@ -104,11 +104,10 @@ USER_ID = uuid4()
 
 @pytest.fixture
 def cache_misses(monkeypatch: pytest.MonkeyPatch):
-    async def project(session, items, *, context, ensure_missing):
-        assert ensure_missing is False
+    async def project(session, items, *, context):
         return {}
 
-    monkeypatch.setattr("app.translation.realtime.project_texts", project)
+    monkeypatch.setattr("app.translation.realtime.read_text_translations", project)
 
 
 @pytest.mark.asyncio
