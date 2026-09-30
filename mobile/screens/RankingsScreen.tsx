@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -49,6 +49,7 @@ import { protectsQueryKeys, removeObsoleteQueries } from '../state/queryLifecycl
 
 const RANKING_CHROME_HEIGHT = PAGE_HEADER_HEIGHT + 46;
 const RANKING_KINDS: RankingKind[] = ['hacker_news', 'reddit', 'github', 'techtwitter'];
+const EMPTY_RANKING_ITEMS: RankingItem[] = [];
 
 export function RankingsScreen({
   onProfile,
@@ -134,8 +135,8 @@ function RankingsScreenContent({
   const readerClient = useQueryClient();
   const [visibleXKeys, setVisibleXKeys] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
-    if (kind !== 'techtwitter' || !active) setVisibleXKeys((current) => current.size ? new Set() : current);
-  }, [active, kind]);
+    if (kind !== 'techtwitter') setVisibleXKeys((current) => current.size ? new Set() : current);
+  }, [kind]);
   const runtime = useReaderRuntime();
   const sourcesQuery = useSources(session, active);
   const translation = useTranslationPreference(session, active);
@@ -285,7 +286,7 @@ function RankingsScreenContent({
       kind={targetKind}
       onLoadMore={() => loadMoreIfNeeded(targetKind)}
       onVisibleItems={(items) => {
-        if (targetKind !== 'techtwitter' || kind !== 'techtwitter') return;
+        if (!active || targetKind !== 'techtwitter' || kind !== 'techtwitter') return;
         const keys = new Set(items.map((item) => item.translation_key));
         setVisibleXKeys((current) => current.size === keys.size && [...keys].every((key) => current.has(key)) ? current : keys);
       }}
@@ -399,8 +400,8 @@ function RankingPage({
   visibleCount: number;
 }) {
   const { t } = useTranslation('feed');
-  const items = query.ranking?.items ?? [];
-  const shownItems = items.slice(0, visibleCount);
+  const items = query.ranking?.items ?? EMPTY_RANKING_ITEMS;
+  const shownItems = useMemo(() => items.slice(0, visibleCount), [items, visibleCount]);
   const memoryKey = rankingVariantKey(kind, kind === 'reddit' ? redditOptions : undefined);
   const position = useListPositionMemory({
     active,
@@ -411,6 +412,32 @@ function RankingPage({
     onViewableItems: onVisibleItems,
     registry: positionRegistry,
   });
+  const {
+    failedSegmentIds, isTitleRetrying, retryBodyTranslation, retryTitleTranslation,
+    timedOutSegmentIds, translating, translationEnabled,
+  } = query;
+  const renderItem = useCallback(({ item }: { item: RankingItem }) => {
+    const translationRetryNeeded = kind === 'techtwitter' && Boolean(item.body_segments?.some(
+      (segment) => timedOutSegmentIds.has(segment.segment_id) || failedSegmentIds.has(segment.segment_id),
+    ));
+    const retryVisible = kind === 'techtwitter' && translationEnabled && Boolean(item.body_text)
+      && (translationRetryNeeded || Boolean(item.body_segments?.some((segment) => segment.translation_status === 'failed')));
+    return <RankingCard
+      item={item}
+      kind={kind}
+      onOpenItem={onOpenItem}
+      onRetryBody={retryBodyTranslation}
+      onRetryTitle={retryTitleTranslation}
+      redditCommunity={redditCommunity}
+      redditSort={redditSort}
+      translationEnabled={kind === 'techtwitter' && translationEnabled}
+      translationBusy={retryVisible && translating}
+      translationRetryNeeded={translationRetryNeeded}
+      titleRetrying={isTitleRetrying(item)}
+      titleTimedOut={timedOutSegmentIds.has(`${item.translation_key}:title`)}
+    />;
+  }, [failedSegmentIds, isTitleRetrying, kind, onOpenItem, redditCommunity, redditSort,
+    retryBodyTranslation, retryTitleTranslation, timedOutSegmentIds, translating, translationEnabled]);
   const message = kind === 'reddit' && !redditCommunity
     ? t('redditSubscriptionRequired')
     : kind === 'reddit' && sourcesError
@@ -432,18 +459,7 @@ function RankingPage({
     onScrollToIndexFailed={position.onScrollToIndexFailed}
     onViewableItemsChanged={position.onViewableItemsChanged}
     ref={position.listRef}
-    renderItem={({ item }) => <RankingCard
-      item={item}
-      kind={kind}
-      onOpen={() => onOpenItem({ ...item, ranking_context: { kind, ...(kind === 'reddit' ? { subreddit: redditCommunity ?? undefined, sort: redditSort, time_filter: 'week' as const } : {}) } })}
-      onRetryBody={() => query.retryBodyTranslation(item)}
-      translationEnabled={kind === 'techtwitter' && query.translationEnabled}
-      translationBusy={query.translating}
-      translationRetryNeeded={kind === 'techtwitter' && item.body_segments?.some((segment) => query.timedOutSegmentIds.has(segment.segment_id) || query.failedSegmentIds.has(segment.segment_id))}
-      onRetryTitle={() => { void query.retryTitleTranslation(item); }}
-      titleRetrying={query.isTitleRetrying(item)}
-      titleTimedOut={query.timedOutSegmentIds.has(`${item.translation_key}:title`)}
-    />}
+    renderItem={renderItem}
     scrollEventThrottle={16}
     showsVerticalScrollIndicator={false}
     ListHeaderComponent={<>
@@ -459,12 +475,14 @@ function RankingPage({
   />;
 }
 
-function RankingCard({
+const RankingCard = memo(function RankingCard({
   item,
   kind,
-  onOpen,
+  onOpenItem,
   onRetryTitle,
   onRetryBody,
+  redditCommunity,
+  redditSort,
   translationEnabled,
   translationBusy,
   translationRetryNeeded,
@@ -473,20 +491,31 @@ function RankingCard({
 }: {
   item: RankingItem;
   kind: RankingKind;
-  onOpen: () => void;
-  onRetryTitle: () => void;
-  onRetryBody: () => void;
+  onOpenItem: (item: RankingItem) => void;
+  onRetryTitle: (item: RankingItem) => void | Promise<void>;
+  onRetryBody: (item: RankingItem) => void;
+  redditCommunity: string | null;
+  redditSort: RedditRankingSort;
   translationEnabled: boolean;
   translationBusy: boolean;
-  translationRetryNeeded?: boolean;
+  translationRetryNeeded: boolean;
   titleRetrying: boolean;
   titleTimedOut: boolean;
 }) {
-  if (kind === 'techtwitter') return <Pressable accessibilityRole="button" onPress={onOpen} style={styles.xRow}><Text style={styles.rankNumber}>{String(item.rank).padStart(2, '0')}</Text><XRankingContent item={item} translated={translationEnabled} onRetryTranslation={onRetryBody} translationBusy={translationBusy} translationRetryNeeded={translationRetryNeeded} /></Pressable>;
-  if (kind === 'github') return <GithubRankingCard item={item} onPress={onOpen} onRetryTitle={onRetryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
-  if (kind === 'reddit') return <RedditRankingCard item={item} onPress={onOpen} onRetryTitle={onRetryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
-  return <HackerNewsRankingCard item={item} onPress={onOpen} onRetryTitle={onRetryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
-}
+  const onOpen = useCallback(() => onOpenItem({
+    ...item,
+    ranking_context: {
+      kind,
+      ...(kind === 'reddit' ? { subreddit: redditCommunity ?? undefined, sort: redditSort, time_filter: 'week' as const } : {}),
+    },
+  }), [item, kind, onOpenItem, redditCommunity, redditSort]);
+  const retryTitle = useCallback(() => { void onRetryTitle(item); }, [item, onRetryTitle]);
+  const retryBody = useCallback(() => onRetryBody(item), [item, onRetryBody]);
+  if (kind === 'techtwitter') return <Pressable accessibilityRole="button" onPress={onOpen} style={styles.xRow}><Text style={styles.rankNumber}>{String(item.rank).padStart(2, '0')}</Text><XRankingContent item={item} translated={translationEnabled} onRetryTranslation={retryBody} translationBusy={translationBusy} translationRetryNeeded={translationRetryNeeded} /></Pressable>;
+  if (kind === 'github') return <GithubRankingCard item={item} onPress={onOpen} onRetryTitle={retryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
+  if (kind === 'reddit') return <RedditRankingCard item={item} onPress={onOpen} onRetryTitle={retryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
+  return <HackerNewsRankingCard item={item} onPress={onOpen} onRetryTitle={retryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
+});
 
 function rankingDomain(url: string) {
   try {

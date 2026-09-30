@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from 'react';
+import { memo, useCallback, useEffect, useReducer, useState } from 'react';
 import { BackHandler, StyleSheet, View } from 'react-native';
 import type { Session, ReaderAuthClient } from '../lib/readerAuth';
 import { useSharedValue } from 'react-native-reanimated';
@@ -15,6 +15,14 @@ import { RankingsScreen } from '../screens/RankingsScreen';
 import { SavedScreen } from '../screens/SavedScreen';
 import { SourcesScreen } from '../screens/SourcesScreen';
 import { MotionReaderTabBar, type ReaderTab } from './ReaderTabBar';
+
+// Keep mounted tabs' local state, queries and subscriptions while letting unchanged tabs
+// skip navigation-only renders. Context and each screen's own state still update normally.
+const MemoHomeScreen = memo(HomeScreen);
+const MemoRankingsScreen = memo(RankingsScreen);
+const MemoSourcesScreen = memo(SourcesScreen);
+const MemoSavedScreen = memo(SavedScreen);
+const MemoProfileScreen = memo(ProfileScreen);
 
 export function MainAppShell({
   onChangeServer,
@@ -47,45 +55,58 @@ export function MainAppShell({
   const savedChromeProgress = useSharedValue(0);
   const profileChromeProgress = useSharedValue(0);
 
-  function resetMotionChrome() {
+  const resetMotionChrome = useCallback(() => {
     inboxChromeProgress.value = 0;
     rankingsChromeProgress.value = 0;
     sourcesChromeProgress.value = 0;
     savedChromeProgress.value = 0;
     profileChromeProgress.value = 0;
-  }
+  }, [inboxChromeProgress, rankingsChromeProgress, sourcesChromeProgress, savedChromeProgress, profileChromeProgress]);
 
-  function selectTab(nextTab: ReaderTab) {
+  const selectTab = useCallback((nextTab: ReaderTab) => {
     resetMotionChrome();
     if (nextTab === 'inbox' && tab !== 'inbox' && selectedInboxSourceId !== null) {
       setChannelVisitId((current) => current + 1);
     }
     dispatchNavigation({ tab: nextTab, type: 'select_tab' });
-  }
+  }, [resetMotionChrome, selectedInboxSourceId, tab]);
 
-  function openArticle(item: FeedItem) {
+  const openProfile = useCallback(() => {
+    resetMotionChrome();
+    dispatchNavigation({ tab: 'settings', type: 'select_tab' });
+  }, [resetMotionChrome]);
+
+  const openArticle = useCallback((item: FeedItem) => {
     const ranking = rankingFromSaved(item);
     if (ranking) {
       dispatchNavigation({ type: 'open_ranking_item', item: ranking });
       return;
     }
     dispatchNavigation({ item, type: 'open_article' });
-  }
+  }, []);
 
-  function openRankingItem(item: RankingItem) {
+  const openRankingItem = useCallback((item: RankingItem) => {
     dispatchNavigation({ item, type: 'open_ranking_item' });
-  }
+  }, []);
 
-  function openSource(source: SourceListItem) {
+  const openSource = useCallback((source: SourceListItem) => {
     resetMotionChrome();
     setChannelVisitId((current) => current + 1);
     dispatchNavigation({ returnTab: 'sources', sourceId: source.source_id, type: 'open_source' });
-  }
+  }, [resetMotionChrome]);
 
-  function closeSourceFeed() {
+  const closeSourceFeed = useCallback(() => {
     if (sourceFeedReturnTab !== 'inbox') resetMotionChrome();
     dispatchNavigation({ type: 'close_source' });
-  }
+  }, [resetMotionChrome, sourceFeedReturnTab]);
+
+  const selectSourceId = useCallback((sourceId: string | null) => {
+    if (sourceId !== null) setChannelVisitId((current) => current + 1);
+    dispatchNavigation(sourceId === null ? { type: 'clear_source_filter' } : { sourceId, type: 'set_source_id' });
+  }, []);
+
+  const closeArticle = useCallback(() => dispatchNavigation({ type: 'close_article' }), []);
+  const closeRankingItem = useCallback(() => dispatchNavigation({ type: 'close_ranking_item' }), []);
 
   const activeChromeProgress = tab === 'inbox'
     ? inboxChromeProgress
@@ -137,15 +158,15 @@ export function MainAppShell({
   return (
     <View style={styles.shell}>
       <View style={styles.screen}>
-        {visitedTabs.has('inbox') ? <View style={tab === 'inbox' ? styles.tabScreen : styles.tabScreenHidden}><HomeScreen channelVisitId={channelVisitId} onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'inbox'} chromeProgress={inboxChromeProgress} onClearSource={closeSourceFeed} onOpenArticle={openArticle} onSelectSourceId={(sourceId) => { if (sourceId !== null) setChannelVisitId((current) => current + 1); dispatchNavigation(sourceId === null ? { type: 'clear_source_filter' } : { sourceId, type: 'set_source_id' }); }} selectedSourceId={selectedInboxSourceId} session={session} /></View> : null}
-        {visitedTabs.has('explore') ? <View style={tab === 'explore' ? styles.tabScreen : styles.tabScreenHidden}><RankingsScreen onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'explore'} chromeProgress={rankingsChromeProgress} onOpenItem={openRankingItem} session={session} /></View> : null}
-        {visitedTabs.has('sources') ? <View style={tab === 'sources' ? styles.tabScreen : styles.tabScreenHidden}><SourcesScreen onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'sources'} chromeProgress={sourcesChromeProgress} onOpenSource={openSource} session={session} /></View> : null}
-        {visitedTabs.has('saved') ? <View style={tab === 'saved' ? styles.tabScreen : styles.tabScreenHidden}><SavedScreen onProfile={() => selectTab('settings')} active={mainSurfaceActive && tab === 'saved'} chromeProgress={savedChromeProgress} onOpenArticle={openArticle} session={session} /></View> : null}
-        {visitedTabs.has('settings') ? <View style={tab === 'settings' ? styles.tabScreen : styles.tabScreenHidden}><ProfileScreen active={mainSurfaceActive && tab === 'settings'} chromeProgress={profileChromeProgress} onChangeServer={onChangeServer} onLogout={onLogout} session={session} authClient={authClient} /></View> : null}
+        {visitedTabs.has('inbox') ? <View style={tab === 'inbox' ? styles.tabScreen : styles.tabScreenHidden}><MemoHomeScreen channelVisitId={channelVisitId} onProfile={openProfile} active={mainSurfaceActive && tab === 'inbox'} chromeProgress={inboxChromeProgress} onClearSource={closeSourceFeed} onOpenArticle={openArticle} onSelectSourceId={selectSourceId} selectedSourceId={selectedInboxSourceId} session={session} /></View> : null}
+        {visitedTabs.has('explore') ? <View style={tab === 'explore' ? styles.tabScreen : styles.tabScreenHidden}><MemoRankingsScreen onProfile={openProfile} active={mainSurfaceActive && tab === 'explore'} chromeProgress={rankingsChromeProgress} onOpenItem={openRankingItem} session={session} /></View> : null}
+        {visitedTabs.has('sources') ? <View style={tab === 'sources' ? styles.tabScreen : styles.tabScreenHidden}><MemoSourcesScreen onProfile={openProfile} active={mainSurfaceActive && tab === 'sources'} chromeProgress={sourcesChromeProgress} onOpenSource={openSource} session={session} /></View> : null}
+        {visitedTabs.has('saved') ? <View style={tab === 'saved' ? styles.tabScreen : styles.tabScreenHidden}><MemoSavedScreen onProfile={openProfile} active={mainSurfaceActive && tab === 'saved'} chromeProgress={savedChromeProgress} onOpenArticle={openArticle} session={session} /></View> : null}
+        {visitedTabs.has('settings') ? <View style={tab === 'settings' ? styles.tabScreen : styles.tabScreenHidden}><MemoProfileScreen active={mainSurfaceActive && tab === 'settings'} chromeProgress={profileChromeProgress} onChangeServer={onChangeServer} onLogout={onLogout} session={session} authClient={authClient} /></View> : null}
       </View>
       {!selectedItem && !selectedRankingItem ? <MotionReaderTabBar activeTab={tab} onChange={selectTab} progress={activeChromeProgress} /> : null}
-      {selectedItem ? <View style={styles.readerOverlay}><ArticleReaderScreen item={selectedItem} onBack={() => dispatchNavigation({ type: 'close_article' })} renderReaderHtml={buildReaderHtml} session={session} /></View> : null}
-      {selectedRankingItem ? <View style={styles.readerOverlay}><RankingPreviewScreen item={selectedRankingItem} onBack={() => dispatchNavigation({ type: 'close_ranking_item' })} session={session} /></View> : null}
+      {selectedItem ? <View style={styles.readerOverlay}><ArticleReaderScreen item={selectedItem} onBack={closeArticle} renderReaderHtml={buildReaderHtml} session={session} /></View> : null}
+      {selectedRankingItem ? <View style={styles.readerOverlay}><RankingPreviewScreen item={selectedRankingItem} onBack={closeRankingItem} session={session} /></View> : null}
     </View>
   );
 }

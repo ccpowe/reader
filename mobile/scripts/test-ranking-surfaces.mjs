@@ -12,6 +12,7 @@ const outputDirectory = mkdtempSync(join(tmpdir(), 'reader-ranking-surfaces-'));
 const require = createRequire(import.meta.url);
 const React = require('react');
 const { act, create } = require('react-test-renderer');
+const reactQuery = require('@tanstack/react-query');
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 process.env.NODE_PATH = join(mobileRoot, 'node_modules');
 Module._initPaths();
@@ -129,7 +130,7 @@ try {
       useSharedValue: value => ({ value }),
     };
     if (request === 'expo-web-browser') return { openBrowserAsync: async () => {} };
-    if (request === '@tanstack/react-query') return { useQueryClient: () => ({ fetchQuery: async ({ queryFn }) => queryFn(), setQueryData: () => {} }) };
+    if (request === '@tanstack/react-query') return { ...reactQuery, useQueryClient: () => ({ fetchQuery: async ({ queryFn }) => queryFn(), setQueryData: () => {} }) };
     if (request === '../components/BottomSheetModal') return { BottomSheetModal: ({ visible, children }) => visible ? React.createElement(View, null, children) : null };
     if (request === '../components/RankingTitle') return originalLoad.call(this, request, parent, isMain);
     if (request === '../components/CategoryPager') return { CategoryPager: ({ renderPage, options }) => renderPage(options[0]) };
@@ -137,7 +138,7 @@ try {
       IconButton: () => null,
       PageHeaderContent: ({ title }) => React.createElement(Text, null, title),
     };
-    if (request === '../components/TranslatableWebView') return { TranslatableWebView: () => React.createElement(View) };
+    if (request === '../components/TranslatableWebView') return { TranslatableWebView: host('WebView') };
     if (request === '../hooks/useCollapsingChrome') return { useChromeStyle: () => ({}), useCollapsingChrome: () => ({ onScroll: () => {}, revealChrome: () => {} }) };
     if (request === '../hooks/useSources') return { useSources: () => ({ error: null, isPending: false, isSuccess: true, items: [], message: '' }) };
     if (request === '../hooks/useTranslationPreference') return { useTranslationPreference: () => ({ effectiveEngineId: 'test', effectiveEngineFingerprint: 'test-fingerprint', enabled: true, isPending: false, targetLocale: 'zh-CN' }) };
@@ -257,6 +258,30 @@ try {
   assert.equal(rankingBodyText(failedX, true), xItem.body_text, 'partial failure leaves original body readable');
   const xRanking = { kind: 'techtwitter', effective_engine_fingerprint: 'test-fingerprint', items: [xItem] };
   assert.deepEqual(missingRankingTranslationSegments(xRanking, 20, 'zh-CN', true, 'test-fingerprint', new Set([xItem.translation_key])), [], 'translated body skips title and summary');
+  const { rankingQueryOptions } = require(join(outputDirectory, 'hooks/useRanking.js'));
+  const cache = new reactQuery.QueryClient();
+  const options = rankingQueryOptions({ user: { id: 'ranking-cache-user' } }, 'techtwitter', undefined, runtime.identity.server_id, runtime, 'zh-CN', true, 'test-fingerprint');
+  cache.setQueryDefaults(options.queryKey, options);
+  const cacheRanking = { ...xRanking, items: [xItem, {
+    ...xItem,
+    rank: 2,
+    translation_key: 'ranking-2',
+    body_segments: xItem.body_segments.map((segment, index) => ({ ...segment, segment_id: `ranking-2:body:${index}` })),
+  }] };
+  cache.setQueryData(options.queryKey, cacheRanking);
+  const beforeRefresh = cache.getQueryData(options.queryKey);
+  cache.setQueryData(options.queryKey, structuredClone(cacheRanking));
+  assert.equal(cache.getQueryData(options.queryKey), beforeRefresh, 'identical refresh preserves cached rows instead of repainting every card');
+  const updatedRanking = structuredClone(cacheRanking);
+  updatedRanking.items[1].body_segments[0].translated_text = '更新后的第一行\n';
+  updatedRanking.items[1].score = 99;
+  cache.setQueryData(options.queryKey, updatedRanking);
+  const afterRefresh = cache.getQueryData(options.queryKey);
+  assert.equal(afterRefresh.items[0], beforeRefresh.items[0], 'refresh keeps an unaffected card stable');
+  assert.notEqual(afterRefresh.items[1], beforeRefresh.items[1], 'changed card receives fresh data');
+  assert.equal(afterRefresh.items[1].score, 99);
+  assert.equal(rankingBodyText(afterRefresh.items[1], true), '更新后的第一行\n第二行');
+  cache.clear();
   const missingX = { ...xItem, body_segments: xItem.body_segments.map((segment) => ({ ...segment, translated_text: null, translation_status: null })) };
   assert.deepEqual(missingRankingTranslationSegments({ ...xRanking, items: [missingX] }, 20, 'zh-CN', true, 'test-fingerprint', new Set()), [], 'offscreen posts do not enter queue');
   assert.deepEqual(missingRankingTranslationSegments({ ...xRanking, items: [missingX] }, 20, 'zh-CN', true, 'test-fingerprint', new Set([xItem.translation_key])).map((segment) => segment.text), ['First line\n', 'Second line'], 'body segments are submitted without trimming or title translation');
@@ -334,6 +359,38 @@ try {
   await act(async () => { tools.props.onPanResponderGrant(); tools.props.onPanResponderMove(null, {dy: 150}); tools.props.onPanResponderRelease(); });
   await act(async () => { translateButton().props.onPress(); });
   assert.equal(translateButton().props.accessibilityState.selected, false, 'drag release never translates');
+  await act(async () => { tree.unmount(); });
+
+  await act(async () => {
+    tree = create(React.createElement(RankingPreviewScreen, {
+      item: { ...xItem, ranking_context: { kind: 'techtwitter' } },
+      onBack: () => {},
+      session,
+    }));
+  });
+  const visible = node => {
+    for (let current = node; current; current = current.parent) {
+      if (current.props.accessibilityElementsHidden) return false;
+    }
+    return true;
+  };
+  const visibleBody = () => tree.root.findAll(node => node.type === 'Text' && node.props.children === xItem.body_text && visible(node));
+  const visibleWeb = () => tree.root.findAll(node => node.type === 'WebView' && visible(node));
+  assert.equal(visibleBody().length, 1, 'X opens a readable native body without loading the original website');
+  assert.equal(tree.root.findAllByType('WebView').length, 0);
+  await act(async () => { button('切换到网页').props.onPress(); });
+  assert.equal(visibleBody().length, 0, 'native body cannot share the visible page with the website');
+  assert.equal(visibleWeb().length, 1);
+  await act(async () => {
+    button('切换网页双语翻译').props.onPress();
+    visibleWeb()[0].props.onTranslationStateChange({ activeCount: 0, bridgeState: 'ready', discoveredCount: 1, error: 'Website translation failed' });
+  });
+  assert.equal(tree.root.findAll(node => node.type === 'Text' && node.props.children === 'Website translation failed').length, 1);
+  await act(async () => { button('切换到阅读').props.onPress(); });
+  assert.equal(visibleWeb().length, 0, 'switching back hides the website from sight and accessibility');
+  assert.equal(tree.root.findAll(node => node.type === 'Text' && node.props.children === 'Website translation failed').length, 0, 'web translation errors do not leak into native reading');
+  await act(async () => { button('翻译正文').props.onPress(); });
+  assert.equal(visibleBody().length, 1, 'original text remains available after switching views');
   await act(async () => { tree.unmount(); });
 } finally {
   rmSync(outputDirectory, { force: true, recursive: true });

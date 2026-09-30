@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '../lib/readerAuth';
-import { queryOptions, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { queryOptions, replaceEqualDeep, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import {
   getRanking,
@@ -56,14 +56,15 @@ export function rankingQueryOptions(
     ),
     queryFn: () => getRanking(session, kind, options, false, runtime ?? undefined),
     gcTime: Infinity,
-    structuralSharing: (previous, incoming) => (
+    structuralSharing: (previous, incoming) => replaceEqualDeep(
+      previous,
       mergeRankingTranslationProjection(
         previous as Ranking | undefined,
         incoming as Ranking,
         targetLocale,
         translationEnabled,
         engineFingerprint,
-      )
+      ),
     ),
   });
 }
@@ -202,7 +203,7 @@ export function useRanking(
     session,
     targetLocale,
   });
-  const { clearFailedSegments, clearTimedOutSegments, enqueueSegments, isTranslating } = translationQueue;
+  const { clearFailedSegments, clearTimedOutSegments, enqueueSegments, isTranslating, retrySegments } = translationQueue;
   const markTitleRetryFailure = useCallback((item: RankingTitleRetryItem) => {
     const context = captureRuntimeContext(runtime);
     if (!context || !isRuntimeContextCurrent(context)) return;
@@ -288,6 +289,14 @@ export function useRanking(
       if (context && isRuntimeContextCurrent(context)) setRefreshing(false);
     }
   }, [engineFingerprint, kind, options, queryClient, runtime, session, targetLocale, translationEnabled]);
+  const retryBodyTranslation = useCallback((item: Ranking['items'][number]) => {
+    const segments = (item.body_segments ?? [])
+      .filter((segment) => segment.text.trim() && segment.translation_status !== 'succeeded')
+      .map((segment) => ({ purpose: 'paragraph' as const, segment_id: segment.segment_id, text: segment.text }));
+    for (const segment of segments) queuedSourcesRef.current.set(segment.segment_id, segment.text);
+    queuedRouteRef.current = routeIdentity;
+    retrySegments(segments);
+  }, [retrySegments, routeIdentity]);
 
   return {
     translationEnabled,
@@ -300,14 +309,7 @@ export function useRanking(
     isTitleRetrying,
     retryTitleTranslation,
     refresh,
-    retryBodyTranslation: (item: Ranking['items'][number]) => {
-      const segments = (item.body_segments ?? [])
-        .filter((segment) => segment.text.trim() && segment.translation_status !== 'succeeded')
-        .map((segment) => ({ purpose: 'paragraph' as const, segment_id: segment.segment_id, text: segment.text }));
-      for (const segment of segments) queuedSourcesRef.current.set(segment.segment_id, segment.text);
-      queuedRouteRef.current = routeIdentity;
-      translationQueue.retrySegments(segments);
-    },
+    retryBodyTranslation,
     failedSegmentIds: translationQueue.failedSegmentIds,
     timedOutSegmentIds: translationQueue.timedOutSegmentIds,
   };

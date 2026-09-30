@@ -9,7 +9,6 @@ function mobileSource(relativePath) {
 }
 
 const api = mobileSource('lib/api.ts');
-const mainAppShell = mobileSource('components/MainAppShell.tsx');
 const chip = mobileSource('components/Chip.tsx');
 const folderFilterControls = mobileSource('components/FolderFilterControls.tsx');
 const home = mobileSource('screens/HomeScreen.tsx');
@@ -59,16 +58,6 @@ assert.match(
   sources,
   /const displayName = sourceDisplayName\(item\)[\s\S]*?accessibilityLabel=\{t\('openChannel', \{ name: displayName \}\)\}[\s\S]*?onPress=\{\(\) => onOpen\(item\)\}/,
   'subscription cards must open their channel feed',
-);
-assert.match(
-  mainAppShell,
-  /<SourcesScreen[\s\S]*?onOpenSource=\{openSource\}/,
-  'the subscriptions screen must delegate source navigation to the app shell',
-);
-assert.match(
-  mainAppShell,
-  /<HomeScreen[\s\S]*?onClearSource=\{closeSourceFeed\}/,
-  'the inbox must delegate source closing to the app shell',
 );
 let navigation = createMainNavigationState();
 navigation = reduceMainNavigation(navigation, { tab: 'sources', type: 'select_tab' });

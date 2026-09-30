@@ -43,6 +43,10 @@ export function RankingPreviewScreen({
   const [translationMode, setTranslationMode] = useState<TranslationDisplayMode>('original');
   const [translationState, setTranslationState] = useState(INITIAL_TRANSLATION_STATE);
   const [liveItem, setLiveItem] = useState(item);
+  const isXRanking = item.ranking_context?.kind === 'techtwitter';
+  const [previewMode, setPreviewMode] = useState<'reader' | 'web'>('reader');
+  const [webOpened, setWebOpened] = useState(false);
+  const showWeb = !isXRanking || previewMode === 'web';
   const translation = useTranslationPreference(session, true);
   const runtime = useReaderRuntime();
   const queryClient = useQueryClient();
@@ -243,41 +247,63 @@ export function RankingPreviewScreen({
   return (
     <View style={styles.page}>
       <DetailHeader title={liveItem.translated_title?.trim() || liveItem.title} onBack={onBack} onSave={() => void toggleSaved()} saved={saved} saveBusy={saveBusy} onShare={() => void share()} onExternalOpen={() => void openBrowserTab()} />
-      {item.ranking_context?.kind === 'techtwitter' ? <ScrollView style={styles.xPreview}>
-        <XRankingContent item={liveItem} translated={translationMode !== 'original' && translation.enabled} onRetryTranslation={retryBodyTranslation} translationBusy={itemTranslationQueue.isTranslating} translationRetryNeeded={liveItem.body_segments?.some((segment) => itemTranslationQueue.timedOutSegmentIds.has(segment.segment_id) || itemTranslationQueue.failedSegmentIds.has(segment.segment_id))} />
-      </ScrollView> : null}
-      {item.ranking_context?.kind !== 'techtwitter' && (liveItem.title_translation_status === 'failed' || isTitleRetrying(liveItem) || itemTranslationQueue.timedOutSegmentIds.has(`${liveItem.translation_key}:title`)) ? (
-        <View style={styles.previewHeader}>
-          <RankingTitle numberOfLines={2} onRetry={() => { void retryTitleTranslation(liveItem); }} retrying={isTitleRetrying(liveItem)} status={liveItem.title_translation_status} timedOut={itemTranslationQueue.timedOutSegmentIds.has(`${liveItem.translation_key}:title`)} title={liveItem.title} titleStyle={styles.title} translatedTitle={liveItem.translated_title} />
-        </View>
-      ) : null}
-      <TranslatableWebView
-        bridgeKind="web"
-        javaScriptEnabled
-        onShouldStartLoadWithRequest={(request) => (
-          request.url.startsWith('https://') ||
-          request.url.startsWith('http://') ||
-          request.url === 'about:blank'
-        )}
-        onTranslationStateChange={setTranslationState}
-        originWhitelist={['https://*', 'http://*']}
-        session={session}
-        setSupportMultipleWindows={false}
-        source={{ uri: item.url }}
-        style={styles.webView}
-        targetLocale={translation.targetLocale}
-        translationEngineId={translation.effectiveEngineId}
-        translationEnabled={translation.enabled}
-        translationMode={translationMode}
-        translationPurpose="web_segment"
-      />
-      {translationState.bridgeState === 'profile_mismatch' && translationMode !== 'original' ? (
+      <View style={styles.previewStage}>
+        {isXRanking ? (
+          <View
+            testID="ranking_native_body"
+            pointerEvents={showWeb ? 'none' : 'auto'}
+            accessibilityElementsHidden={showWeb}
+            importantForAccessibility={showWeb ? 'no-hide-descendants' : 'auto'}
+            style={[styles.previewLayer, showWeb && styles.hiddenPreview]}
+          >
+            <ScrollView style={styles.webView} contentContainerStyle={styles.xPreviewContent}>
+              <XRankingContent item={liveItem} translated={translationMode !== 'original' && translation.enabled} onRetryTranslation={retryBodyTranslation} translationBusy={itemTranslationQueue.isTranslating} translationRetryNeeded={liveItem.body_segments?.some((segment) => itemTranslationQueue.timedOutSegmentIds.has(segment.segment_id) || itemTranslationQueue.failedSegmentIds.has(segment.segment_id))} />
+            </ScrollView>
+          </View>
+        ) : null}
+        {!isXRanking || webOpened ? (
+          <View
+            testID="ranking_original_web"
+            pointerEvents={showWeb ? 'auto' : 'none'}
+            accessibilityElementsHidden={!showWeb}
+            importantForAccessibility={showWeb ? 'auto' : 'no-hide-descendants'}
+            style={[styles.previewLayer, !showWeb && styles.hiddenPreview]}
+          >
+            {!isXRanking && (liveItem.title_translation_status === 'failed' || isTitleRetrying(liveItem) || itemTranslationQueue.timedOutSegmentIds.has(`${liveItem.translation_key}:title`)) ? (
+              <View style={styles.previewHeader}>
+                <RankingTitle numberOfLines={2} onRetry={() => { void retryTitleTranslation(liveItem); }} retrying={isTitleRetrying(liveItem)} status={liveItem.title_translation_status} timedOut={itemTranslationQueue.timedOutSegmentIds.has(`${liveItem.translation_key}:title`)} title={liveItem.title} titleStyle={styles.title} translatedTitle={liveItem.translated_title} />
+              </View>
+            ) : null}
+            <TranslatableWebView
+              bridgeKind="web"
+              javaScriptEnabled
+              onShouldStartLoadWithRequest={(request) => (
+                request.url.startsWith('https://') ||
+                request.url.startsWith('http://') ||
+                request.url === 'about:blank'
+              )}
+              onTranslationStateChange={setTranslationState}
+              originWhitelist={['https://*', 'http://*']}
+              session={session}
+              setSupportMultipleWindows={false}
+              source={{ uri: item.url }}
+              style={styles.webView}
+              targetLocale={translation.targetLocale}
+              translationEngineId={translation.effectiveEngineId}
+              translationEnabled={translation.enabled}
+              translationMode={showWeb ? translationMode : 'original'}
+              translationPurpose="web_segment"
+            />
+          </View>
+        ) : null}
+      </View>
+      {showWeb && translationState.bridgeState === 'profile_mismatch' && translationMode !== 'original' ? (
         <View style={styles.errorBanner}>
           <Text numberOfLines={3} style={styles.errorText}>
             {t('webLayoutUnsupported')}
           </Text>
         </View>
-      ) : translationState.error && translationMode !== 'original' ? (
+      ) : showWeb && translationState.error && translationMode !== 'original' ? (
         <View style={styles.errorBanner}>
           <Text numberOfLines={2} style={styles.errorText}>{translationState.error}</Text>
           {translationState.retry ? (
@@ -287,7 +313,18 @@ export function RankingPreviewScreen({
           ) : null}
         </View>
       ) : null}
-      <FloatingReaderTools translationActive={translationMode !== 'original' && translation.enabled} translationBusy={(translationState.activeCount > 0 || (item.ranking_context?.kind === 'techtwitter' && itemTranslationQueue.isTranslating)) && translationMode !== 'original'} onTranslate={enableTranslation} translationLabel={item.ranking_context?.kind === 'techtwitter' ? t('translateBody') : t('toggleWebTranslation')} />
+      <FloatingReaderTools
+        translationActive={translationMode !== 'original' && translation.enabled}
+        translationBusy={(showWeb ? translationState.activeCount > 0 : itemTranslationQueue.isTranslating) && translationMode !== 'original'}
+        onTranslate={enableTranslation}
+        translationLabel={showWeb ? t('toggleWebTranslation') : t('translateBody')}
+        modeIcon={isXRanking ? (showWeb ? 'book-open-page-variant' : 'web') : undefined}
+        modeLabel={showWeb ? t('switchToReader') : t('switchToWeb')}
+        onSwitchMode={isXRanking ? () => {
+          setWebOpened(true);
+          setPreviewMode((current) => current === 'reader' ? 'web' : 'reader');
+        } : undefined}
+      />
     </View>
   );
 }
@@ -295,7 +332,10 @@ export function RankingPreviewScreen({
 const styles = StyleSheet.create({
   page: { backgroundColor: '#FAFAF8', flex: 1 },
   previewHeader: { borderBottomColor: '#E5E5E3', borderBottomWidth: 1, paddingBottom: 8, paddingHorizontal: 20 },
-  xPreview: { borderBottomColor: '#E5E5E3', borderBottomWidth: 1, maxHeight: '65%', paddingHorizontal: 20, paddingVertical: 12 },
+  previewStage: { flex: 1, minHeight: 0, position: 'relative' },
+  previewLayer: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 },
+  hiddenPreview: { opacity: 0 },
+  xPreviewContent: { paddingHorizontal: 20, paddingVertical: 12 },
   title: { color: '#111111', fontSize: 14, fontWeight: '600', lineHeight: 20 },
   webView: { flex: 1 },
   errorBanner: { backgroundColor: '#FFF4E5', paddingHorizontal: 12, paddingVertical: 8 },

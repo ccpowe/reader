@@ -106,6 +106,7 @@ Open Rankings and switch between **Hacker News, Reddit, GitHub, and X Tech Trend
 - **Reddit:** Select from communities you subscribe to and browse by hot, top, or rising. Add a Reddit community subscription before using this view.
 - **GitHub:** Discover open-source projects worth following.
 - **X Tech Trends:** Read the first 50 TechTwitter TRENDING posts in upstream order, with a shared server snapshot refreshed every 15 minutes. Expand and translate the original post text, and view authors, engagement counts, images, and video thumbnails. There is no topic filtering or custom reranking, and no X account subscription, cookie, or Scweet service is required.
+  Opening a post shows its native text in a full-page reading view. Use the floating webpage/reading button to switch to the original website or back; the two views are never stacked vertically.
 
 When something looks interesting, open it to continue reading or **save it and return from the Saved screen later**.
 Saved X ranking entries retain their original text and media information even after leaving the ranking. Loading original websites and media still requires external network access.

@@ -14,12 +14,27 @@ export function relativeTime(value: string, now = Date.now()): string {
   return i18n.t(future ? 'common:relativeDayFuture' : 'common:relativeDayPast', { count: Math.floor(minutes / 1_440) });
 }
 
+let countFormatterLocale: string | undefined;
+let countFormatters: Intl.NumberFormat[] = [];
+
 export function formatCount(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return '—';
   const locale = i18n.resolvedLanguage ?? i18n.language;
-  if (value < 1_000) return new Intl.NumberFormat(locale, { useGrouping: false }).format(value);
+  if (countFormatterLocale !== locale) {
+    countFormatterLocale = locale;
+    countFormatters = [];
+  }
+  const compact = value >= 1_000;
   const digits = value >= 10_000 ? 0 : 1;
-  return `${new Intl.NumberFormat(locale, { useGrouping: false, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value / 1_000)}k`;
+  const formatIndex = compact ? digits + 1 : 0;
+  let formatter = countFormatters[formatIndex];
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(locale, compact
+      ? { useGrouping: false, minimumFractionDigits: digits, maximumFractionDigits: digits }
+      : { useGrouping: false });
+    countFormatters[formatIndex] = formatter;
+  }
+  return compact ? `${formatter.format(value / 1_000)}k` : formatter.format(value);
 }
 
 export function formatArticleDate(value: string, now = Date.now()): string {

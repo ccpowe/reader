@@ -76,6 +76,7 @@ try {
         export { ConnectionError, asConnectionError } from './lib/connection/errors';
         export { parseReaderBaseUrl } from './lib/connection/url';
         export { ReaderAuthError } from './lib/readerAuth';
+        export { formatCount } from './domain/formatting';
       `,
       resolveDir: mobileRoot,
       sourcefile: 'localization-test-entry.ts',
@@ -169,8 +170,26 @@ try {
     createAppLanguageStore, appLanguageStore, languagePreferenceKey,
     resources, i18n, AppLanguageProvider, useAppLanguage, useTranslation, ProfileScreen,
     ConnectionError, asConnectionError, parseReaderBaseUrl, ReaderAuthError,
-    localizedMessage, resolveMessage, bindLocalizedErrorMessage,
+    localizedMessage, resolveMessage, bindLocalizedErrorMessage, formatCount,
   } = localization;
+
+  const originalFormattingLocale = i18n.resolvedLanguage;
+  try {
+    i18n.resolvedLanguage = 'en';
+    assert.deepEqual(
+      [formatCount(null), formatCount(Number.NaN), formatCount(0), formatCount(999.5),
+        formatCount(1_250), formatCount(12_500), formatCount(1_250), formatCount(42.5)],
+      ['—', '—', '0', '999.5', '1.3k', '13k', '1.3k', '42.5'],
+      'interleaved raw and compact counts keep their own precision',
+    );
+    i18n.resolvedLanguage = 'de';
+    assert.deepEqual([formatCount(1_250), formatCount(42.5)], ['1,3k', '42,5'],
+      'a changed resolved locale cannot reuse the previous locale formatter');
+    i18n.resolvedLanguage = 'en';
+    assert.equal(formatCount(1_250), '1.3k', 'switching back restores the original decimal separator');
+  } finally {
+    i18n.resolvedLanguage = originalFormattingLocale;
+  }
 
   assert.equal(resolveSystemLanguage(['fr-FR', 'en-GB', 'zh-CN']), 'en', 'unsupported preferences are skipped in OS order');
   assert.equal(resolveSystemLanguage(['zh-TW', 'en-US']), 'zh-CN', 'the first supported language wins even when the pack uses another region');
