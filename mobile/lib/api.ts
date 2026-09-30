@@ -98,6 +98,7 @@ export type TitleTranslation = Omit<ApiTitleTranslation, 'translation_status'> &
 
 export type FeedItem = Omit<ApiFeedItem, 'translation_status'> & {
   ranking_kind?: RankingKind | null;
+  ranking_item?: RankingItem | null;
   translation_status: TranslationStatus;
 };
 
@@ -110,16 +111,23 @@ export type CursorPage<T> = {
 export type Article = Omit<ApiArticle, 'translation_status'> & {
   translation_status: TranslationStatus;
 };
-
 export type RankingKind = ApiRanking['kind'];
 export type RedditRankingSort = 'hot' | 'rising' | 'top';
 
-export type RankingItem = Omit<ApiRankingItem, 'description_translation_status' | 'title_translation_status'> & {
+export type RankingBodySegment = {
+  segment_id: string;
+  text: string;
+  translated_text: string | null;
+  translation_status: TranslationStatus;
+};
+
+export type RankingItem = Omit<ApiRankingItem, 'description_translation_status' | 'title_translation_status' | 'body_segments'> & {
   ranking_context?: Omit<SaveRankingRequest, 'url'>;
   saved_content_id?: string;
   saved_state?: boolean;
   title_translation_status: TranslationStatus;
   description_translation_status: TranslationStatus;
+  body_segments?: RankingBodySegment[];
 };
 
 export type Ranking = Omit<ApiRanking, 'items'> & {

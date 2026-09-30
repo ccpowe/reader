@@ -101,14 +101,16 @@ API 默认只监听 `127.0.0.1:8000`。`token` 输出供客户端连接的 token
   <img src="docs/assets/readme/rankings-editorial.png" width="960" alt="热门榜单展示：Hacker News、Reddit、GitHub 三个入口，以及 Hacker News 热门文章和讨论的局部放大。">
 </p>
 
-打开「榜单」，在 **Hacker News、Reddit、GitHub** 之间切换，从热门讨论、文章和开源项目中发现订阅之外的内容。
+打开「榜单」，在 **Hacker News、Reddit、GitHub、X 技术热门** 之间切换，从热门讨论、文章、开源项目和技术推文中发现订阅之外的内容。
 服务器已有的榜单译文会随榜单一起显示；尚无译文的内容继续显示原文，并在页面内按需补充翻译。
 
 - **Hacker News：** 浏览技术文章与讨论，结合得分和评论数挑选感兴趣的条目。
 - **Reddit：** 从已订阅的社区中选择频道，按热门、最高分或上升趋势浏览话题；使用前需先添加 Reddit 社区订阅。
 - **GitHub：** 发现值得关注的开源项目。
+- **X 技术热门：** 使用 TechTwitter TRENDING 的前 50 条，保留上游排序，服务器每 15 分钟刷新共享快照。直接阅读、展开和翻译推文正文，查看作者、互动数和图片／视频封面；不按话题过滤或自行重排，无需 X 账号订阅、Cookie 或 Scweet。
 
 遇到感兴趣的条目，可以打开继续阅读，也可以**加入收藏，之后从「收藏」页重新打开**。
+X 榜单收藏会保留原始正文和媒体信息，即使条目已离开榜单，仍可从收藏重新阅读；原网页和媒体加载依赖外部网络。
 
 <p align="center"><sub>以上为基于 Android 真机截图的 AI 辅助合成展示图，非逐像素界面截图；榜单图以 Hacker News 页面为例。原始素材、版本与来源见<a href="docs/assets/readme/README.md">素材说明</a>。</sub></p>
 

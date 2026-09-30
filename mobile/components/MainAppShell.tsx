@@ -4,7 +4,7 @@ import type { Session, ReaderAuthClient } from '../lib/readerAuth';
 import { useSharedValue } from 'react-native-reanimated';
 
 import type { FeedItem, RankingItem, SourceListItem } from '../lib/api';
-import { createMainNavigationState, reduceMainNavigation } from '../domain/mainNavigation';
+import { createMainNavigationState, rankingFromSaved, reduceMainNavigation } from '../domain/mainNavigation';
 import { buildReaderHtml } from '../domain/readerHtml';
 import { colors } from '../ui/tokens';
 import { ArticleReaderScreen } from '../screens/ArticleReaderScreen';
@@ -64,18 +64,9 @@ export function MainAppShell({
   }
 
   function openArticle(item: FeedItem) {
-    if (item.ranking_kind) {
-      dispatchNavigation({ type: 'open_ranking_item', item: {
-        title: item.title, translated_title: item.translated_title,
-        title_translation_status: item.translation_status,
-        description: item.excerpt, translated_description: null,
-        description_translation_status: null, translation_locale: item.translation_locale,
-        translation_key: `saved:${item.content_id}`, url: item.external_url,
-        source_label: item.source_name, rank: 0, author: item.author_name,
-        score: null, comments: null, language: null, stars: null, forks: null,
-        stars_this_period: null, image_urls: item.thumbnail_url ? [item.thumbnail_url] : [],
-        saved_content_id: item.content_id, saved_state: item.is_saved,
-      } });
+    const ranking = rankingFromSaved(item);
+    if (ranking) {
+      dispatchNavigation({ type: 'open_ranking_item', item: ranking });
       return;
     }
     dispatchNavigation({ item, type: 'open_article' });

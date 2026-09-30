@@ -26,6 +26,7 @@ from app.services.rankings import (
     fetch_github_trending,
     fetch_hacker_news,
     fetch_reddit_ranking,
+    fetch_techtwitter_trending,
 )
 from app.storage.locks import acquire_source_update_transaction_lock
 from app.storage.models import (
@@ -80,7 +81,7 @@ ON CONFLICT (cache_key) DO NOTHING
 SNAPSHOT_ITEM_LIMIT = 100
 SNAPSHOT_SCHEMA_VERSION = "v2"
 
-RankingKind = Literal["hacker_news", "reddit", "github"]
+RankingKind = Literal["hacker_news", "reddit", "github", "techtwitter"]
 RedditSort = Literal["hot", "rising", "top"]
 RedditTimeFilter = Literal["day", "week", "month", "year"]
 
@@ -94,13 +95,15 @@ class RankingRequest:
 
     @property
     def cache_key(self) -> str:
-        if self.kind != "reddit":
+        if self.kind == "reddit":
+            window = self.time_filter if self.sort == "top" else "-"
+            return (
+                f"ranking:{SNAPSHOT_SCHEMA_VERSION}:reddit:"
+                f"{self.subreddit.lower()}:{self.sort}:{window}"
+            )
+        if self.kind in {"hacker_news", "github", "techtwitter"}:
             return f"ranking:{SNAPSHOT_SCHEMA_VERSION}:{self.kind}"
-        window = self.time_filter if self.sort == "top" else "-"
-        return (
-            f"ranking:{SNAPSHOT_SCHEMA_VERSION}:reddit:"
-            f"{self.subreddit.lower()}:{self.sort}:{window}"
-        )
+        raise ValueError(f"unsupported ranking kind: {self.kind}")
 
     @property
     def parameters(self) -> dict[str, str]:
@@ -150,6 +153,10 @@ def refresh_interval(request: RankingRequest) -> timedelta:
         return timedelta(minutes=5)
     if request.kind == "github":
         return timedelta(minutes=30)
+    if request.kind == "techtwitter":
+        return timedelta(minutes=15)
+    if request.kind != "reddit":
+        raise ValueError(f"unsupported ranking kind: {request.kind}")
     if request.sort == "hot":
         return timedelta(minutes=30)
     if request.sort == "rising":
@@ -496,38 +503,63 @@ async def fetch_live_ranking(
             ),
             fetched_at=datetime.now(UTC),
         )
-    return RankingData(
-        kind=request.kind,
-        title="GitHub Trending",
-        subtitle="Repositories · this week",
-        items=await fetch_github_trending(limit),
-        fetched_at=datetime.now(UTC),
+    if request.kind == "github":
+        return RankingData(
+            kind=request.kind,
+            title="GitHub Trending",
+            subtitle="Repositories · this week",
+            items=await fetch_github_trending(limit),
+            fetched_at=datetime.now(UTC),
+        )
+    if request.kind == "techtwitter":
+        return RankingData(
+            kind=request.kind,
+            title="X 技术热门",
+            subtitle="TechTwitter · Trending",
+            items=await fetch_techtwitter_trending(limit),
+            fetched_at=datetime.now(UTC),
+        )
+    raise ValueError(f"unsupported ranking kind: {request.kind}")
+
+
+def ranking_item_from_payload(raw: dict[str, object]) -> RankingItem:
+    """Restore the same item shape from a shared snapshot or saved archive."""
+    return RankingItem(
+        rank=int(raw["rank"]),
+        title=str(raw["title"]),
+        url=str(raw["url"]),
+        source_label=raw.get("source_label"),
+        description=raw.get("description"),
+        author=raw.get("author"),
+        score=raw.get("score"),
+        comments=raw.get("comments"),
+        language=raw.get("language"),
+        stars=raw.get("stars"),
+        forks=raw.get("forks"),
+        stars_this_period=raw.get("stars_this_period"),
+        image_urls=tuple(raw.get("image_urls") or ()),
+        native_id=raw.get("native_id"),
+        published_at=_parse_datetime(raw.get("published_at")),
+        body_text=raw.get("body_text"),
+        author_handle=raw.get("author_handle"),
+        retweet_count=raw.get("retweet_count"),
+        bookmark_count=raw.get("bookmark_count"),
+        video_url=raw.get("video_url"),
+        video_thumbnail_url=raw.get("video_thumbnail_url"),
     )
+
+
+def ranking_item_payload(item: RankingItem) -> dict[str, object]:
+    """JSONB-safe original metadata, deliberately excluding user translations."""
+    return item.__dict__ | {
+        "image_urls": list(item.image_urls),
+        "published_at": item.published_at.isoformat() if item.published_at else None,
+    }
 
 
 def _data_from_snapshot(snapshot: RankingSnapshot) -> RankingData:
     raw_items = snapshot.payload.get("items", [])
-    items = [
-        RankingItem(
-            rank=int(raw["rank"]),
-            title=str(raw["title"]),
-            url=str(raw["url"]),
-            source_label=raw.get("source_label"),
-            description=raw.get("description"),
-            author=raw.get("author"),
-            score=raw.get("score"),
-            comments=raw.get("comments"),
-            language=raw.get("language"),
-            stars=raw.get("stars"),
-            forks=raw.get("forks"),
-            stars_this_period=raw.get("stars_this_period"),
-            image_urls=tuple(raw.get("image_urls", [])),
-            native_id=raw.get("native_id"),
-            published_at=_parse_datetime(raw.get("published_at")),
-        )
-        for raw in raw_items
-        if isinstance(raw, dict)
-    ]
+    items = [ranking_item_from_payload(raw) for raw in raw_items if isinstance(raw, dict)]
     return RankingData(
         kind=snapshot.kind,  # type: ignore[arg-type]
         title=str(snapshot.payload.get("title") or "Ranking"),
@@ -541,14 +573,7 @@ def _payload_from_data(data: RankingData) -> dict[str, object]:
     return {
         "title": data.title,
         "subtitle": data.subtitle,
-        "items": [
-            item.__dict__
-            | {
-                "image_urls": list(item.image_urls),
-                "published_at": item.published_at.isoformat() if item.published_at else None,
-            }
-            for item in data.items
-        ],
+        "items": [ranking_item_payload(item) for item in data.items],
     }
 
 
@@ -556,7 +581,7 @@ def _request_from_snapshot(snapshot: RankingSnapshot) -> RankingRequest:
     parameters = snapshot.parameters
     if not isinstance(parameters, dict):
         raise TypeError("snapshot parameters must be an object")
-    if snapshot.kind not in {"hacker_news", "reddit", "github"}:
+    if snapshot.kind not in {"hacker_news", "reddit", "github", "techtwitter"}:
         raise ValueError(f"unsupported ranking kind: {snapshot.kind}")
     if snapshot.kind != "reddit":
         return RankingRequest(kind=snapshot.kind)  # type: ignore[arg-type]
@@ -620,7 +645,11 @@ def _retry_after_seconds(response, *, now: datetime | None = None) -> float | No
 def _snapshot_item_limit(request: RankingRequest) -> int:
     if request.kind == "github":
         return 25
-    return SNAPSHOT_ITEM_LIMIT
+    if request.kind == "techtwitter":
+        return 50
+    if request.kind in {"hacker_news", "reddit"}:
+        return SNAPSHOT_ITEM_LIMIT
+    raise ValueError(f"unsupported ranking kind: {request.kind}")
 
 
 def _provider_io_timeout_seconds(lease_seconds: int) -> float:

@@ -393,16 +393,15 @@ export function useSegmentTranslationQueue({
     let clearedFailedSegment = false;
     let clearedTimedOutSegment = false;
     for (const candidate of segments) {
-      const text = candidate.text.trim();
       if (
         seen.has(candidate.segment_id) ||
         !candidate.segment_id ||
         candidate.segment_id.length > 160 ||
-        !text ||
-        text.length > MAX_SEGMENT_CHARS
+        !candidate.text.trim() ||
+        candidate.text.length > MAX_SEGMENT_CHARS
       ) continue;
       seen.add(candidate.segment_id);
-      const segment = { ...candidate, text };
+      const segment = candidate;
       const completed = completedRef.current.get(segment.segment_id);
       if (completed && sameSegment(completed.segment, segment)) {
         cachedResults.push(completed.result);

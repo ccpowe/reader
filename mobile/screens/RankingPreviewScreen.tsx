@@ -1,6 +1,6 @@
 import { i18n, useTranslation } from '../i18n';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import type { Session } from '../lib/readerAuth';
 import { useQueryClient } from '@tanstack/react-query';
 import { DetailHeader } from '../components/DetailHeader';
@@ -15,6 +15,8 @@ import {
   type TranslatableWebViewState,
 } from '../components/TranslatableWebView';
 import { RankingTitle } from '../components/RankingTitle';
+import { XRankingContent } from '../components/XRankingContent';
+import { translationResultMatchesRankingRoute } from '../domain/rankingTranslationProjection';
 import { type TranslationDisplayMode } from '../domain/webTranslation';
 import { useSegmentTranslationQueue } from '../hooks/useSegmentTranslationQueue';
 import { useRankingTitleRetry, type RankingTitleRetryItem } from '../hooks/useRankingTitleRetry';
@@ -44,6 +46,14 @@ export function RankingPreviewScreen({
   const translation = useTranslationPreference(session, true);
   const runtime = useReaderRuntime();
   const queryClient = useQueryClient();
+  const routeKey = `${translation.targetLocale}\u0000${translation.effectiveEngineFingerprint ?? ''}`;
+  const routeRef = useRef(routeKey);
+  useEffect(() => {
+    if (routeRef.current === routeKey) return;
+    routeRef.current = routeKey;
+    setLiveItem({ ...item, translated_title: null, translated_description: null, title_translation_status: null, description_translation_status: null, translation_locale: null,
+      body_segments: item.body_segments?.map((segment) => ({ ...segment, translated_text: null, translation_status: null })) });
+  }, [item, routeKey]);
   const [saved, setSaved] = useState(item.saved_state ?? false);
   const [contentId, setContentId] = useState(item.saved_content_id ?? null);
   const [saveBusy, setSaveBusy] = useState(false);
@@ -105,14 +115,21 @@ export function RankingPreviewScreen({
     catch { Alert.alert(i18n.t('reader:shareFailed')); }
   }
   const applyItemTranslations = useCallback((results: TranslationSegmentResult[]) => {
+    if (!translation.enabled) return;
+    const matched = results.filter((result) => translationResultMatchesRankingRoute(result, translation.targetLocale, translation.enabled, translation.effectiveEngineFingerprint));
+    if (!matched.length) return;
     setLiveItem((current) => {
-      const title = results.find(
-        (result) => result.segment_id === `${current.translation_key}:title`,
+      const title = matched.find(
+        (result) => result.segment_id === `${current.translation_key}:title` && result.purpose === 'ranking_title',
       );
-      const description = results.find(
-        (result) => result.segment_id === `${current.translation_key}:description`,
+      const description = matched.find(
+        (result) => result.segment_id === `${current.translation_key}:description` && result.purpose === 'ranking_description',
       );
-      if (!title && !description) return current;
+      const bodySegments = current.body_segments?.map((segment) => {
+        const result = matched.find((candidate) => candidate.segment_id === segment.segment_id && candidate.purpose === 'paragraph');
+        return result ? { ...segment, translated_text: result.translated_text, translation_status: result.translation_status } : segment;
+      });
+      if (!title && !description && !bodySegments?.some((segment, index) => segment !== current.body_segments?.[index])) return current;
       const next = {
         ...current,
         ...(title ? {
@@ -125,20 +142,22 @@ export function RankingPreviewScreen({
           description_translation_status: description.translation_status,
           translation_locale: description.translation_locale ?? current.translation_locale,
         } : {}),
+        ...(bodySegments?.some((segment, index) => segment !== current.body_segments?.[index]) ? { body_segments: bodySegments, translation_locale: matched[0].translation_locale } : {}),
       };
       if (
         next.translated_title === current.translated_title &&
         next.title_translation_status === current.title_translation_status &&
         next.translated_description === current.translated_description &&
         next.description_translation_status === current.description_translation_status &&
+        next.body_segments === current.body_segments &&
         next.translation_locale === current.translation_locale
       ) return current;
       return next;
     });
-  }, []);
+  }, [translation.enabled, translation.targetLocale, translation.effectiveEngineFingerprint]);
   const itemTranslationQueue = useSegmentTranslationQueue({
     enabled: translation.enabled,
-    engineId: translation.effectiveEngineId,
+    engineId: translation.effectiveEngineFingerprint ?? translation.effectiveEngineId,
     onResults: applyItemTranslations,
     session,
     targetLocale: translation.targetLocale,
@@ -167,6 +186,12 @@ export function RankingPreviewScreen({
   });
 
   useEffect(() => {
+    if (item.ranking_context?.kind === 'techtwitter') {
+      enqueueItemTranslations((liveItem.body_segments ?? []).filter((segment) => segment.text.trim() && segment.translation_status !== 'failed' && segment.translation_status !== 'succeeded').map((segment) => ({
+        purpose: 'paragraph' as const, segment_id: segment.segment_id, text: segment.text,
+      })));
+      return;
+    }
     const segments = [];
     if (
       !liveItem.translated_title &&
@@ -192,7 +217,12 @@ export function RankingPreviewScreen({
       });
     }
     enqueueItemTranslations(segments);
-  }, [enqueueItemTranslations, liveItem]);
+  }, [enqueueItemTranslations, item.ranking_context?.kind, liveItem]);
+  function retryBodyTranslation() {
+    itemTranslationQueue.retrySegments((liveItem.body_segments ?? [])
+      .filter((segment) => segment.text.trim() && segment.translation_status !== 'succeeded')
+      .map((segment) => ({ purpose: 'paragraph' as const, segment_id: segment.segment_id, text: segment.text })));
+  }
 
   async function openBrowserTab() {
     try {
@@ -213,7 +243,10 @@ export function RankingPreviewScreen({
   return (
     <View style={styles.page}>
       <DetailHeader title={liveItem.translated_title?.trim() || liveItem.title} onBack={onBack} onSave={() => void toggleSaved()} saved={saved} saveBusy={saveBusy} onShare={() => void share()} onExternalOpen={() => void openBrowserTab()} />
-      {liveItem.title_translation_status === 'failed' || isTitleRetrying(liveItem) || itemTranslationQueue.timedOutSegmentIds.has(`${liveItem.translation_key}:title`) ? (
+      {item.ranking_context?.kind === 'techtwitter' ? <ScrollView style={styles.xPreview}>
+        <XRankingContent item={liveItem} translated={translationMode !== 'original' && translation.enabled} onRetryTranslation={retryBodyTranslation} translationBusy={itemTranslationQueue.isTranslating} translationRetryNeeded={liveItem.body_segments?.some((segment) => itemTranslationQueue.timedOutSegmentIds.has(segment.segment_id) || itemTranslationQueue.failedSegmentIds.has(segment.segment_id))} />
+      </ScrollView> : null}
+      {item.ranking_context?.kind !== 'techtwitter' && (liveItem.title_translation_status === 'failed' || isTitleRetrying(liveItem) || itemTranslationQueue.timedOutSegmentIds.has(`${liveItem.translation_key}:title`)) ? (
         <View style={styles.previewHeader}>
           <RankingTitle numberOfLines={2} onRetry={() => { void retryTitleTranslation(liveItem); }} retrying={isTitleRetrying(liveItem)} status={liveItem.title_translation_status} timedOut={itemTranslationQueue.timedOutSegmentIds.has(`${liveItem.translation_key}:title`)} title={liveItem.title} titleStyle={styles.title} translatedTitle={liveItem.translated_title} />
         </View>
@@ -254,7 +287,7 @@ export function RankingPreviewScreen({
           ) : null}
         </View>
       ) : null}
-      <FloatingReaderTools translationActive={translationMode !== 'original' && translation.enabled} translationBusy={translationState.activeCount > 0 && translationMode !== 'original'} onTranslate={enableTranslation} translationLabel={t('toggleWebTranslation')} />
+      <FloatingReaderTools translationActive={translationMode !== 'original' && translation.enabled} translationBusy={(translationState.activeCount > 0 || (item.ranking_context?.kind === 'techtwitter' && itemTranslationQueue.isTranslating)) && translationMode !== 'original'} onTranslate={enableTranslation} translationLabel={item.ranking_context?.kind === 'techtwitter' ? t('translateBody') : t('toggleWebTranslation')} />
     </View>
   );
 }
@@ -262,6 +295,7 @@ export function RankingPreviewScreen({
 const styles = StyleSheet.create({
   page: { backgroundColor: '#FAFAF8', flex: 1 },
   previewHeader: { borderBottomColor: '#E5E5E3', borderBottomWidth: 1, paddingBottom: 8, paddingHorizontal: 20 },
+  xPreview: { borderBottomColor: '#E5E5E3', borderBottomWidth: 1, maxHeight: '65%', paddingHorizontal: 20, paddingVertical: 12 },
   title: { color: '#111111', fontSize: 14, fontWeight: '600', lineHeight: 20 },
   webView: { flex: 1 },
   errorBanner: { backgroundColor: '#FFF4E5', paddingHorizontal: 12, paddingVertical: 8 },

@@ -16,10 +16,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.rankings import RankingItemResponse, _to_response, body_segments_for_item
 from app.core.auth import AuthenticatedUser, require_current_user
-from app.domain.enums import MediaType
+from app.domain.enums import MediaType, TranslationPurpose
 from app.services.ranking_saved import accessible_url_query, persist_ranking_item
-from app.services.ranking_snapshots import RankingRequest
+from app.services.ranking_snapshots import RankingRequest, ranking_item_from_payload
+from app.services.rankings import RankingItem
 from app.storage.database import get_session
 from app.storage.models import (
     Content,
@@ -30,10 +32,12 @@ from app.storage.models import (
 )
 from app.translation.domain import TranslationProjection
 from app.translation.projection import (
+    TextInput,
     TitleInput,
     TranslationContext,
     ensure_title_translations,
     get_translation_context,
+    read_text_translations,
     translation_response_values,
 )
 
@@ -51,7 +55,7 @@ class RankingSavedStateResponse(BaseModel):
 
 
 class SaveRankingRequest(BaseModel):
-    kind: Literal["hacker_news", "reddit", "github"]
+    kind: Literal["hacker_news", "reddit", "github", "techtwitter"]
     url: str = Field(min_length=1, max_length=8192)
     subreddit: str = Field(default="MachineLearning", min_length=2, max_length=100)
     sort: Literal["hot", "rising", "top"] = "hot"
@@ -75,7 +79,8 @@ class SavedItemResponse(BaseModel):
     fetched_at: datetime
     thumbnail_url: str | None
     is_saved: bool = True
-    ranking_kind: Literal["hacker_news", "reddit", "github"] | None = None
+    ranking_kind: Literal["hacker_news", "reddit", "github", "techtwitter"] | None = None
+    ranking_item: RankingItemResponse | None = None
 
 
 class SavedPageResponse(BaseModel):
@@ -232,10 +237,27 @@ async def _query_saved_page(
         session,
         [
             TitleInput(item_id=str(content.id), text=content.title)
-            for _, _, content, *_ in page_rows
+            for _, entry, content, source, _ in page_rows
+            if not (
+                source.canonical_key == "ranking-archive:techtwitter"
+                and (entry.raw_metadata or {}).get("ranking_kind") == "techtwitter"
+            )
         ],
         context=translation_context,
     )
+    ranking_projections: dict[str, TranslationProjection] = {}
+    if translation_context.can_translate:
+        body_inputs = [
+            TextInput(item_id=segment_id, text=text, purpose=TranslationPurpose.PARAGRAPH)
+            for _, entry, _, source, _ in page_rows
+            if (ranking_item := _saved_ranking_item(entry, source)) is not None
+            for segment_id, text in body_segments_for_item("techtwitter", ranking_item)
+            if text.strip()
+        ]
+        if body_inputs:
+            ranking_projections = await read_text_translations(
+                session, body_inputs, context=translation_context
+            )
     await session.commit()
     response = [
         _saved_item_response(
@@ -246,6 +268,7 @@ async def _query_saved_page(
             subscription,
             translation_context,
             title_projections.get(str(content.id)),
+            ranking_projections=ranking_projections,
         )
         for saved, entry, content, source, subscription in page_rows
     ]
@@ -263,6 +286,8 @@ def _saved_item_response(
     subscription: SourceSubscription | None,
     translation_context: TranslationContext | None = None,
     projection: TranslationProjection | None = None,
+    *,
+    ranking_projections: dict[str, TranslationProjection] | None = None,
 ) -> SavedItemResponse:
     if translation_context is None:
         translation_context = TranslationContext(
@@ -274,11 +299,27 @@ def _saved_item_response(
         translation_context,
         projection,
     )
+    ranking_item = _saved_ranking_item(entry, source)
+    metadata_kind = (getattr(entry, "raw_metadata", None) or {}).get("ranking_kind")
+    if ranking_item is not None:
+        ranking_kind = "techtwitter"
+    elif metadata_kind != "techtwitter" and not getattr(content, "body_html", None):
+        ranking_kind = metadata_kind
+    else:
+        ranking_kind = None
     return SavedItemResponse(
         content_id=str(content.id),
-        ranking_kind=(getattr(entry, "raw_metadata", None) or {}).get("ranking_kind")
-        if not getattr(content, "body_html", None)
-        else None,
+        ranking_kind=ranking_kind,
+        ranking_item=(
+            _to_response(
+                "techtwitter",
+                ranking_item,
+                context=translation_context,
+                projections=ranking_projections,
+            )
+            if ranking_item is not None
+            else None
+        ),
         source_id=str(source.id),
         source_name=subscription.custom_name
         if subscription and subscription.custom_name
@@ -300,9 +341,19 @@ def _saved_item_response(
                 for media in sorted(content.media, key=lambda media: media.sort_order)
                 if media.media_type == MediaType.IMAGE and media.is_active
             ),
-            None,
+            ranking_item.video_thumbnail_url if ranking_item else None,
         ),
     )
+
+
+def _saved_ranking_item(entry: SourceEntry, source: FeedSource) -> RankingItem | None:
+    if getattr(source, "canonical_key", None) != "ranking-archive:techtwitter":
+        return None
+    metadata = getattr(entry, "raw_metadata", None) or {}
+    payload = metadata.get("ranking_item")
+    if metadata.get("ranking_kind") != "techtwitter" or not isinstance(payload, dict):
+        return None
+    return ranking_item_from_payload(payload)
 
 
 def _encode_saved_cursor(saved_at: datetime, content_id: UUID) -> str:

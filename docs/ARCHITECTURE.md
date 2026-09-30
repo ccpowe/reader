@@ -104,6 +104,10 @@ Android 阅读宿主使用 `LOAD_NO_CACHE`，并在进程内第一次 WebView �
 
 排行数据经 [ranking_snapshots.py](../backend/src/app/services/ranking_snapshots.py) 管理快照，API 与 Worker 均可参与刷新。榜单响应按当前账户的语言与引擎只读投影已有成功译文，并携带实际引擎指纹，不为缺失项创建工作或等待模型；客户端只采用与已加载语言、启用状态和引擎指纹一致的响应译文，继续显示其他缺失项原文，并仅将缺失字段交给显式片段路径。显式片段产生的成功 Artifact 与榜单响应共用同一身份和存储，后续榜单请求可以直接命中。用户显式收藏榜单条目时，[ranking_saved.py](../backend/src/app/services/ranking_saved.py) 先复用可访问内容，必要时再持久化条目并创建 `UserSavedContent`；Reddit 沿用其来源归属，其他榜单使用不参与订阅扫描的归档来源。
 
+X 技术热门独立读取 TechTwitter 的公开 TRENDING JSON 接口：单次请求 `limit=50&offset=0`，保留上游次序，不做话题过滤或额外排序，共享快照每 15 分钟刷新；不经过 Scweet、账号订阅或候选入库队列。客户端沿用本地分页，以推文原始正文而非上游摘要作为主内容，按可见条目请求缺失的正文片段译文。片段沿用共享 `paragraph` 身份与现有缓存生命周期，按换行及 UTF-16 长度有界拆分，不截断正文；译文未完整就绪或失败时仍显示原文。原生正文和媒体封面置于原网页预览上方，正文阅读不依赖 X 页面成功加载。
+
+TechTwitter 条目只有显式收藏时才落为内容：归档来源保持暂停，不建立订阅或扫描状态；正文与媒体写入内容表，原榜单字段写入来源条目元数据。收藏响应从这些持久数据恢复 `ranking_item` 和已有正文译文，不依赖当前榜单快照。若用户已可访问同 URL 的 X 订阅内容，则复用原内容及其阅读入口，不改写其正文、媒体或来源元数据；归档内容的补全也不覆盖已有更丰富正文。
+
 Reddit 订阅的首页内容由 `hot` 快照发布时送入同一候选队列，再经候选处理器入库；这条来源更新路径由排行快照驱动，普通来源扫描器不负责抓取 Reddit。
 
 取消订阅不等于取消收藏。内容保留策略按来源保留最新的一定数量未收藏内容，并保护收藏引用；翻译清理同时检查原文引用、引擎和临时缓存状态。规则见 [content_retention.py](../backend/src/app/workers/content_retention.py) 与 [translation/lifecycle.py](../backend/src/app/translation/lifecycle.py)。

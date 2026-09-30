@@ -101,6 +101,7 @@ export function useRanking(
   targetLocale: string,
   engineId: string | null,
   engineFingerprint: string | null,
+  visibleItemKeys?: ReadonlySet<string>,
 ) {
   const queryClient = useQueryClient();
   const runtime = useReaderRuntime();
@@ -153,6 +154,13 @@ export function useRanking(
       const items = current.items.map((item) => {
         const title = byId.get(`${item.translation_key}:title`);
         const description = byId.get(`${item.translation_key}:description`);
+        const bodySegments = item.body_segments?.map((segment) => {
+          const result = byId.get(segment.segment_id);
+          return result && expectedSources.get(result.segment_id) === segment.text
+            ? { ...segment, translated_text: result.translated_text, translation_status: result.translation_status }
+            : segment;
+        });
+        const freshBody = bodySegments?.some((segment, index) => segment !== item.body_segments?.[index]);
         const freshTitle = title
           && expectedSources.get(title.segment_id) === item.title
           ? title
@@ -161,7 +169,7 @@ export function useRanking(
           && expectedSources.get(description.segment_id) === item.description
           ? description
           : null;
-        if (!freshTitle && !freshDescription) return item;
+        if (!freshTitle && !freshDescription && !freshBody) return item;
         changed = true;
         return {
           ...item,
@@ -174,6 +182,10 @@ export function useRanking(
             translated_description: freshDescription.translated_text,
             description_translation_status: freshDescription.translation_status,
             translation_locale: freshDescription.translation_locale ?? item.translation_locale,
+          } : {}),
+          ...(freshBody ? {
+            body_segments: bodySegments,
+            translation_locale: matchedResults[0]?.translation_locale ?? item.translation_locale,
           } : {}),
         };
       });
@@ -241,14 +253,14 @@ export function useRanking(
       targetLocale,
       translationEnabled,
       engineFingerprint,
+      visibleItemKeys,
     ),
-    [engineFingerprint, query.data, targetLocale, translationEnabled, translationItemLimit],
+    [engineFingerprint, query.data, targetLocale, translationEnabled, translationItemLimit, visibleItemKeys],
   );
   useEffect(() => {
     if (!active || !translationEnabled) return;
-    queuedSourcesRef.current = new Map(
-      pendingSegments.map((segment) => [segment.segment_id, segment.text]),
-    );
+    if (queuedRouteRef.current !== routeIdentity) queuedSourcesRef.current.clear();
+    for (const segment of pendingSegments) queuedSourcesRef.current.set(segment.segment_id, segment.text);
     queuedRouteRef.current = routeIdentity;
     enqueueSegments(pendingSegments);
   }, [active, enqueueSegments, pendingSegments, routeIdentity, translationEnabled]);
@@ -278,6 +290,7 @@ export function useRanking(
   }, [engineFingerprint, kind, options, queryClient, runtime, session, targetLocale, translationEnabled]);
 
   return {
+    translationEnabled,
     ...query,
     loading: query.isPending && query.fetchStatus !== 'idle' && !query.data,
     message: query.error ? query.error.message : '',
@@ -287,6 +300,15 @@ export function useRanking(
     isTitleRetrying,
     retryTitleTranslation,
     refresh,
+    retryBodyTranslation: (item: Ranking['items'][number]) => {
+      const segments = (item.body_segments ?? [])
+        .filter((segment) => segment.text.trim() && segment.translation_status !== 'succeeded')
+        .map((segment) => ({ purpose: 'paragraph' as const, segment_id: segment.segment_id, text: segment.text }));
+      for (const segment of segments) queuedSourcesRef.current.set(segment.segment_id, segment.text);
+      queuedRouteRef.current = routeIdentity;
+      translationQueue.retrySegments(segments);
+    },
+    failedSegmentIds: translationQueue.failedSegmentIds,
     timedOutSegmentIds: translationQueue.timedOutSegmentIds,
   };
 }

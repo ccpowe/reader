@@ -389,6 +389,28 @@ export type ProfileResponse = {
 };
 
 /**
+ * RankingBodySegmentResponse
+ */
+export type RankingBodySegmentResponse = {
+    /**
+     * Segment Id
+     */
+    segment_id: string;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Translated Text
+     */
+    translated_text: string | null;
+    /**
+     * Translation Status
+     */
+    translation_status: string | null;
+};
+
+/**
  * RankingItemResponse
  */
 export type RankingItemResponse = {
@@ -396,6 +418,22 @@ export type RankingItemResponse = {
      * Author
      */
     author: string | null;
+    /**
+     * Author Handle
+     */
+    author_handle?: string | null;
+    /**
+     * Body Segments
+     */
+    body_segments?: Array<RankingBodySegmentResponse>;
+    /**
+     * Body Text
+     */
+    body_text?: string | null;
+    /**
+     * Bookmark Count
+     */
+    bookmark_count?: number | null;
     /**
      * Comments
      */
@@ -421,9 +459,17 @@ export type RankingItemResponse = {
      */
     language: string | null;
     /**
+     * Published At
+     */
+    published_at?: string | null;
+    /**
      * Rank
      */
     rank: number;
+    /**
+     * Retweet Count
+     */
+    retweet_count?: number | null;
     /**
      * Score
      */
@@ -468,6 +514,14 @@ export type RankingItemResponse = {
      * Url
      */
     url: string;
+    /**
+     * Video Thumbnail Url
+     */
+    video_thumbnail_url?: string | null;
+    /**
+     * Video Url
+     */
+    video_url?: string | null;
 };
 
 /**
@@ -489,7 +543,7 @@ export type RankingResponse = {
     /**
      * Kind
      */
-    kind: 'hacker_news' | 'reddit' | 'github';
+    kind: 'hacker_news' | 'reddit' | 'github' | 'techtwitter';
     /**
      * Subtitle
      */
@@ -613,7 +667,7 @@ export type SaveRankingRequest = {
     /**
      * Kind
      */
-    kind: 'hacker_news' | 'reddit' | 'github';
+    kind: 'hacker_news' | 'reddit' | 'github' | 'techtwitter';
     /**
      * Sort
      */
@@ -664,10 +718,11 @@ export type SavedItemResponse = {
      * Published At
      */
     published_at: string | null;
+    ranking_item?: RankingItemResponse | null;
     /**
      * Ranking Kind
      */
-    ranking_kind?: 'hacker_news' | 'reddit' | 'github' | null;
+    ranking_kind?: 'hacker_news' | 'reddit' | 'github' | 'techtwitter' | null;
     /**
      * Source Avatar Url
      */
@@ -1722,7 +1777,7 @@ export type GetRankingV1RankingsKindGetData = {
         /**
          * Kind
          */
-        kind: 'hacker_news' | 'reddit' | 'github';
+        kind: 'hacker_news' | 'reddit' | 'github' | 'techtwitter';
     };
     query?: {
         /**

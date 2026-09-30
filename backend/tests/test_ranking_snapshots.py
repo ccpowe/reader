@@ -13,15 +13,20 @@ from app.services.ranking_snapshots import (
     RankingRefreshInProgress,
     RankingRefreshRateLimited,
     RankingRequest,
+    _data_from_snapshot,
     _enqueue_reddit_hot_admissions,
+    _payload_from_data,
     _provider_io_timeout_seconds,
     _record_refresh_failure,
     _refresh_one_snapshot,
+    _request_from_snapshot,
     _reserve_provider_refresh,
     _retry_interval,
     _snapshot_item_limit,
     create_or_refresh_snapshot,
     ensure_reddit_snapshots,
+    ranking_item_from_payload,
+    ranking_item_payload,
     reconcile_reddit_snapshots,
     refresh_interval,
     sync_due_ranking_snapshots,
@@ -44,6 +49,7 @@ def test_snapshot_intervals_are_conservative_for_external_providers() -> None:
     assert refresh_interval(RankingRequest(kind="reddit", sort="hot")) == timedelta(minutes=30)
     assert refresh_interval(RankingRequest(kind="reddit", sort="rising")) == timedelta(hours=1)
     assert refresh_interval(RankingRequest(kind="reddit", sort="top")) == timedelta(hours=6)
+    assert refresh_interval(RankingRequest(kind="techtwitter")) == timedelta(minutes=15)
 
 
 def test_snapshot_key_is_shared_by_equivalent_reddit_input() -> None:
@@ -57,6 +63,47 @@ def test_snapshot_windows_match_each_provider_capability() -> None:
     assert _snapshot_item_limit(RankingRequest(kind="hacker_news")) == 100
     assert _snapshot_item_limit(RankingRequest(kind="reddit")) == 100
     assert _snapshot_item_limit(RankingRequest(kind="github")) == 25
+    assert _snapshot_item_limit(RankingRequest(kind="techtwitter")) == 50
+
+
+def test_techtwitter_snapshot_and_saved_metadata_roundtrip_without_losing_originals() -> None:
+    original = "  第一行 😀\n\n第二行\t "
+    when = datetime(2026, 9, 30, 13, tzinfo=UTC)
+    item = RankingItem(
+        rank=3,
+        title="SEO headline",
+        url="https://x.com/user/status/123",
+        description="A separate summary",
+        body_text=original,
+        author="Author",
+        author_handle="@user",
+        native_id="tweet-uuid",
+        published_at=when,
+        score=None,
+        comments=0,
+        retweet_count=14,
+        bookmark_count=None,
+        image_urls=("https://cdn.example/image.jpg",),
+        video_url="https://cdn.example/movie.mp4",
+        video_thumbnail_url="https://cdn.example/cover.jpg",
+    )
+    data = RankingData(
+        kind="techtwitter",
+        title="X 技术热门",
+        subtitle="TechTwitter · Trending",
+        items=[item],
+        fetched_at=when,
+    )
+    snapshot = SimpleNamespace(
+        kind="techtwitter",
+        parameters={},
+        payload=_payload_from_data(data),
+        fetched_at=when,
+    )
+
+    assert _request_from_snapshot(snapshot).cache_key == "ranking:v2:techtwitter"
+    assert _data_from_snapshot(snapshot) == data
+    assert ranking_item_from_payload(ranking_item_payload(item)) == item
 
 
 def test_default_refresh_lease_covers_the_bounded_hacker_news_fanout() -> None:

@@ -10,12 +10,27 @@ function translatedText(value: string | null | undefined): string | null {
   return normalized ? value ?? null : null;
 }
 
+/** Never substitute a summary or a partial translation for the original post. */
+export function rankingBodyText(item: RankingItem, translated: boolean): string {
+  const original = item.body_text ?? '';
+  if (!translated || !item.body_segments?.length) return original;
+  if (item.body_segments.some((segment) => segment.text.trim()
+    && (segment.translation_status !== 'succeeded' || !segment.translated_text?.trim()))) return original;
+  return item.body_segments.map((segment) => {
+    if (!segment.text.trim()) return segment.text;
+    const translatedSegment = segment.translated_text ?? segment.text;
+    const lineEnding = segment.text.match(/(?:\r?\n)+$/)?.[0];
+    return lineEnding ? translatedSegment.replace(/(?:\r?\n)+$/, '') + lineEnding : translatedSegment;
+  }).join('');
+}
+
 function hasTranslationState(item: RankingItem): boolean {
   return Boolean(
     translatedText(item.translated_title)
     || translatedText(item.translated_description)
     || item.title_translation_status
-    || item.description_translation_status,
+    || item.description_translation_status
+    || item.body_segments?.some((segment) => translatedText(segment.translated_text) || segment.translation_status)
   );
 }
 
@@ -48,6 +63,9 @@ function validTranslationItem(
       title_translation_status: null,
       translated_description: null,
       description_translation_status: null,
+      body_segments: item.body_segments?.map((segment) => ({
+        ...segment, translated_text: null, translation_status: null,
+      })),
       translation_locale: null,
     };
   }
@@ -102,7 +120,16 @@ export function mergeRankingTranslationProjection(
       && next.description === prior.description
       && Boolean(translatedText(prior.translated_description))
     );
-    if (!keepTitle && !keepDescription) return next;
+    const keepBody = incoming.kind === 'techtwitter'
+      && Boolean(next.body_segments?.length)
+      && Boolean(prior.body_segments?.some((segment) => translatedText(segment.translated_text)))
+      && next.body_text === prior.body_text
+      && next.body_segments?.length === prior.body_segments?.length
+      && next.body_segments?.every((segment, index) => (
+        segment.segment_id === prior.body_segments?.[index]?.segment_id
+        && segment.text === prior.body_segments[index].text
+      ));
+    if (!keepTitle && !keepDescription && !keepBody) return next;
     changed = true;
     return {
       ...next,
@@ -113,6 +140,14 @@ export function mergeRankingTranslationProjection(
       ...(keepDescription ? {
         translated_description: prior.translated_description,
         description_translation_status: 'succeeded' as const,
+      } : {}),
+      ...(keepBody ? {
+        body_segments: next.body_segments?.map((segment, index) => {
+          const old = prior.body_segments?.[index];
+          return !translatedText(segment.translated_text) && translatedText(old?.translated_text)
+            ? { ...segment, translated_text: old?.translated_text ?? null, translation_status: 'succeeded' as const }
+            : segment;
+        }),
       } : {}),
       translation_locale: targetLocale,
     };
@@ -127,6 +162,7 @@ export function missingRankingTranslationSegments(
   targetLocale: string,
   translationEnabled: boolean,
   engineFingerprint: string | null,
+  visibleItemKeys?: ReadonlySet<string>,
 ): TranslationSegment[] {
   const segments: TranslationSegment[] = [];
   const routeMatches = Boolean(
@@ -135,7 +171,16 @@ export function missingRankingTranslationSegments(
     && ranking?.effective_engine_fingerprint === engineFingerprint,
   );
   for (const rawItem of (ranking?.items ?? []).slice(0, itemLimit)) {
+    if (ranking?.kind === 'techtwitter' && !visibleItemKeys?.has(rawItem.translation_key)) continue;
     const item = validTranslationItem(rawItem, targetLocale, routeMatches);
+    if (ranking?.kind === 'techtwitter') {
+      for (const segment of item.body_segments ?? []) {
+        if (segment.text.trim() && !translatedText(segment.translated_text) && segment.translation_status !== 'failed') {
+          segments.push({ purpose: 'paragraph', segment_id: segment.segment_id, text: segment.text });
+        }
+      }
+      continue;
+    }
     if (!translatedText(item.translated_title) && item.title_translation_status !== 'failed') {
       segments.push({
         purpose: 'ranking_title',

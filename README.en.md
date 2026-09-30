@@ -100,13 +100,15 @@ Subtitle features depend on captions provided by the video. Reader does not curr
   <img src="docs/assets/readme/rankings-editorial-en.png" width="960" alt="Trending rankings: an English editorial layout with entry points for Hacker News, Reddit, and GitHub, plus popular Hacker News stories and discussions.">
 </p>
 
-Open Rankings and switch between **Hacker News, Reddit, and GitHub** to discover discussions, articles, and open-source projects beyond your subscriptions.
+Open Rankings and switch between **Hacker News, Reddit, GitHub, and X Tech Trends** to discover discussions, articles, open-source projects, and technology posts beyond your subscriptions.
 
 - **Hacker News:** Browse technology articles and discussions, using scores and comment counts to find promising stories.
 - **Reddit:** Select from communities you subscribe to and browse by hot, top, or rising. Add a Reddit community subscription before using this view.
 - **GitHub:** Discover open-source projects worth following.
+- **X Tech Trends:** Read the first 50 TechTwitter TRENDING posts in upstream order, with a shared server snapshot refreshed every 15 minutes. Expand and translate the original post text, and view authors, engagement counts, images, and video thumbnails. There is no topic filtering or custom reranking, and no X account subscription, cookie, or Scweet service is required.
 
 When something looks interesting, open it to continue reading or **save it and return from the Saved screen later**.
+Saved X ranking entries retain their original text and media information even after leaving the ranking. Loading original websites and media still requires external network access.
 
 <p align="center"><sub>These are AI-assisted editorial compositions based on screenshots from a physical Android device, not pixel-for-pixel UI screenshots. The rankings image uses Hacker News as its example. See the <a href="docs/assets/readme/README.md">asset notes</a> for the original material, versions, and sources.</sub></p>
 

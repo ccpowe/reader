@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -18,6 +19,7 @@ import Reanimated, {
 import { BottomSheetModal } from '../components/BottomSheetModal';
 import { CategoryPager } from '../components/CategoryPager';
 import { PageHeaderContent } from '../components/PageHeader';
+import { XRankingContent } from '../components/XRankingContent';
 import { RankingTitle } from '../components/RankingTitle';
 import {
   prefetchRanking,
@@ -31,7 +33,7 @@ import {
   type RankingKind,
   type RedditRankingSort,
 } from '../lib/api';
-import { formatCount } from '../domain/formatting';
+import { formatCount, relativeTime } from '../domain/formatting';
 import { redditCommunitiesFromSources } from '../domain/source';
 import { useSources } from '../hooks/useSources';
 import { useTranslationPreference } from '../hooks/useTranslationPreference';
@@ -46,7 +48,7 @@ import { readerQueryKeys } from '../state/queryClient';
 import { protectsQueryKeys, removeObsoleteQueries } from '../state/queryLifecycle';
 
 const RANKING_CHROME_HEIGHT = PAGE_HEADER_HEIGHT + 46;
-const RANKING_KINDS: RankingKind[] = ['hacker_news', 'reddit', 'github'];
+const RANKING_KINDS: RankingKind[] = ['hacker_news', 'reddit', 'github', 'techtwitter'];
 
 export function RankingsScreen({
   onProfile,
@@ -130,6 +132,10 @@ function RankingsScreenContent({
   const [draftCommunity, setDraftCommunity] = useState<string | null>(null);
   const [draftSort, setDraftSort] = useState<RedditRankingSort>('hot');
   const readerClient = useQueryClient();
+  const [visibleXKeys, setVisibleXKeys] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    if (kind !== 'techtwitter' || !active) setVisibleXKeys((current) => current.size ? new Set() : current);
+  }, [active, kind]);
   const runtime = useReaderRuntime();
   const sourcesQuery = useSources(session, active);
   const translation = useTranslationPreference(session, active);
@@ -175,7 +181,19 @@ function RankingsScreenContent({
     translation.effectiveEngineId,
     translation.effectiveEngineFingerprint,
   );
-  const rankingQueries = { hacker_news: hackerQuery, reddit: redditQuery, github: githubQuery };
+  const xQuery = useRanking(
+    session,
+    'techtwitter',
+    undefined,
+    active && kind === 'techtwitter',
+    visibleCount,
+    translation.enabled,
+    translation.targetLocale,
+    translation.effectiveEngineId,
+    translation.effectiveEngineFingerprint,
+    visibleXKeys,
+  );
+  const rankingQueries = { hacker_news: hackerQuery, reddit: redditQuery, github: githubQuery, techtwitter: xQuery };
   const rankingKeys = useMemo(() => RANKING_KINDS.map((targetKind) => readerQueryKeys.rankings(
     session.user.id,
     rankingVariantKey(targetKind, targetKind === 'reddit' ? redditOptions : undefined),
@@ -266,6 +284,11 @@ function RankingsScreenContent({
       active={active && targetKind === kind}
       kind={targetKind}
       onLoadMore={() => loadMoreIfNeeded(targetKind)}
+      onVisibleItems={(items) => {
+        if (targetKind !== 'techtwitter' || kind !== 'techtwitter') return;
+        const keys = new Set(items.map((item) => item.translation_key));
+        setVisibleXKeys((current) => current.size === keys.size && [...keys].every((key) => current.has(key)) ? current : keys);
+      }}
       onOpenItem={onOpenItem}
       onOpenRedditFilters={() => { setDraftCommunity(redditCommunity); setDraftSort(redditSort); setShowCommunityPicker(true); }}
       onScroll={onScroll}
@@ -308,11 +331,12 @@ function RankingsScreenContent({
             )}
           />
         </View>
-        <View style={styles.rankingTabs}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rankingTabs}>
           <RankingTab active={kind === 'hacker_news'} label="Hacker News" onPress={() => { revealChrome(); onChangeKind('hacker_news'); }} />
           <RankingTab active={kind === 'reddit'} label="Reddit" onPress={() => { revealChrome(); onChangeKind('reddit'); }} />
           <RankingTab active={kind === 'github'} label="GitHub" onPress={() => { revealChrome(); onChangeKind('github'); }} />
-        </View>
+          <RankingTab active={kind === 'techtwitter'} label={t('xTrendingTab')} onPress={() => { revealChrome(); onChangeKind('techtwitter'); }} />
+        </ScrollView>
       </Reanimated.View>
       <CategoryPager
         onPageTransitionStart={revealChrome}
@@ -345,6 +369,7 @@ function RankingPage({
   active,
   kind,
   onLoadMore,
+  onVisibleItems,
   onOpenItem,
   onOpenRedditFilters,
   onScroll,
@@ -360,6 +385,7 @@ function RankingPage({
   active: boolean;
   kind: RankingKind;
   onLoadMore: () => void;
+  onVisibleItems: (items: readonly RankingItem[]) => void;
   onOpenItem: (item: RankingItem) => void;
   onOpenRedditFilters: () => void;
   onScroll: ScrollHandlerProcessed;
@@ -382,6 +408,7 @@ function RankingPage({
     items: shownItems,
     memoryKey,
     onScroll,
+    onViewableItems: onVisibleItems,
     registry: positionRegistry,
   });
   const message = kind === 'reddit' && !redditCommunity
@@ -409,6 +436,10 @@ function RankingPage({
       item={item}
       kind={kind}
       onOpen={() => onOpenItem({ ...item, ranking_context: { kind, ...(kind === 'reddit' ? { subreddit: redditCommunity ?? undefined, sort: redditSort, time_filter: 'week' as const } : {}) } })}
+      onRetryBody={() => query.retryBodyTranslation(item)}
+      translationEnabled={kind === 'techtwitter' && query.translationEnabled}
+      translationBusy={query.translating}
+      translationRetryNeeded={kind === 'techtwitter' && item.body_segments?.some((segment) => query.timedOutSegmentIds.has(segment.segment_id) || query.failedSegmentIds.has(segment.segment_id))}
       onRetryTitle={() => { void query.retryTitleTranslation(item); }}
       titleRetrying={query.isTitleRetrying(item)}
       titleTimedOut={query.timedOutSegmentIds.has(`${item.translation_key}:title`)}
@@ -421,6 +452,7 @@ function RankingPage({
         <Text style={styles.rankingSubtitle}>· {t(redditSort === 'top' ? 'sortTop' : redditSort === 'rising' ? 'sortRising' : 'sortHot')}</Text>
         <Feather color={colors.textMuted} name="sliders" size={18} />
       </Pressable> : null}
+      {kind === 'techtwitter' && query.ranking ? <Text style={styles.xIntro}>{t('xTopUpdated', { time: relativeTime(query.ranking.fetched_at) })}</Text> : null}
       {items.length > 0 ? feedback : null}
     </>}
     ListEmptyComponent={<View style={listFeedbackStyles.state}>{feedback}</View>}
@@ -432,6 +464,10 @@ function RankingCard({
   kind,
   onOpen,
   onRetryTitle,
+  onRetryBody,
+  translationEnabled,
+  translationBusy,
+  translationRetryNeeded,
   titleRetrying,
   titleTimedOut,
 }: {
@@ -439,9 +475,14 @@ function RankingCard({
   kind: RankingKind;
   onOpen: () => void;
   onRetryTitle: () => void;
+  onRetryBody: () => void;
+  translationEnabled: boolean;
+  translationBusy: boolean;
+  translationRetryNeeded?: boolean;
   titleRetrying: boolean;
   titleTimedOut: boolean;
 }) {
+  if (kind === 'techtwitter') return <Pressable accessibilityRole="button" onPress={onOpen} style={styles.xRow}><Text style={styles.rankNumber}>{String(item.rank).padStart(2, '0')}</Text><XRankingContent item={item} translated={translationEnabled} onRetryTranslation={onRetryBody} translationBusy={translationBusy} translationRetryNeeded={translationRetryNeeded} /></Pressable>;
   if (kind === 'github') return <GithubRankingCard item={item} onPress={onOpen} onRetryTitle={onRetryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
   if (kind === 'reddit') return <RedditRankingCard item={item} onPress={onOpen} onRetryTitle={onRetryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
   return <HackerNewsRankingCard item={item} onPress={onOpen} onRetryTitle={onRetryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
@@ -554,13 +595,15 @@ const styles = StyleSheet.create({
   categoryPage: { flex: 1 },
   motionPageHeader: { paddingHorizontal: SCREEN_HORIZONTAL_PADDING },
   rankingChromeLayer: { backgroundColor: colors.background, height: RANKING_CHROME_HEIGHT, left: 0, position: 'absolute', right: 0, top: 0, zIndex: 4 },
-  rankingTabs: { flexDirection: 'row', gap: 24, borderBottomWidth: 1, borderBottomColor: colors.border, marginHorizontal: SCREEN_HORIZONTAL_PADDING },
+  rankingTabs: { flexDirection: 'row', gap: 18, borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: SCREEN_HORIZONTAL_PADDING },
   rankingTab: { alignItems: 'center', borderBottomColor: 'transparent', borderBottomWidth: 3, height: 45, paddingTop: 10, paddingBottom: 11, justifyContent: 'center' },
   rankingTabActive: { borderBottomColor: colors.textStrong }, rankingTabText: { color: '#777B74', fontSize: 13, lineHeight: 20.8 }, rankingTabTextActive: { color: colors.textStrong, fontWeight: '700' },
   rankingList: { gap: 0, paddingBottom: SCREEN_LIST_BOTTOM_PADDING, paddingHorizontal: SCREEN_HORIZONTAL_PADDING, paddingTop: RANKING_CHROME_HEIGHT },
   rankingIntro: { alignItems: 'center', flexDirection: 'row', gap: 8, minHeight: 40, marginBottom: 0 },
   rankingTitle: { color: colors.textStrong, fontSize: 14, fontWeight: '600', flexShrink: 1 },
   rankingSubtitle: { color: colors.textMuted, fontSize: 12, flex: 1 },
+  xIntro: { color: colors.textMuted, fontSize: 12, paddingVertical: 12 },
+  xRow: { borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', gap: 13, paddingVertical: 20 },
   hnRow: { borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', gap: 13, paddingVertical: 20 },
   rankNumber: { color: colors.textStrong, fontSize: 18, lineHeight: 27.2, fontVariant: ['tabular-nums'], fontWeight: '500', width: 28 },
 

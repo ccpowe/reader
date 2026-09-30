@@ -23,6 +23,32 @@ export type MainNavigationAction =
   | { type: 'clear_source_filter' }
   | { type: 'close_source' };
 
+export function rankingFromSaved(item: FeedItem): RankingItem | null {
+  if (!item.ranking_kind) return null;
+  if (item.ranking_item) {
+    return {
+      ...item.ranking_item,
+      ranking_context: { kind: item.ranking_kind },
+      saved_content_id: item.content_id,
+      saved_state: item.is_saved,
+    };
+  }
+  return {
+    title: item.title, translated_title: item.translated_title,
+    title_translation_status: item.translation_status,
+    description: item.excerpt, translated_description: null,
+    description_translation_status: null, translation_locale: item.translation_locale,
+    translation_key: `saved:${item.content_id}`, url: item.external_url,
+    source_label: item.source_name, rank: 0, author: item.author_name,
+    score: null, comments: null, language: null, stars: null, forks: null,
+    stars_this_period: null, image_urls: item.thumbnail_url ? [item.thumbnail_url] : [],
+    body_text: null, body_segments: [], author_handle: null, published_at: item.published_at,
+    retweet_count: null, bookmark_count: null, video_url: null, video_thumbnail_url: null,
+    saved_content_id: item.content_id, saved_state: item.is_saved,
+    ranking_context: { kind: item.ranking_kind },
+  };
+}
+
 export function createMainNavigationState(): MainNavigationState {
   return {
     selectedInboxSourceId: null,

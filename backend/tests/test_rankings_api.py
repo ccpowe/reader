@@ -279,3 +279,98 @@ async def test_ranking_returns_only_existing_successful_translation_artifacts(mo
     assert response.items[1].title_translation_status is None
     assert response.items[1].translation_locale is None
     assert response.effective_engine_fingerprint == context.engine.fingerprint
+
+
+async def test_techtwitter_body_is_losslessly_chunked_and_only_body_cache_is_projected(
+    monkeypatch,
+) -> None:
+    original = "😀" * 4_001 + "\n  Next paragraph " + "字" * 8_005
+    item = RankingItem(
+        rank=1,
+        title="SEO title, not tweet body",
+        description="Summary, not tweet body",
+        url="https://x.com/dev/status/42",
+        native_id="uuid-42",
+        body_text=original,
+    )
+    context = _translation_context(enabled=True)
+    captured = []
+
+    async def cache_only(_session, inputs, *, context):
+        captured.extend(inputs)
+        first = inputs[0]
+        return {
+            first.item_id: TranslationProjection(
+                item_id=first.item_id,
+                source_hash="body-cache",
+                target_locale=context.target_locale,
+                status=TranslationStatus.SUCCEEDED,
+                translated_text="第一段",
+            ),
+            inputs[1].item_id: TranslationProjection(
+                item_id=inputs[1].item_id,
+                source_hash="pending",
+                target_locale=context.target_locale,
+                status=TranslationStatus.PENDING,
+            ),
+        }
+
+    monkeypatch.setattr(rankings, "get_translation_context", AsyncMock(return_value=context))
+    monkeypatch.setattr(rankings, "read_text_translations", cache_only)
+    result = await rankings._ranking_response(
+        AsyncMock(),
+        uuid4(),
+        RankingData(
+            kind="techtwitter",
+            title="X 技术热门",
+            subtitle="Trending",
+            items=[item],
+            fetched_at=datetime.now(UTC),
+        ),
+        limit=50,
+    )
+
+    response_item = result.items[0]
+    segments = response_item.body_segments
+    assert result.effective_engine_fingerprint == context.engine.fingerprint
+    assert response_item.body_text == original
+    assert "".join(segment.text for segment in segments) == original
+    assert [segment.segment_id for segment in segments] == [
+        f"{response_item.translation_key}:body:{index}" for index in range(len(segments))
+    ]
+    assert all(len(segment.text.encode("utf-16-le")) // 2 <= 8_000 for segment in segments)
+    assert len(segments) == 5
+    assert segments[2].text == "\n"
+    assert segments[2].translated_text is None
+    assert [source.purpose for source in captured] == [
+        TranslationPurpose.PARAGRAPH for _ in range(4)
+    ]
+    assert [source.text for source in captured] == [
+        segment.text for segment in segments if segment.text.strip()
+    ]
+    assert segments[0].translated_text == "第一段"
+    assert segments[0].translation_status == "succeeded"
+    assert segments[1].translated_text is None
+    assert segments[1].translation_status is None
+    assert response_item.translated_title is None
+    assert response_item.translated_description is None
+    assert response_item.translation_locale == "zh-CN"
+
+
+def test_techtwitter_saved_preview_without_context_cannot_leak_translations() -> None:
+    item = RankingItem(
+        rank=1,
+        title="Different SEO title",
+        url="https://x.com/author/status/99",
+        body_text="原文 😀\n",
+        description="Separate summary",
+    )
+    response = rankings._to_response("techtwitter", item)
+
+    assert response.translation_locale is None
+    assert response.body_text == "原文 😀\n"
+    assert [(segment.text, segment.translated_text) for segment in response.body_segments] == [
+        ("原文 😀", None),
+        ("\n", None),
+    ]
+    assert response.body_segments[0].segment_id.endswith(":body:0")

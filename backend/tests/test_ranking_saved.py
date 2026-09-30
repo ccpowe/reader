@@ -9,9 +9,12 @@ from sqlalchemy.dialects import postgresql
 
 from app.api.saved import _saved_item_response, get_ranking_saved_state
 from app.core.auth import AuthenticatedUser
+from app.domain.enums import TranslationStatus
 from app.services import ranking_saved
 from app.services.ranking_snapshots import RankingData, RankingRequest
 from app.services.rankings import RankingItem
+from app.translation.domain import TranslationProjection
+from app.translation.projection import TranslationContext
 
 
 def sql(statement):
@@ -173,3 +176,108 @@ def test_archived_saved_response_reopens_web_and_upgraded_content_reopens_reader
     assert _saved_item_response(None, entry, content, source, None).ranking_kind == "github"
     content.body_html = "<p>Extracted article</p>"
     assert _saved_item_response(None, entry, content, source, None).ranking_kind is None
+
+
+def test_techtwitter_saved_response_restores_original_body_and_media_despite_html():
+    from app.services.ranking_snapshots import ranking_item_payload
+
+    body = "第一段\n" + "😀" * 4_100 + "\n最后一段"
+    item = RankingItem(
+        rank=7,
+        title="A tweet",
+        url="https://x.com/tech/status/123",
+        author="Tech Person",
+        author_handle="tech",
+        body_text=body,
+        description="An abstract, not the tweet",
+        score=0,
+        comments=3,
+        retweet_count=4,
+        bookmark_count=5,
+        image_urls=("https://x.com/photo.jpg",),
+        video_url="https://x.com/movie.mp4",
+        video_thumbnail_url="https://x.com/cover.jpg",
+        native_id="tweet-uuid",
+    )
+    content = SimpleNamespace(
+        id=uuid4(),
+        title="A tweet",
+        excerpt=item.description,
+        media=[],
+        body_html="<p>Archive article HTML must not hide saved tweet</p>",
+    )
+    entry = SimpleNamespace(
+        title=item.title,
+        external_url=item.url,
+        author_name=item.author,
+        published_at=None,
+        fetched_at=datetime.now(UTC),
+        raw_metadata={"ranking_kind": "techtwitter", "ranking_item": ranking_item_payload(item)},
+    )
+    source = SimpleNamespace(
+        id=uuid4(),
+        canonical_key="ranking-archive:techtwitter",
+        display_name="X 技术热门",
+        avatar_url=None,
+        kind="web",
+    )
+
+    response = _saved_item_response(None, entry, content, source, None)
+
+    assert response.ranking_kind == "techtwitter"
+    assert response.ranking_item is not None
+    assert response.ranking_item.body_text == body
+    assert "".join(segment.text for segment in response.ranking_item.body_segments) == body
+    assert all(
+        len(segment.text.encode("utf-16-le")) // 2 <= 8000
+        for segment in response.ranking_item.body_segments
+    )
+    assert response.ranking_item.translation_locale is None
+    assert response.ranking_item.author_handle == "tech"
+    assert response.ranking_item.score == 0
+    assert response.ranking_item.retweet_count == 4
+    assert response.ranking_item.video_url == item.video_url
+    assert response.ranking_item.video_thumbnail_url == item.video_thumbnail_url
+
+    titled = _saved_item_response(
+        None,
+        entry,
+        content,
+        source,
+        None,
+        TranslationContext(target_locale="fr", enabled=True, engine=None),
+        TranslationProjection(
+            item_id=str(content.id),
+            source_hash="title-hash",
+            target_locale="fr",
+            status=TranslationStatus.SUCCEEDED,
+            translated_text="Titre traduit",
+        ),
+    )
+    assert titled.translation_locale == "fr"
+    assert titled.ranking_item.translation_locale is None
+
+
+def test_existing_x_subscription_keeps_its_regular_saved_reading_path():
+    content = SimpleNamespace(
+        id=uuid4(),
+        title="Full subscribed X post",
+        excerpt=None,
+        media=[],
+        body_html="<p>Full native X body</p>",
+    )
+    entry = SimpleNamespace(
+        title=content.title,
+        external_url="https://x.com/tech/status/999",
+        author_name="Tech author",
+        published_at=None,
+        fetched_at=datetime.now(UTC),
+        raw_metadata={"x_relations": {"quoted": True}},
+    )
+    source = SimpleNamespace(id=uuid4(), display_name="Followed X", avatar_url=None, kind="x")
+
+    response = _saved_item_response(None, entry, content, source, None)
+
+    assert response.ranking_kind is None
+    assert response.ranking_item is None
+    assert response.source_kind == "x"

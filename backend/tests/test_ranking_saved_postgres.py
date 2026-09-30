@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -10,17 +11,22 @@ import asyncpg
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import create_async_engine
 from test_postgres_migrations import _assert_disposable_database, _test_dsn, _test_guard_token
 
 from app.api.feed import get_article
 from app.api.saved import _query_saved_page, get_ranking_saved_state, save_content, unsave_content
 from app.core.auth import AuthenticatedUser
+from app.domain.enums import MediaType, SourceKind, SourceStatus, SourceVisibility
 from app.services.ranking_saved import persist_ranking_item
-from app.services.ranking_snapshots import RankingRequest
+from app.services.ranking_snapshots import RankingRequest, ranking_item_payload
+from app.services.rankings import RankingItem
 from app.storage.database import build_session_factory
 from app.storage.models import (
     Content,
+    ContentMedia,
+    FeedSource,
     RankingSnapshot,
     SourceEntry,
     SourceSubscription,
@@ -141,6 +147,396 @@ async def test_ranking_archive_concurrency_durability_and_user_isolation():
             assert (
                 await save_content(content_id, current_user=first, session=session)
             ).is_saved is True
+    finally:
+        await engine.dispose()
+        await connection.close()
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_techtwitter_save_survives_snapshot_removal_with_original_body_and_media():
+    dsn = _test_dsn()
+    connection = await asyncpg.connect(dsn)
+    engine = create_async_engine(dsn.replace("postgresql://", "postgresql+asyncpg://", 1))
+    factory = build_session_factory(engine)
+    first, second = (AuthenticatedUser(id=uuid4(), email=None, claims={}) for _ in range(2))
+    request = RankingRequest(kind="techtwitter")
+    url = f"https://x.com/reader_test/status/{uuid4().int}"
+    body = "开头\n" + "😀" * 4_100 + "\n结尾"
+    item = RankingItem(
+        rank=3,
+        title="A TechTwitter tweet",
+        url=url,
+        native_id=str(uuid4()),
+        body_text=body,
+        description="Short summary only",
+        author="Alice",
+        author_handle="alice_dev",
+        published_at=datetime.now(UTC),
+        score=0,
+        comments=12,
+        retweet_count=34,
+        bookmark_count=56,
+        image_urls=("https://media.example.com/photo.jpg",),
+        video_url="https://media.example.com/movie.mp4",
+        video_thumbnail_url="https://media.example.com/poster.jpg",
+    )
+    try:
+        await _assert_disposable_database(connection, _test_guard_token())
+        for user in (first, second):
+            await connection.execute("INSERT INTO profiles (id) VALUES ($1)", user.id)
+            await connection.execute(
+                "INSERT INTO user_translation_preferences (user_id, is_enabled) "
+                "VALUES ($1, false) ON CONFLICT (user_id) DO UPDATE SET is_enabled = false",
+                user.id,
+            )
+        async with factory() as session:
+            await session.execute(
+                delete(RankingSnapshot).where(RankingSnapshot.cache_key == request.cache_key)
+            )
+            now = datetime.now(UTC)
+            session.add(
+                RankingSnapshot(
+                    cache_key=request.cache_key,
+                    kind=request.kind,
+                    parameters=request.parameters,
+                    payload={
+                        "title": "X 技术热门",
+                        "subtitle": "",
+                        "items": [ranking_item_payload(item)],
+                    },
+                    fetched_at=now,
+                    next_refresh_at=now,
+                    is_ready=True,
+                )
+            )
+            await session.commit()
+        async with factory() as session:
+            assert (
+                await session.scalar(
+                    select(func.count()).select_from(Content).where(Content.canonical_url == url)
+                )
+                == 0
+            )
+
+        async def save(user):
+            async with factory() as session:
+                return await persist_ranking_item(
+                    session, user_id=user.id, request=request, url=url
+                )
+
+        ids = await asyncio.gather(save(first), save(first), save(second))
+        assert len(set(ids)) == 1
+        content_id = ids[0]
+        async with factory() as session:
+            content = await session.get(Content, content_id)
+            assert content.kind == "post"
+            assert content.body_text == body
+            assert content.excerpt == item.description
+            source = await session.get(FeedSource, content.authority_source_id)
+            assert source.kind == SourceKind.WEB
+            assert source.status == SourceStatus.PAUSED
+            assert source.canonical_url == "https://www.techtwitter.com/"
+            assert source.config == {"ranking_archive": True}
+            media = list(
+                await session.scalars(
+                    select(ContentMedia)
+                    .where(ContentMedia.content_id == content_id)
+                    .order_by(ContentMedia.sort_order)
+                )
+            )
+            assert [(m.media_type, m.original_url, m.poster_url) for m in media] == [
+                (MediaType.IMAGE, item.image_urls[0], None),
+                (MediaType.VIDEO, item.video_url, item.video_thumbnail_url),
+            ]
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(SourceSubscription)
+                    .where(SourceSubscription.user_id.in_([first.id, second.id]))
+                )
+                == 0
+            )
+            await session.execute(
+                delete(RankingSnapshot).where(RankingSnapshot.cache_key == request.cache_key)
+            )
+            await session.commit()
+        async with factory() as session:
+            items, cursor = await _query_saved_page(
+                session, current_user=first, limit=20, cursor=None
+            )
+            assert cursor is None and len(items) == 1
+            restored = items[0]
+            assert restored.ranking_kind == "techtwitter"
+            assert restored.ranking_item is not None
+            assert restored.ranking_item.body_text == body
+            assert "".join(s.text for s in restored.ranking_item.body_segments) == body
+            assert restored.ranking_item.description == item.description
+            assert restored.ranking_item.author_handle == "alice_dev"
+            assert (restored.ranking_item.score, restored.ranking_item.comments) == (0, 12)
+            assert (
+                restored.ranking_item.retweet_count,
+                restored.ranking_item.bookmark_count,
+            ) == (34, 56)
+            assert restored.ranking_item.image_urls == list(item.image_urls)
+            assert restored.ranking_item.video_url == item.video_url
+            assert restored.ranking_item.video_thumbnail_url == item.video_thumbnail_url
+            assert restored.ranking_item.translation_locale is None
+        async with factory() as session:
+            await unsave_content(content_id, current_user=first, session=session)
+        async with factory() as session:
+            state = await get_ranking_saved_state(url=url, current_user=first, session=session)
+            assert not state.is_saved and state.content_id is None
+        async with factory() as session:
+            assert (
+                await get_ranking_saved_state(url=url, current_user=second, session=session)
+            ).is_saved
+            rows, _ = await _query_saved_page(session, current_user=second, limit=20, cursor=None)
+            assert rows[0].ranking_item.body_text == body
+    finally:
+        await engine.dispose()
+        await connection.close()
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_techtwitter_visible_x_content_reused_without_replacing_its_richer_data():
+    dsn = _test_dsn()
+    connection = await asyncpg.connect(dsn)
+    engine = create_async_engine(dsn.replace("postgresql://", "postgresql+asyncpg://", 1))
+    factory = build_session_factory(engine)
+    subscribed, outsider = (AuthenticatedUser(id=uuid4(), email=None, claims={}) for _ in range(2))
+    request = RankingRequest(kind="techtwitter")
+    url = f"https://x.com/reader_test/status/{uuid4().int}"
+    old_url = url.replace("/reader_test/", "/old_reader_handle/")
+    item = RankingItem(
+        rank=1,
+        title="Tweet",
+        url=url,
+        native_id=str(uuid4()),
+        body_text="Original public tweet",
+        author="Alice",
+        author_handle="alice",
+        video_thumbnail_url="https://media.example.com/cover-only.jpg",
+    )
+    rich_text = "Already ingested richer X subscription body\nwith embedded context"
+    rich_video = "https://media.example.com/ingested-video.mp4"
+    try:
+        await _assert_disposable_database(connection, _test_guard_token())
+        for user in (subscribed, outsider):
+            await connection.execute("INSERT INTO profiles (id) VALUES ($1)", user.id)
+            await connection.execute(
+                "INSERT INTO user_translation_preferences (user_id, is_enabled) "
+                "VALUES ($1, false) ON CONFLICT (user_id) DO UPDATE SET is_enabled = false",
+                user.id,
+            )
+        async with factory() as session:
+            await session.execute(
+                delete(RankingSnapshot).where(RankingSnapshot.cache_key == request.cache_key)
+            )
+            source = FeedSource(
+                kind=SourceKind.X,
+                canonical_key=f"x:reader-test-{uuid4()}",
+                canonical_url="https://x.com/reader_test",
+                display_name="Subscribed X",
+                visibility=SourceVisibility.PRIVATE,
+                owner_id=subscribed.id,
+                status=SourceStatus.ACTIVE,
+                config={},
+            )
+            session.add(source)
+            await session.flush()
+            content = Content(
+                authority_source_id=source.id,
+                kind="post",
+                canonical_url=url,
+                title="Complete original article",
+                body_text=rich_text,
+                body_html="<p>Full X article</p>",
+                extraction_status="not_needed",
+            )
+            session.add(content)
+            await session.flush()
+            session.add_all(
+                [
+                    SourceSubscription(
+                        user_id=subscribed.id,
+                        source_id=source.id,
+                        is_enabled=True,
+                    ),
+                    SourceEntry(
+                        source_id=source.id,
+                        content_id=content.id,
+                        native_id="subscribed-x-identity",
+                        external_url=url,
+                        title=content.title,
+                        author_name="Alice",
+                        feed_sort_at=datetime.now(UTC),
+                        raw_metadata={"x_relations": {"quoted": True}},
+                    ),
+                    ContentMedia(
+                        content_id=content.id,
+                        media_type=MediaType.VIDEO,
+                        original_url=rich_video,
+                        poster_url="https://media.example.com/existing-poster.jpg",
+                        sort_order=0,
+                        is_active=True,
+                    ),
+                ]
+            )
+            await session.execute(
+                pg_insert(FeedSource)
+                .values(
+                    canonical_key="ranking-archive:techtwitter",
+                    canonical_url="https://www.techtwitter.com/",
+                    kind=SourceKind.WEB,
+                    display_name="X 技术热门",
+                    visibility=SourceVisibility.SHARED,
+                    status=SourceStatus.PAUSED,
+                    config={"ranking_archive": True},
+                )
+                .on_conflict_do_nothing(index_elements=[FeedSource.canonical_key])
+            )
+            archive_source_id = await session.scalar(
+                select(FeedSource.id).where(
+                    FeedSource.canonical_key == "ranking-archive:techtwitter"
+                )
+            )
+            stale_archive = Content(
+                authority_source_id=archive_source_id,
+                kind="post",
+                canonical_url=old_url,
+                url_hash=hashlib.sha256(old_url.encode()).hexdigest(),
+                title="Old archive title",
+                body_text=None,
+                extraction_status="not_needed",
+            )
+            session.add(stale_archive)
+            await session.flush()
+            archived_id = stale_archive.id
+            session.add_all(
+                [
+                    SourceEntry(
+                        source_id=archive_source_id,
+                        content_id=archived_id,
+                        native_id=item.native_id,
+                        external_url=old_url,
+                        title=stale_archive.title,
+                        feed_sort_at=datetime.now(UTC),
+                        raw_metadata={"ranking_kind": "techtwitter"},
+                    ),
+                    ContentMedia(
+                        content_id=archived_id,
+                        media_type=MediaType.IMAGE,
+                        original_url="https://media.example.com/old-picture.jpg",
+                        sort_order=0,
+                        is_active=True,
+                    ),
+                ]
+            )
+            now = datetime.now(UTC)
+            session.add(
+                RankingSnapshot(
+                    cache_key=request.cache_key,
+                    kind=request.kind,
+                    parameters=request.parameters,
+                    payload={
+                        "title": "X 技术热门",
+                        "subtitle": "",
+                        "items": [ranking_item_payload(item)],
+                    },
+                    fetched_at=now,
+                    next_refresh_at=now,
+                    is_ready=True,
+                )
+            )
+            existing_id = content.id
+            await session.commit()
+        async with factory() as session:
+            assert (
+                await persist_ranking_item(session, user_id=subscribed.id, request=request, url=url)
+                == existing_id
+            )
+        async with factory() as session:
+            saved_id = await persist_ranking_item(
+                session, user_id=outsider.id, request=request, url=url
+            )
+            assert saved_id == archived_id and saved_id != existing_id
+            archived = await session.get(Content, archived_id)
+            assert archived.body_text == item.body_text
+            assert archived.canonical_url == url
+        async with factory() as session:
+            content = await session.get(Content, existing_id)
+            assert content.body_text == rich_text
+            assert content.body_html == "<p>Full X article</p>"
+            media = list(
+                await session.scalars(
+                    select(ContentMedia).where(ContentMedia.content_id == existing_id)
+                )
+            )
+            assert [(m.media_type, m.original_url) for m in media] == [
+                (MediaType.VIDEO, rich_video)
+            ]
+            archive_media = list(
+                await session.scalars(
+                    select(ContentMedia).where(ContentMedia.content_id == archived_id)
+                )
+            )
+            assert {(m.media_type, m.original_url) for m in archive_media} == {
+                (MediaType.IMAGE, "https://media.example.com/old-picture.jpg"),
+                (MediaType.IMAGE, item.video_thumbnail_url),
+            }
+            archive_entry = await session.scalar(
+                select(SourceEntry).where(SourceEntry.content_id == archived_id)
+            )
+            assert archive_entry.raw_metadata["ranking_item"]["author_handle"] == "alice"
+            assert archive_entry.external_url == url
+            assert archive_entry.raw_metadata["ranking_item"]["url"] == url
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(Content)
+                    .where(
+                        Content.authority_source_id == archive_source_id,
+                        Content.canonical_url.in_((old_url, url)),
+                    )
+                )
+                == 1
+            )
+            entry = await session.scalar(
+                select(SourceEntry).where(SourceEntry.content_id == existing_id)
+            )
+            assert entry.raw_metadata == {"x_relations": {"quoted": True}}
+            await session.execute(
+                delete(RankingSnapshot).where(RankingSnapshot.cache_key == request.cache_key)
+            )
+            await session.commit()
+        async with factory() as session:
+            rows, _ = await _query_saved_page(
+                session, current_user=subscribed, limit=20, cursor=None
+            )
+            assert rows[0].ranking_kind is None
+            assert rows[0].ranking_item is None
+            assert rows[0].external_url == url
+        async with factory() as session:
+            assert (
+                await get_article(existing_id, current_user=subscribed, session=session)
+            ).body_text == rich_text
+        async with factory() as session:
+            rows, _ = await _query_saved_page(session, current_user=outsider, limit=20, cursor=None)
+            assert rows[0].ranking_item.body_text == item.body_text
+            assert rows[0].ranking_item.url == url
+            assert (
+                await get_ranking_saved_state(url=url, current_user=outsider, session=session)
+            ).is_saved
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(SourceSubscription)
+                    .where(SourceSubscription.user_id == outsider.id)
+                )
+                == 0
+            )
     finally:
         await engine.dispose()
         await connection.close()

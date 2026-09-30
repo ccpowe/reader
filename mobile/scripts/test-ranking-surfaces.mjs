@@ -60,6 +60,8 @@ try {
       'components/RankingTitle.tsx',
       'screens/RankingsScreen.tsx',
       'screens/RankingPreviewScreen.tsx',
+      'domain/mainNavigation.ts',
+      'domain/rankingTranslationProjection.ts',
       '--target',
       'es2022',
       '--module',
@@ -84,6 +86,7 @@ try {
   const Text = host('Text');
   const Image = host('Image');
   const ActivityIndicator = host('ActivityIndicator');
+  const ScrollView = host('ScrollView');
   const Pressable = host('Pressable');
   const FlatList = ({ data = [], renderItem, ListEmptyComponent, ListFooterComponent, ListHeaderComponent, ...props }) => React.createElement(
     'FlatList',
@@ -107,6 +110,7 @@ try {
       PanResponder: { create: (handlers) => ({ panHandlers: handlers }) },
       FlatList,
       Image,
+      ScrollView,
       Modal,
       Pressable,
       StyleSheet,
@@ -136,12 +140,14 @@ try {
     if (request === '../components/TranslatableWebView') return { TranslatableWebView: () => React.createElement(View) };
     if (request === '../hooks/useCollapsingChrome') return { useChromeStyle: () => ({}), useCollapsingChrome: () => ({ onScroll: () => {}, revealChrome: () => {} }) };
     if (request === '../hooks/useSources') return { useSources: () => ({ error: null, isPending: false, isSuccess: true, items: [], message: '' }) };
-    if (request === '../hooks/useTranslationPreference') return { useTranslationPreference: () => ({ effectiveEngineId: null, enabled: true, isPending: false, targetLocale: 'zh-CN' }) };
+    if (request === '../hooks/useTranslationPreference') return { useTranslationPreference: () => ({ effectiveEngineId: 'test', effectiveEngineFingerprint: 'test-fingerprint', enabled: true, isPending: false, targetLocale: 'zh-CN' }) };
     if (request === '../hooks/useSegmentTranslationQueue') return { useSegmentTranslationQueue: () => ({
       clearFailedSegments: (segmentIds) => clearedPreviewQueueFailures.push(...segmentIds),
       clearTimedOutSegments: () => {},
       enqueueSegments: () => {},
       isTranslating: false,
+      failedSegmentIds: new Set(),
+      retrySegments: () => {},
       timedOutSegmentIds: new Set(),
     }) };
     if (request === '../hooks/useRankingTitleRetry') return {
@@ -156,6 +162,7 @@ try {
             error_code: null,
             error_retryable: null,
             engine_id: 'test',
+            effective_engine_fingerprint: 'test-fingerprint',
             engine_label: 'test',
             purpose: 'ranking_title',
             retry_after_ms: null,
@@ -218,7 +225,7 @@ try {
     };
     if (request === '../domain/source') return { redditCommunitiesFromSources: () => [], sourceHost: () => 'example.test' };
     if (request === '../domain/webTranslation') return { webTranslationProfileForUrl: () => 'generic' };
-    if (request === '../domain/formatting') return { formatCount: (value) => String(value ?? 0) };
+    if (request === '../domain/formatting') return { formatCount: (value) => String(value ?? 0), relativeTime: () => 'now' };
     if (request === '../domain/media') return {};
     if (request === '../ui/tokens') return { colors: { background: '#fff', surface: '#fff', surfaceMuted: '#eee', surfaceSubtle: '#eee', textPrimary: '#111', textSecondary: '#444', textStrong: '#111', textTertiary: '#666', textMuted: '#777' }, radii: { md: 10, pill: 20, sm: 8 }, spacing: { md: 8, sm: 8 }, touchTarget: 44 };
     return originalLoad.call(this, request, parent, isMain);
@@ -235,6 +242,43 @@ try {
   assert.equal(toolPosition.draggedToolPosition(0.3, 900, 0), 0.3, 'unmeasured layout stays finite');
   assert.equal(toolPosition.clampToolPosition(Number.NaN), 0.62);
   globalThis.localStorage = originalStorage;
+  const { rankingFromSaved } = require(join(outputDirectory, 'domain/mainNavigation.js'));
+  const { rankingBodyText, mergeRankingTranslationProjection, missingRankingTranslationSegments } = require(join(outputDirectory, 'domain/rankingTranslationProjection.js'));
+  const xItem = { ...item, title: 'Summary heading', description: 'Not the body', body_text: 'First line\nSecond line',
+    body_segments: [
+      { segment_id: 'x:body:0', text: 'First line\n', translated_text: '第一行\n', translation_status: 'succeeded' },
+      { segment_id: 'x:body:1', text: 'Second line', translated_text: '第二行', translation_status: 'succeeded' },
+    ],
+    author_handle: 'dev', retweet_count: 8, bookmark_count: 3, video_thumbnail_url: 'https://example.test/thumb.jpg' };
+  assert.equal(rankingBodyText(xItem, false), 'First line\nSecond line');
+  assert.equal(rankingBodyText(xItem, true), '第一行\n第二行');
+  assert.equal(rankingBodyText({ ...xItem, body_segments: [{ ...xItem.body_segments[0], translated_text: '第一行' }, xItem.body_segments[1]] }, true), '第一行\n第二行', 'translated lines preserve paragraph boundaries');
+  const failedX = { ...xItem, body_segments: [xItem.body_segments[0], { ...xItem.body_segments[1], translated_text: null, translation_status: 'failed' }] };
+  assert.equal(rankingBodyText(failedX, true), xItem.body_text, 'partial failure leaves original body readable');
+  const xRanking = { kind: 'techtwitter', effective_engine_fingerprint: 'test-fingerprint', items: [xItem] };
+  assert.deepEqual(missingRankingTranslationSegments(xRanking, 20, 'zh-CN', true, 'test-fingerprint', new Set([xItem.translation_key])), [], 'translated body skips title and summary');
+  const missingX = { ...xItem, body_segments: xItem.body_segments.map((segment) => ({ ...segment, translated_text: null, translation_status: null })) };
+  assert.deepEqual(missingRankingTranslationSegments({ ...xRanking, items: [missingX] }, 20, 'zh-CN', true, 'test-fingerprint', new Set()), [], 'offscreen posts do not enter queue');
+  assert.deepEqual(missingRankingTranslationSegments({ ...xRanking, items: [missingX] }, 20, 'zh-CN', true, 'test-fingerprint', new Set([xItem.translation_key])).map((segment) => segment.text), ['First line\n', 'Second line'], 'body segments are submitted without trimming or title translation');
+  const changedEngine = mergeRankingTranslationProjection(xRanking, { ...xRanking, effective_engine_fingerprint: 'new-engine', items: [missingX] }, 'zh-CN', true, 'new-engine');
+  assert.equal(rankingBodyText(changedEngine.items[0], true), missingX.body_text, 'engine change cannot carry old translations');
+  const changedLocale = mergeRankingTranslationProjection(xRanking, { ...xRanking, items: [missingX] }, 'ja-JP', true, 'test-fingerprint');
+  assert.equal(rankingBodyText(changedLocale.items[0], true), missingX.body_text, 'locale change cannot reuse body translations');
+  const restored = rankingFromSaved({ ...item, content_id: 'saved-x', ranking_kind: 'techtwitter', ranking_item: { ...missingX, translation_locale: null }, is_saved: true, translated_title: 'Stale saved title' });
+  assert.equal(restored.body_text, missingX.body_text, 'saved preview recovers the full original post');
+  assert.equal(restored.body_segments[1].text, 'Second line');
+  assert.equal(restored.description, 'Not the body', 'summary remains separate from body');
+  assert.equal(restored.translation_locale, null, 'saved title translation locale does not contaminate body');
+  assert.equal(restored.saved_content_id, 'saved-x');
+  const { XRankingContent } = require(join(outputDirectory, 'components/XRankingContent.js'));
+  let xCard;
+  await act(async () => { xCard = create(React.createElement(XRankingContent, { item: missingX, translated: false })); });
+  const xBody = () => xCard.root.findAll((node) => node.type === 'Text' && node.props.children === missingX.body_text)[0];
+  assert.equal(xBody().props.numberOfLines, 5, 'X card initially shows five lines of original body');
+  assert.ok(xCard.root.findAll((node) => node.type === 'Image' && node.props.source?.uri === xItem.video_thumbnail_url).length, 'media thumbnail is visible');
+  await act(async () => { xCard.root.findAll((node) => node.type === 'Pressable' && node.props.accessibilityRole === 'button')[0].props.onPress({ stopPropagation() {} }); });
+  assert.equal(xBody().props.numberOfLines, undefined, 'body expands without losing original text');
+  await act(async () => { xCard.unmount(); });
   const { RankingsScreen } = require(join(outputDirectory, 'screens/RankingsScreen.js'));
   const { RankingPreviewScreen } = require(join(outputDirectory, 'screens/RankingPreviewScreen.js'));
   const session = { access_token: 'test-token', user: { id: 'user-1' } };

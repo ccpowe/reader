@@ -25,12 +25,14 @@ export function useListPositionMemory<T>({
   memoryKey,
   onScroll,
   registry,
+  onViewableItems,
 }: {
   active: boolean;
   itemId: (item: T) => string;
   items: readonly T[];
   memoryKey: string;
   onScroll?: ScrollHandlerProcessed;
+  onViewableItems?: (items: readonly T[]) => void;
   registry: ListPositionRegistry;
 }) {
   const scrollOffset = useSharedValue(0);
@@ -49,10 +51,12 @@ export function useListPositionMemory<T>({
   const memoryKeyRef = useRef(memoryKey);
   const activeRef = useRef(active);
   const wasActiveRef = useRef(active);
+  const onViewableItemsRef = useRef(onViewableItems);
   itemIdRef.current = itemId;
   itemIdsRef.current = itemIds;
   memoryKeyRef.current = memoryKey;
   activeRef.current = active;
+  onViewableItemsRef.current = onViewableItems;
   const latestOffsetRef = useRef(registry.get(memoryKey)?.offset ?? 0);
   const expectedAnchorRef = useRef<string | null>(null);
   const restoringRef = useRef(false);
@@ -133,6 +137,7 @@ export function useListPositionMemory<T>({
   }, []);
 
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken<T>[] }) => {
+    onViewableItemsRef.current?.(viewableItems.filter((token) => token.isViewable && token.item !== undefined).map((token) => token.item));
     if (!activeRef.current) return;
     const first = viewableItems.find((token) => token.isViewable && token.item !== undefined);
     if (!first) return;

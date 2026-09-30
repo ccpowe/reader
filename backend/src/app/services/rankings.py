@@ -1,9 +1,4 @@
-"""Live, read-only preview adapters for public ranking pages.
-
-These are deliberately not persisted as subscription content yet. The mobile
-Explore preview lets us validate each provider's real fields before choosing a
-stable board data model and final card design.
-"""
+"""Public ranking provider adapters; saved posts use a separate archive path."""
 
 from __future__ import annotations
 
@@ -13,11 +8,13 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import feedparser
 import httpx
 from bs4 import BeautifulSoup
+
+BODY_SEGMENT_MAX_UTF16_UNITS = 8_000
 
 
 @dataclass(frozen=True)
@@ -37,6 +34,12 @@ class RankingItem:
     image_urls: tuple[str, ...] = ()
     native_id: str | None = None
     published_at: datetime | None = None
+    body_text: str | None = None
+    author_handle: str | None = None
+    retweet_count: int | None = None
+    bookmark_count: int | None = None
+    video_url: str | None = None
+    video_thumbnail_url: str | None = None
 
 
 async def fetch_hacker_news(limit: int = 20) -> list[RankingItem]:
@@ -216,6 +219,117 @@ async def fetch_github_trending(limit: int = 20) -> list[RankingItem]:
             )
         )
     return items
+
+
+def split_ranking_body(text: str) -> list[str]:
+    """Keep line breaks verbatim between translated chunks; bound UTF-16 size."""
+    segments: list[str] = []
+    for part in re.split(r"((?:\r\n|\r|\n)+)", text):
+        start = 0
+        while start < len(part):
+            end = start
+            units = 0
+            while end < len(part):
+                width = 2 if ord(part[end]) > 0xFFFF else 1
+                if units + width > BODY_SEGMENT_MAX_UTF16_UNITS:
+                    break
+                units += width
+                end += 1
+            segments.append(part[start:end])
+            start = end
+    return segments
+
+
+async def fetch_techtwitter_trending(limit: int = 50) -> list[RankingItem]:
+    """Fetch TechTwitter's unfiltered TRENDING order in one public API request."""
+    target = min(max(int(limit), 1), 50)
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.get(
+            "https://www.techtwitter.com/api/tweets/trending",
+            params={"limit": target, "offset": 0},
+        )
+        response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict) or not isinstance(payload.get("tweets"), list):
+        raise ValueError("Unexpected TechTwitter trending response.")
+
+    items: list[RankingItem] = []
+    for rank, raw in enumerate(payload["tweets"][:target], start=1):
+        if not isinstance(raw, dict):
+            continue
+        url = _http_url(raw.get("tweet_url"))
+        body = raw.get("tweet_text")
+        if url is None or (body is not None and not isinstance(body, str)):
+            continue
+        title = _optional_text(raw.get("seo_title")) or (body or "")[:160]
+        if not title.strip():
+            continue
+        images = raw.get("image_grid_urls")
+        image_candidates = [raw.get("image_url")]
+        if isinstance(images, list):
+            image_candidates.extend(images)
+        image_urls = tuple(
+            dict.fromkeys(
+                image for value in image_candidates if (image := _http_url(value)) is not None
+            )
+        )
+        native_id = raw.get("id")
+        items.append(
+            RankingItem(
+                rank=rank,
+                title=title,
+                url=url,
+                source_label="TechTwitter",
+                description=_optional_text(raw.get("summary")),
+                body_text=body,
+                author=_optional_text(raw.get("author_name")),
+                author_handle=_optional_text(raw.get("author_handle")),
+                score=_optional_count(raw.get("like_count")),
+                comments=_optional_count(raw.get("comment_count")),
+                retweet_count=_optional_count(raw.get("retweet_count")),
+                bookmark_count=_optional_count(raw.get("bookmark_count")),
+                image_urls=image_urls,
+                video_url=_http_url(raw.get("video_url")),
+                video_thumbnail_url=_http_url(raw.get("video_thumbnail_url")),
+                native_id=str(native_id) if native_id is not None else url,
+                published_at=_parse_provider_datetime(raw.get("timestamp")),
+            )
+        )
+    return items
+
+
+def _optional_text(value: Any) -> str | None:
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _optional_count(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        count = int(value)
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return count if count >= 0 and str(count) == str(value).strip() else None
+
+
+def _http_url(value: Any) -> str | None:
+    if not isinstance(value, str) or any(char.isspace() for char in value):
+        return None
+    try:
+        parsed = urlsplit(value)
+        return value if parsed.scheme in {"http", "https"} and parsed.hostname else None
+    except ValueError:
+        return None
+
+
+def _parse_provider_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
 
 def _linked_stat(article: Any, suffix: str) -> int | None:

@@ -20,6 +20,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         reddit = softwareSystem "Reddit" "提供 subreddit 榜单 RSS；hot 快照也驱动已订阅内容入库。" "External"
         hackerNews = softwareSystem "Hacker News" "通过 Firebase API 提供榜单与条目。" "External"
         github = softwareSystem "GitHub" "通过 Trending 页面提供排行。" "External"
+        techTwitter = softwareSystem "TechTwitter" "提供 X 技术热门 TRENDING 前 50 条；独立于 X 账号订阅采集。" "External"
         models = softwareSystem "模型提供方" "DeepSeek、OpenRouter 执行翻译及可选网页规则生成；Codex 订阅仅执行翻译。" "External" {
             properties {
                 "sources" "backend/src/app/llm/factory.py"
@@ -248,6 +249,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system -> reddit "获取榜单及订阅热门内容，加载原网页"
         system -> hackerNews "获取榜单条目"
         system -> github "获取 Trending 排行"
+        system -> techTwitter "读取 X 技术热门排行"
         system -> models "请求翻译；按配置生成网页规则"
         system -> codexIdentity "按需刷新 Codex 订阅凭据"
 
@@ -266,6 +268,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.api -> reddit "刷新榜单" "HTTPS / RSS" "ContainerRelationship"
         system.api -> hackerNews "刷新榜单" "HTTPS / Firebase JSON API" "ContainerRelationship"
         system.api -> github "刷新榜单" "HTTPS / HTML" "ContainerRelationship"
+        system.api -> techTwitter "初始化或刷新共享榜单" "HTTPS / JSON API" "ContainerRelationship"
         system.api -> models "直接和实时翻译" "HTTPS / 模型 API" "ContainerRelationship"
         system.worker -> system.database "领取任务、读写内容和结果，监听通知" "SQL / LISTEN / NOTIFY" "ContainerRelationship"
         system.worker -> websites "发现和抓取 feed、扫描列表及规则探索与验证页面" "HTTPS / RSS / HTML" "ContainerRelationship"
@@ -275,6 +278,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.worker -> reddit "刷新榜单并产生订阅候选" "HTTPS / RSS" "ContainerRelationship"
         system.worker -> hackerNews "刷新榜单" "HTTPS / Firebase JSON API" "ContainerRelationship"
         system.worker -> github "刷新榜单" "HTTPS / HTML" "ContainerRelationship"
+        system.worker -> techTwitter "每 15 分钟刷新共享榜单" "HTTPS / JSON API" "ContainerRelationship"
         system.worker -> models "持久翻译；启用时编写网页规则" "HTTPS / 模型 API" "ContainerRelationship"
         system.worker -> system.browserManager "申请、续租和关闭浏览器任务（容器模式）" "内部 HTTP / Bearer" "ContainerRelationship"
         system.worker -> system.browserAdapter "执行 explore CLI 或一次性 render（容器模式）" "内部 HTTP / Task capability" "ContainerRelationship"
@@ -340,6 +344,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.api.rankings -> reddit "获取 subreddit 榜单" "HTTPS / RSS"
         system.api.rankings -> hackerNews "获取榜单和条目" "HTTPS / Firebase JSON API"
         system.api.rankings -> github "获取 Trending" "HTTPS / HTML"
+        system.api.rankings -> techTwitter "获取 TRENDING 前 50 条" "HTTPS / JSON API"
         system.api.translationPolicy -> system.database "校验内容访问、偏好及配额" "SQL"
         system.api.translationPolicy -> system.api.translationState "解析标题需求及缓存投影" "Python"
         system.api.translationPolicy -> system.api.interactive "分派普通或实时片段" "Python / async"
@@ -369,6 +374,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.worker.rankings -> reddit "获取 subreddit 榜单" "HTTPS / RSS"
         system.worker.rankings -> hackerNews "获取榜单和条目" "HTTPS / Firebase JSON API"
         system.worker.rankings -> github "获取 Trending" "HTTPS / HTML"
+        system.worker.rankings -> techTwitter "获取 TRENDING 前 50 条" "HTTPS / JSON API"
         system.worker.translation -> system.database "领取 Work、保存 Artifact、等待通知" "SQL / LISTEN / NOTIFY"
         system.worker.translation -> models "执行持久翻译" "HTTPS / 模型 API"
         system.worker.translation -> system.codexCredentials "锁内刷新并原子写回订阅凭据" "File / Lock"
@@ -399,7 +405,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         }
         container system "C2-ExternalDependencies" {
             title "C2 · Reader 外部依赖"
-            include system.client system.api system.worker system.browserManager system.browserReaper system.browserAdapter system.browserSandbox system.scweet websites youtube x apify reddit hackerNews github models codexIdentity
+            include system.client system.api system.worker system.browserManager system.browserReaper system.browserAdapter system.browserSandbox system.scweet websites youtube x apify reddit hackerNews github techTwitter models codexIdentity
             autoLayout lr 350 80
         }
         component system.client "C3-Client" {
