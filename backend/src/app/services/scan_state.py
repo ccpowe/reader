@@ -63,6 +63,7 @@ class ScanProgress:
         self.pages = 0
         self.latest_checkpoint: dict[str, Any] = {}
         self.tasks: list[dict[str, Any]] = []
+        self.head_first = False
         if self.mode == "catchup":
             context = dict(self.state.continuation or {})
             self.latest_checkpoint = dict(
@@ -70,16 +71,18 @@ class ScanProgress:
                 if isinstance(context.get("latest_checkpoint"), dict)
                 else self.pending or self.committed
             )
-            # Durable work owns the budget first; a fresh head must not starve it.
-            self.tasks = [
-                *(dict(task) for task in context.get("tasks", []) if isinstance(task, dict)),
-                {
-                    "lane": "head",
-                    "cursor": _RESTART_CURSOR,
-                    "checkpoint": self.latest_checkpoint,
-                    "fresh": True,
-                },
-            ]
+            durable = [dict(task) for task in context.get("tasks", []) if isinstance(task, dict)]
+            fresh = {
+                "lane": "head",
+                "cursor": _RESTART_CURSOR,
+                "checkpoint": self.latest_checkpoint,
+                "fresh": True,
+            }
+            # Runs alternate which work gets the budget first: durable tasks
+            # always advance every other run, and new content is never delayed
+            # by more than one run however long the backlog is.
+            self.head_first = bool(context.get("head_first"))
+            self.tasks = [fresh, *durable] if self.head_first else [*durable, fresh]
 
     def next_request(self) -> SourceScanRequest | None:
         if self.mode == "initial":
@@ -250,6 +253,7 @@ class ScanProgress:
             "latest_checkpoint": self.latest_checkpoint,
             # An unvisited fresh head is regenerated next run, not accumulated.
             "tasks": [_serializable_task(value) for value in self.tasks if not value.get("fresh")],
+            "head_first": not self.head_first,
         }
         state.phase = SyncPhase.CATCHING_UP
         state.provider_mode = page.provider_mode

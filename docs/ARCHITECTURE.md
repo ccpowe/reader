@@ -90,7 +90,7 @@ Android 阅读宿主使用 `LOAD_NO_CACHE`，并在进程内第一次 WebView �
 
 非权威 Atom 回退只有在整页候选完成接纳后才合并 Atom checkpoint；候选额度截断时保留旧 checkpoint 与已有权威 continuation，以部分完成释放租约，下轮通过候选去重重放未接纳内容，不把回退结果声明为权威覆盖完成。
 
-历史续扫优先消耗本轮页数、原始条目和候选预算，完成持久任务后才刷新首窗；未开始的首窗刷新不累积为历史任务。小预算下新内容发现可能延后，但不会因每轮重新刷新首窗而阻止历史进度推进。
+续扫各轮交替让持久任务与首窗刷新先使用本轮预算，顺序记录在 continuation 中；历史进度至少每两轮推进一次，新内容发现最多延后一轮。未开始的首窗刷新不累积为历史任务。
 
 规则激活、选定 feed 与 feed 失效重探测分别调用明确的扫描重置操作，统一清除旧端点游标和 pending checkpoint，只保留 `head_ids`／`item_hashes` 去重锚点，不改变初扫基线。规则激活释放旧扫描租约并结束旧运行；选定 feed 则保留当前租约以继续本轮扫描。Web 结构故障计数、故障批次及 author／repair 触发由 [web_scan_health.py](../backend/src/app/services/web_scan_health.py) 在调用方事务内处理；它与只读的来源健康查询不同，不负责 Agent 的激活等待与恢复流程。
 

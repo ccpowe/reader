@@ -352,7 +352,7 @@ async def test_scan_budget_saves_continuation_without_advancing_committed_head(m
 
 
 @pytest.mark.parametrize("limit", ["pages", "raw_items", "candidates"])
-async def test_backlog_advances_across_budget_limited_runs_before_fresh_head(monkeypatch, limit):
+async def test_budget_limited_runs_alternate_backlog_and_fresh_head(monkeypatch, limit):
     setting, budget = {
         "pages": ("ingestion_max_pages_per_sync", 1),
         "raw_items": ("ingestion_raw_items_per_sync", 2),
@@ -392,49 +392,39 @@ async def test_backlog_advances_across_budget_limited_runs_before_fresh_head(mon
                     next_continuation={"page": number + 1} if number < 2 else None,
                 )
 
-        for number in (1, 2):
+        page_2 = [{"lane": "backlog", "cursor": {"page": 2}, "checkpoint": committed}]
+        # Each budget fits one page: backlog, fresh head, backlog, then the
+        # fresh head that completes coverage.
+        expected_runs = [
+            ({"history-1-a", "history-1-b"}, page_2, True),
+            ({"fresh-a", "fresh-b"}, page_2, False),
+            ({"history-2-a", "history-2-b"}, [], True),
+        ]
+        admitted: set[str] = set()
+        for new_ids, tasks, head_first in expected_runs:
             await _scan(factory, source_id, History(), monkeypatch)
+            admitted |= new_ids
             async with factory() as session:
                 state = await session.get(SourceSyncState, source_id)
                 assert state.committed_checkpoint == committed
-                tasks = state.continuation["tasks"]
-                assert tasks == (
-                    [{"lane": "backlog", "cursor": {"page": 2}, "checkpoint": committed}]
-                    if number == 1
-                    else []
-                )
-                admitted = set(
-                    await session.scalars(
-                        select(IngestionCandidate.native_id).where(
-                            IngestionCandidate.source_id == source_id
+                assert state.continuation["tasks"] == tasks
+                assert state.continuation["head_first"] is head_first
+                assert (
+                    set(
+                        await session.scalars(
+                            select(IngestionCandidate.native_id).where(
+                                IngestionCandidate.source_id == source_id
+                            )
                         )
                     )
+                    == admitted
                 )
-                assert admitted == {
-                    f"history-{page}-{suffix}"
-                    for page in range(1, number + 1)
-                    for suffix in ("a", "b")
-                }
         await _scan(factory, source_id, History(), monkeypatch)
         async with factory() as session:
             state = await session.get(SourceSyncState, source_id)
             assert state.continuation is None
             assert state.committed_checkpoint["head_ids"] == ["fresh-a", "fresh-b"]
             assert state.phase == SyncPhase.IDLE
-            assert set(
-                await session.scalars(
-                    select(IngestionCandidate.native_id).where(
-                        IngestionCandidate.source_id == source_id
-                    )
-                )
-            ) == {
-                "history-1-a",
-                "history-1-b",
-                "history-2-a",
-                "history-2-b",
-                "fresh-a",
-                "fresh-b",
-            }
 
 
 async def test_invalid_provider_cursor_restarts_backlog_without_losing_checkpoints(monkeypatch):

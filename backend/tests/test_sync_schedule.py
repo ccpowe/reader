@@ -15,14 +15,17 @@ from app.domain.enums import (
     SourceKind,
     SourceStatus,
     SyncPhase,
+    SyncRunStatus,
     TranslationPriority,
     TranslationPurpose,
 )
+from app.ingestion.candidate_queue import CandidateUpsertResult
 from app.ingestion.models import (
     ContentAvailability,
     DiscoveredContent,
     DiscoveredMedia,
     SourceScanError,
+    SourceScanPage,
 )
 from app.ingestion.url_safety import PublicAsyncClient
 from app.services import scan_state
@@ -143,6 +146,79 @@ async def test_candidate_claim_query_locks_only_the_candidate_table() -> None:
     assert "row_number() OVER" in compiled
     assert "FOR UPDATE OF ingestion_candidates SKIP LOCKED" in compiled
     session.commit.assert_awaited_once()
+
+
+def _catchup_progress(continuation):
+    source = SimpleNamespace(
+        kind=SourceKind.RSS,
+        canonical_url="https://example.com/rss.xml",
+        config={},
+        status=SourceStatus.ACTIVE,
+    )
+    state = SimpleNamespace(
+        initial_sync_completed=True,
+        committed_checkpoint={"head_ids": ["old"]},
+        pending_checkpoint={"head_ids": ["prior-head"]},
+        continuation=continuation,
+        phase=SyncPhase.CATCHING_UP,
+        provider_mode=None,
+        last_complete_at=None,
+        last_attempt_at=None,
+        gap_detected=False,
+        gap_details=None,
+        last_error_code=None,
+        last_error_message=None,
+        consecutive_failures=0,
+        consecutive_limit_runs=0,
+        web_rule_structural_failures=0,
+        lease_token=uuid4(),
+        lease_expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        next_scan_at=None,
+    )
+    run = SimpleNamespace(metrics={}, status=SyncRunStatus.RUNNING, provider_mode=None)
+    progress = scan_state.ScanProgress(
+        source=source,
+        state=state,
+        max_pages=1,
+        max_raw_items=120,
+        max_changes=40,
+        max_response_bytes=1024,
+    )
+    return progress, source, state, run
+
+
+@pytest.mark.parametrize("head_first", [False, True])
+def test_catchup_runs_alternate_fresh_head_and_durable_tasks(head_first) -> None:
+    backlog = {"lane": "backlog", "cursor": {"page": 2}, "checkpoint": {"head_ids": ["old"]}}
+    continuation = {"latest_checkpoint": {"head_ids": ["prior-head"]}, "tasks": [backlog]}
+    if head_first:
+        continuation["head_first"] = True
+    progress, source, state, run = _catchup_progress(continuation)
+
+    request = progress.next_request()
+    if head_first:
+        assert request.continuation is None
+        assert request.checkpoint == {"head_ids": ["prior-head"]}
+    else:
+        assert request.continuation == {"page": 2}
+        assert request.checkpoint == {"head_ids": ["old"]}
+
+    page = SourceScanPage(
+        items=(),
+        provider_mode="rss",
+        raw_items=1,
+        completed=True,
+        checkpoint={"head_ids": ["new"]},
+    )
+    disposition = progress.apply_page(
+        state, source, run, page, CandidateUpsertResult(0, 0, 0, False), datetime.now(UTC)
+    )
+
+    assert disposition == scan_state.PageDisposition.CONTINUE
+    assert progress.next_request() is None
+    # The unvisited side runs first next time; an unvisited fresh head is not stored.
+    assert state.continuation["head_first"] is not head_first
+    assert state.continuation["tasks"] == ([backlog] if head_first else [])
 
 
 @pytest.mark.asyncio
