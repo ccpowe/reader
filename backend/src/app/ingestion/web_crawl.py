@@ -463,6 +463,14 @@ async def crawl_page(
                                         max_response_bytes=request_limit,
                                     )
                                     used_bytes = len(response.content)
+                                except (
+                                    httpx.ConnectError,
+                                    httpx.ConnectTimeout,
+                                    httpx.PoolTimeout,
+                                ):
+                                    # Connection setup failed before receiving a body.
+                                    used_bytes = 0
+                                    raise
                                 finally:
                                     async with transfer_budget:
                                         reserved_bytes -= request_limit

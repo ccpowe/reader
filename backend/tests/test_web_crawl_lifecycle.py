@@ -360,6 +360,79 @@ async def test_dynamic_crawl_binds_upstream_stream_to_remaining_page_budget(
     assert harness.closed == 1
 
 
+@pytest.mark.parametrize("concurrent", [False, True])
+@pytest.mark.parametrize(
+    "failure_type",
+    [httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout, httpx.ReadTimeout],
+)
+async def test_dynamic_crawl_refunds_only_connection_failures(
+    monkeypatch, concurrent, failure_type
+):
+    harness = BrowserHarness()
+    harness.concurrent_routes = concurrent
+    # Four failed subresources followed by three healthy ones. With the initial
+    # document, healthy responses exactly fill the 400-byte page budget.
+    harness.route_targets = [f"{URL}/{index}.js" for index in range(1, 8)]
+    harness.finish.set()
+    harness.install(monkeypatch)
+
+    async def validate(url):
+        return url
+
+    monkeypatch.setattr("app.ingestion.url_safety.validate_public_http_url", validate)
+    visited = []
+    streamed = 0
+    during_read = failure_type is httpx.ReadTimeout
+
+    class Body(httpx.AsyncByteStream):
+        def __init__(self, request, failing):
+            self.request = request
+            self.failing = failing
+
+        async def __aiter__(self):
+            nonlocal streamed
+            await asyncio.sleep(0)
+            size = 10 if self.failing else 100
+            streamed += size
+            yield b"x" * size
+            if self.failing:
+                raise failure_type("Body interrupted", request=self.request)
+
+    async def respond(request):
+        index = 0 if str(request.url) == URL else int(request.url.path.rsplit("/", 1)[-1][:-3])
+        visited.append(index)
+        failing = 1 <= index <= 4
+        await asyncio.sleep(0)
+        if failing and not during_read:
+            raise failure_type("Connection unavailable", request=request)
+        return httpx.Response(200, headers={"content-length": "100"}, stream=Body(request, failing))
+
+    async with PublicAsyncClient(transport=httpx.MockTransport(respond)) as client:
+
+        async def crawl():
+            return await web_crawl.crawl_page(
+                client,
+                URL,
+                RECIPE,
+                maximum_bytes=100,
+                robots_allows=harness.robots_allows,
+                fetch=safe_get,
+            )
+
+        if during_read:
+            with pytest.raises(SourceScanError) as caught:
+                await crawl()
+            assert caught.value.code == "response_too_large"
+            assert visited == [0, 1, 2, 3]
+            assert streamed == 130
+        else:
+            page = await crawl()
+            assert page.response.status_code == 200
+            assert visited == list(range(8))
+            assert streamed == 400
+    assert harness.closed == 1
+
+
 async def test_repeated_cancellation_waits_for_fetch_cleanup_and_keeps_slot(monkeypatch):
     harness = BrowserHarness()
     harness.install(monkeypatch)

@@ -479,7 +479,7 @@ flowchart LR
 
 `RuleAgentContext` 只从最终交付的同源链接累积导航许可，接纳时同时遵守 `browser_tasks.protocol` 的 `MAX_OBSERVED_URLS` 和 `MAX_OBSERVED_URL_CHARS`。总字符按协议 URL 规范化后的表示计数，重复观察不重复占额度；超限链接不授予导航许可，后续命令的 `observed_urls` 保持可编码。
 
-动态 `crawl_page` 的页面响应总额度为 `min(20 MiB, 4 × maximum_bytes)`。每次受控请求在下载前预约 `min(单请求上限, 页面未使用且未预约的额度)`，将该值传给 `safe_get.max_response_bytes`；保留双请求并发，但并发请求不能重复使用同一份剩余额度。在途请求可能归还额度时等待其完成，预算真正耗尽后不再发起新请求。成功读取按实际正文长度结算；失败读取可能已消耗字节，保留其预约上限，避免把未知消耗再次花掉。
+动态 `crawl_page` 的页面响应总额度为 `min(20 MiB, 4 × maximum_bytes)`。每次受控请求在下载前预约 `min(单请求上限, 页面未使用且未预约的额度)`，将该值传给 `safe_get.max_response_bytes`；保留双请求并发，但并发请求不能重复使用同一份剩余额度。在途请求可能归还额度时等待其完成，预算真正耗尽后不再发起新请求。成功读取按实际正文长度结算；连接阶段的 `ConnectError`、`ConnectTimeout`、`PoolTimeout` 尚未收到正文，按零字节结算并归还预约额度。其他失败仍可能已消耗字节，保留其预约上限，避免把未知消耗再次花掉。子资源连接失败只中止该请求，不因虚计传输额度拖垮整页。
 
 ## 浏览器任务生命周期（仅配置容器模式）
 
