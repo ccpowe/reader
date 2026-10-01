@@ -8,8 +8,8 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from app.browser_tasks.client import BrowserTaskClient, BrowserTaskError
-from app.browser_tasks.protocol import RuntimeIdentity, TaskPurpose
+from app.browser_tasks.client import BrowserTaskClient, BrowserTaskError, BrowserTaskSession
+from app.browser_tasks.protocol import ErrorEnvelope, ErrorKind, RuntimeIdentity, TaskPurpose
 from app.core.settings import Settings
 from app.ingestion import web_crawl
 from app.ingestion.web_crawl_types import PageRecipe
@@ -56,6 +56,128 @@ def status_payload(runtime: RuntimeIdentity, task_id: str, state: str = "running
         "hard_expires_at": (now + timedelta(seconds=900)).isoformat(),
         "runtime_identity": runtime.model_dump(mode="json"),
     }
+
+
+def guarded_session(http: httpx.AsyncClient) -> BrowserTaskSession:
+    return BrowserTaskSession(
+        client=http,
+        controller_url="http://manager:8764",
+        controller_headers={},
+        task_id=uuid4(),
+        purpose=TaskPurpose.EXPLORE,
+        adapter_endpoint="http://adapter-task:8765",
+        capability="c" * 43,
+        runtime_identity={},
+        adapter_timeout_seconds=10,
+        close_timeout_seconds=10,
+        heartbeat_seconds=60,
+    )
+
+
+async def test_guarded_operation_cancellation_waits_for_cleanup_without_stopping_heartbeat() -> (
+    None
+):
+    started = asyncio.Event()
+    cancelling = asyncio.Event()
+    release_cleanup = asyncio.Event()
+    cleaned = asyncio.Event()
+    heartbeat = asyncio.create_task(asyncio.Event().wait())
+    operation_task = None
+
+    async def operation():
+        nonlocal operation_task
+        operation_task = asyncio.current_task()
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelling.set()
+            await release_cleanup.wait()
+            cleaned.set()
+
+    async with httpx.AsyncClient() as http:
+        session = guarded_session(http)
+        session._heartbeat_task = heartbeat
+        guarded = asyncio.create_task(session._run_guarded(operation))
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            guarded.cancel()
+            await asyncio.wait_for(cancelling.wait(), timeout=1)
+            assert not guarded.done()
+            release_cleanup.set()
+            with pytest.raises(asyncio.CancelledError):
+                await guarded
+            assert cleaned.is_set()
+            assert not heartbeat.done()
+        finally:
+            release_cleanup.set()
+            guarded.cancel()
+            heartbeat.cancel()
+            if operation_task is not None:
+                operation_task.cancel()
+                await asyncio.gather(guarded, heartbeat, operation_task, return_exceptions=True)
+            else:
+                await asyncio.gather(guarded, heartbeat, return_exceptions=True)
+
+
+async def test_guarded_operation_lease_failure_waits_for_cleanup_and_keeps_error() -> None:
+    started = asyncio.Event()
+    fail_lease = asyncio.Event()
+    cancelling = asyncio.Event()
+    release_cleanup = asyncio.Event()
+    cleaned = asyncio.Event()
+    failure = BrowserTaskError(
+        ErrorEnvelope(
+            code="browser_runtime_unavailable",
+            message="Lease renewal failed.",
+            kind=ErrorKind.NETWORK,
+            retryable=True,
+            retry_after_seconds=3,
+        )
+    )
+    operation_task = None
+
+    async def heartbeat():
+        await fail_lease.wait()
+        raise failure
+
+    async def operation():
+        nonlocal operation_task
+        operation_task = asyncio.current_task()
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelling.set()
+            await release_cleanup.wait()
+            cleaned.set()
+
+    async with httpx.AsyncClient() as http:
+        session = guarded_session(http)
+        session._heartbeat_task = asyncio.create_task(heartbeat())
+        guarded = asyncio.create_task(session._run_guarded(operation))
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            fail_lease.set()
+            await asyncio.wait_for(cancelling.wait(), timeout=1)
+            assert not guarded.done()
+            release_cleanup.set()
+            with pytest.raises(BrowserTaskError) as caught:
+                await guarded
+            assert caught.value is failure
+            assert caught.value.retryable and caught.value.retry_after_seconds == 3
+            assert cleaned.is_set()
+        finally:
+            release_cleanup.set()
+            guarded.cancel()
+            session._heartbeat_task.cancel()
+            if operation_task is not None:
+                operation_task.cancel()
+                await asyncio.gather(
+                    guarded, session._heartbeat_task, operation_task, return_exceptions=True
+                )
+            else:
+                await asyncio.gather(guarded, session._heartbeat_task, return_exceptions=True)
 
 
 async def test_client_reads_controller_token_from_group_readable_secret(tmp_path: Path) -> None:

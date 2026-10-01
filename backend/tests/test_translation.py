@@ -1357,6 +1357,9 @@ def test_legacy_and_current_chat_routes_share_one_account_semaphore(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_langchain_provider_splits_bounded_batches_and_preserves_input_order() -> None:
+    later_chunk_finished = asyncio.Event()
+    completion_order = []
+
     class EchoRunnable:
         def __init__(self, calls):
             self.calls = calls
@@ -1364,6 +1367,11 @@ async def test_langchain_provider_splits_bounded_batches_and_preserves_input_ord
         async def ainvoke(self, messages):
             payload = json.loads(messages[1][1])
             self.calls.append(payload["items"])
+            if payload["items"][0]["item_id"] == "item-0":
+                await later_chunk_finished.wait()
+            completion_order.append(payload["items"][0]["item_id"])
+            if payload["items"][0]["item_id"] == "item-2":
+                later_chunk_finished.set()
             return {
                 "items": [
                     {
@@ -1397,6 +1405,70 @@ async def test_langchain_provider_splits_bounded_batches_and_preserves_input_ord
 
     assert len(model.calls) == 2
     assert [result.item_id for result in results] == ["item-0", "item-1", "item-2"]
+    assert completion_order == ["item-2", "item-0"]
+
+
+@pytest.mark.asyncio
+async def test_langchain_chunk_failure_waits_for_sibling_cleanup_and_preserves_retry() -> None:
+    sibling_started = asyncio.Event()
+    sibling_cancelling = asyncio.Event()
+    finish_cleanup = asyncio.Event()
+    sibling_finished = asyncio.Event()
+    sibling_task = None
+
+    class RateLimitError(Exception):
+        status_code = 429
+        response = SimpleNamespace(headers={"retry-after": "17"})
+
+    class FailingRunnable:
+        async def ainvoke(self, messages):
+            nonlocal sibling_task
+            item_id = json.loads(messages[1][1])["items"][0]["item_id"]
+            if item_id == "failure":
+                await sibling_started.wait()
+                raise RateLimitError("rate limit")
+            sibling_task = asyncio.current_task()
+            sibling_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                sibling_cancelling.set()
+                await finish_cleanup.wait()
+                sibling_finished.set()
+
+    class FailingModel:
+        def with_structured_output(self, _schema, **_kwargs):
+            return FailingRunnable()
+
+    provider = LangChainChatModelProvider(FailingModel(), max_items_per_request=1)
+    batch = asyncio.create_task(
+        provider.translate_batch(
+            [
+                SimpleNamespace(item_id="failure", text="Fail", context=None),
+                SimpleNamespace(item_id="sibling", text="Wait", context=None),
+            ],
+            source_locale="en",
+            target_locale="zh-CN",
+        )
+    )
+    try:
+        await asyncio.wait_for(sibling_cancelling.wait(), timeout=1)
+        assert not batch.done()
+        finish_cleanup.set()
+        with pytest.raises(TranslationProviderError) as error:
+            await batch
+        assert sibling_finished.is_set()
+        assert error.value.code == "rate_limited"
+        assert error.value.retryable is True
+        assert error.value.retry_after_seconds == 17
+    finally:
+        finish_cleanup.set()
+        batch.cancel()
+        if sibling_task is not None:
+            sibling_task.cancel()
+            await asyncio.gather(batch, sibling_task, return_exceptions=True)
+        else:
+            await asyncio.gather(batch, return_exceptions=True)
 
 
 @pytest.mark.asyncio

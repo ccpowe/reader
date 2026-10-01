@@ -239,14 +239,19 @@ class BrowserTaskSession:
         if heartbeat is not None and heartbeat.done():
             return heartbeat.result()
         task = asyncio.create_task(operation_factory())
-        if heartbeat is None:
-            return await task
-        done, _pending = await asyncio.wait({task, heartbeat}, return_when=asyncio.FIRST_COMPLETED)
-        if task in done:
-            return task.result()
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-        return heartbeat.result()
+        try:
+            if heartbeat is None:
+                return await task
+            done, _pending = await asyncio.wait(
+                {task, heartbeat}, return_when=asyncio.FIRST_COMPLETED
+            )
+            if task in done:
+                return task.result()
+            return heartbeat.result()
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     @property
     def adapter_headers(self) -> dict[str, str]:

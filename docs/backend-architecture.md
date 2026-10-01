@@ -484,6 +484,8 @@ stateDiagram-v2
 
 Reaper 将不完整资源集合判为 `resource_set_changed` 前，按任务标签重新列举资源、检查容器，并确认 SQLite 状态版本未变；初次 Docker 快照可能早于 `creating` → `running`。确认失败或版本变化则留待下一轮，真实缺失仍按既有 CAS 清理；仅重新 inspect 已知容器不能补上初次快照遗漏的资源。
 
+`BrowserTaskSession._run_guarded` 拥有单次 adapter 操作：操作结束、外层取消或续租监控失败后，必须取消尚未完成的操作并等待其清理，消费已完成任务的异常。共享 heartbeat 属于整个浏览器会话，不随单次操作取消；由会话关闭回收。
+
 <a id="translation"></a>
 
 ## 翻译：模块依赖与实例归属
@@ -548,6 +550,8 @@ flowchart TD
 ```
 
 标题路径校验访问范围、去重、以请求顺序返回可访问项并提交需求；其他内容读取也直接调用 `ensure_title_translations`，而排行响应可只读投影。[requests.py](../backend/src/app/translation/requests.py)、[projection.py](../backend/src/app/translation/projection.py)、[feed.py](../backend/src/app/api/feed.py)、[rankings.py](../backend/src/app/api/rankings.py)。普通显式片段的可重试失败/超时才按条件建立持久回退；已有终态失败在本次请求内仅再尝试直译一次，超时不会暗中续启无界 Worker 重试。[resolve_interactive_texts](../backend/src/app/translation/interactive.py)。`resolve_segments` 通过 `defer=background_tasks.add_task` 延后普通成功 Artifact 的最佳努力写入，**不是**延后所有 SQL：偏好读取/清理、普通缓存投影/Work 回退以及 [TranslationQuotaStore.reserve](../backend/src/app/translation/quota.py) 各按自己的事务/提交时机执行。实时成功由协调器自己的 runner 在投影 future 结算后写 Artifact，不通过这条普通片段的 `BackgroundTasks`。[api/translations.py](../backend/src/app/api/translations.py)、[realtime.py](../backend/src/app/translation/realtime.py)。
+
+普通翻译 provider 用 `TaskGroup` 管理内部子批次：任一子批次失败会取消并等待其余模型请求，全部成功时按输入批次顺序组装结果；任务组不能向上泄漏 `ExceptionGroup` 替代既有 `TranslationProviderError` 的错误码与重试信息。请求取消同样收拢 provider 内部工作，不留下无人消费的模型调用。
 
 ## 翻译：实时共享、取消与偏好栅栏
 

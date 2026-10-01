@@ -131,17 +131,22 @@ class LangChainChatModelProvider:
                 prompt_version=self.prompt_version,
             )
         )
-        chunk_results = await asyncio.gather(
-            *(
-                self._translate_chunk_bounded(
-                    chunk,
-                    source_locale=source_locale,
-                    target_locale=target_locale,
-                )
-                for chunk in chunks
-            )
-        )
-        return [result for results in chunk_results for result in results]
+        try:
+            async with asyncio.TaskGroup() as group:
+                chunk_tasks = [
+                    group.create_task(
+                        self._translate_chunk_bounded(
+                            chunk,
+                            source_locale=source_locale,
+                            target_locale=target_locale,
+                        )
+                    )
+                    for chunk in chunks
+                ]
+        except* TranslationProviderError as errors:
+            # TaskGroup wraps child failures; consumers expect the original provider contract.
+            raise errors.exceptions[0] from errors
+        return [result for task in chunk_tasks for result in task.result()]
 
     async def _translate_chunk_bounded(
         self,
