@@ -168,6 +168,8 @@ flowchart TB
 
 `create_app` 安装部署访问中间件、装配发现路由、版本化路由与独立头像路由；`lifespan` 建立当前 API 进程自己的连接池、`ReaderJWTVerifier`、`AuthService`、翻译资源与限流器。`document_server_token` 只作 OpenAPI 声明，真正校验在路由前的 ASGI `ServerAccessMiddleware`：仅保护发现端点与 `/v1`，不保护 `/avatars`、健康端点；`OPTIONS` 放行。业务路由通过 `get_session` 直接操作 ORM，不存在统一 Repository 或跨进程 RPC。资料上传经 `upload_avatar` 将校验后的图像写入 `ProfileAvatar`，版本化读取由 `get_avatar` 提供；`proxy_source_avatar` 则先核查当前用户订阅，再释放数据库事务并安全代理上游图标，两条媒体路径不能混同。依据：[main.py（`create_app`、`lifespan`）](../backend/src/app/main.py)、[api/router.py（`api_router`）](../backend/src/app/api/router.py)、[core/server_access.py（`ServerAccessMiddleware`）](../backend/src/app/core/server_access.py)、[storage/database.py（`get_session`）](../backend/src/app/storage/database.py)、[api/profile.py（`upload_avatar`）](../backend/src/app/api/profile.py)、[api/avatars.py（`get_avatar`）](../backend/src/app/api/avatars.py)、[api/sources.py（`proxy_source_avatar`）](../backend/src/app/api/sources.py)。
 
+RSS／Web 订阅共用的 URL 身份规范化在重组 authority 时保留 IPv6 字面量的方括号；默认 HTTP／HTTPS 端口被移除，非默认端口保留在括号之后。规范化 URL 同时用于公网安全校验和带来源类型前缀的共享来源键。源码：[canonical_rss_identity／canonical_web_identity](../backend/src/app/ingestion/source_identity.py)。
+
 来源头像代理在逐次确认订阅权限后读取上游栅格图片，显式发送 `Accept-Encoding: identity`；若上游仍返回 gzip／deflate，则通过 raw 流和带 `max_length` 的 zlib 增量解压，在分配解码输出时限长，不使用 HTTPX 自动解压。原始传输与解码后的正文均最多 2 MiB，单次解压输出最多 64 KiB 且不超过剩余额度加一；gzip 多成员共享同一额度。其他内容编码、损坏或不完整的压缩流均按头像不可用返回 502。缓存、ETag 和响应正文统一基于解码后的图片字节；声明长度预检和上游访问安全限制继续保留。[源码：proxy_source_avatar／_read_avatar_bytes](../backend/src/app/api/sources.py)。
 
 ## 部署令牌、用户鉴权与刷新事务

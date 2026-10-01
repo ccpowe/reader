@@ -32,9 +32,9 @@ def canonical_rss_identity(url: str) -> SourceIdentity:
     scheme = parsed.scheme.lower()
     host = (parsed.hostname or "").rstrip(".").lower()
     port = parsed.port
-    authority = host
+    authority = f"[{host}]" if ":" in host else host
     if port is not None and (scheme, port) not in {("http", 80), ("https", 443)}:
-        authority = f"{host}:{port}"
+        authority = f"{authority}:{port}"
     path = parsed.path or "/"
     canonical_url = urlunsplit((scheme, authority, path, parsed.query, ""))
     return SourceIdentity(
@@ -51,9 +51,9 @@ def canonical_web_identity(url: str) -> SourceIdentity:
     scheme = parsed.scheme.lower()
     host = (parsed.hostname or "").rstrip(".").lower()
     port = parsed.port
-    authority = host
+    authority = f"[{host}]" if ":" in host else host
     if port is not None and (scheme, port) not in {("http", 80), ("https", 443)}:
-        authority = f"{host}:{port}"
+        authority = f"{authority}:{port}"
     path = parsed.path or "/"
     canonical_url = urlunsplit((scheme, authority, path, parsed.query, ""))
     return SourceIdentity(

@@ -17,6 +17,33 @@ def test_rss_identity_normalises_scheme_host_default_port_and_fragment() -> None
     assert identity.canonical_key == "rss:https://example.com/feed.xml"
 
 
+@pytest.mark.parametrize(
+    ("raw", "canonical"),
+    [
+        (
+            "HTTPS://[2606:4700:4700::1111]:443/feed?language=en#latest",
+            "https://[2606:4700:4700::1111]/feed?language=en",
+        ),
+        (
+            "https://[2606:4700:4700::1111]:8443/feed",
+            "https://[2606:4700:4700::1111]:8443/feed",
+        ),
+        ("http://[2606:4700:4700::1111]:80/feed", "http://[2606:4700:4700::1111]/feed"),
+        ("https://192.0.2.5:8443/feed", "https://192.0.2.5:8443/feed"),
+        ("https://EXAMPLE.COM:8443/feed", "https://example.com:8443/feed"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("canonicalize", "prefix"),
+    [(canonical_rss_identity, "rss"), (canonical_web_identity, "web")],
+)
+def test_source_identities_rebuild_valid_authorities(canonicalize, prefix, raw, canonical) -> None:
+    identity = canonicalize(raw)
+
+    assert identity.canonical_url == canonical
+    assert identity.canonical_key == f"{prefix}:{canonical}"
+
+
 def test_rss_identity_retains_meaningful_query_parameters() -> None:
     identity = canonical_rss_identity("https://example.com/feed?language=en")
 
