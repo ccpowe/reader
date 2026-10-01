@@ -14,6 +14,7 @@ import pytest
 from app.core.settings import Settings
 from app.ingestion import web_crawl
 from app.ingestion.models import SourceScanError
+from app.ingestion.url_safety import PublicAsyncClient, safe_get
 from app.ingestion.web_crawl_types import PageRecipe
 
 URL = "https://example.com/blog"
@@ -45,6 +46,8 @@ class BrowserHarness:
         self.result_error = ""
         self.close_failure = None
         self.callback_count = 8
+        self.route_targets = None
+        self.concurrent_routes = False
         self.closed = 0
         self.endpoints = []
 
@@ -146,12 +149,25 @@ class BrowserHarness:
             async def arun(self, **_kwargs):
                 await self.hooks["on_page_context_created"](self.page, self.context)
                 await self.handler(harness.route(URL, self.page, navigation=True))
-                self.tasks = [
-                    asyncio.create_task(self.handler(harness.route(f"{URL}/{index}.js", self.page)))
-                    for index in range(harness.callback_count)
-                ]
+                if harness.route_targets is not None:
+                    if harness.concurrent_routes:
+                        self.tasks = [
+                            asyncio.create_task(self.handler(harness.route(target, self.page)))
+                            for target in harness.route_targets
+                        ]
+                        await asyncio.gather(*self.tasks)
+                    else:
+                        for target in harness.route_targets:
+                            await self.handler(harness.route(target, self.page))
+                else:
+                    self.tasks = [
+                        asyncio.create_task(
+                            self.handler(harness.route(f"{URL}/{index}.js", self.page))
+                        )
+                        for index in range(harness.callback_count)
+                    ]
                 harness.callbacks.extend(self.tasks)
-                if self.tasks:
+                if self.tasks and harness.route_targets is None:
                     await harness.ready.wait()
                 await harness.finish.wait()
                 if harness.failure is not None:
@@ -276,6 +292,72 @@ async def test_default_dynamic_crawl_uses_shared_settings_endpoint(monkeypatch):
     assert harness.endpoints == [
         {"engine": "lightpanda", "path": "/opt/reader/browser", "expected_identity": None}
     ]
+
+
+@pytest.mark.parametrize("concurrent", [False, True])
+@pytest.mark.parametrize(
+    # The final case must reuse the first finishing request's unused reservation.
+    "sizes,requested,downloaded,error_expected",
+    [
+        ([100] * 8, 4, 400, True),
+        ([75] * 5 + [80], 6, 375, True),
+        ([100, 100, 100, 50, 50], 5, 400, False),
+    ],
+)
+async def test_dynamic_crawl_binds_upstream_stream_to_remaining_page_budget(
+    monkeypatch, sizes, requested, downloaded, error_expected, concurrent
+):
+    harness = BrowserHarness()
+    harness.concurrent_routes = concurrent
+    harness.route_targets = [f"{URL}/{index}.js" for index in range(1, len(sizes))]
+    harness.finish.set()
+    harness.install(monkeypatch)
+
+    async def validate(url):
+        return url
+
+    monkeypatch.setattr("app.ingestion.url_safety.validate_public_http_url", validate)
+    visited = []
+    streamed = 0
+
+    class Body(httpx.AsyncByteStream):
+        def __init__(self, size):
+            self.size = size
+
+        async def __aiter__(self):
+            nonlocal streamed
+            # Yield like real socket I/O so simultaneous routes compete for the
+            # final bytes rather than accidentally exercising sequential reads.
+            await asyncio.sleep(0)
+            body = b"x" * self.size
+            streamed += len(body)
+            yield body
+
+    def respond(request):
+        index = 0 if str(request.url) == URL else int(request.url.path.rsplit("/", 1)[-1][:-3])
+        visited.append(index)
+        return httpx.Response(
+            200, headers={"content-length": str(sizes[index])}, stream=Body(sizes[index])
+        )
+
+    async with PublicAsyncClient(transport=httpx.MockTransport(respond)) as client:
+        try:
+            await web_crawl.crawl_page(
+                client,
+                URL,
+                RECIPE,
+                maximum_bytes=100,
+                robots_allows=harness.robots_allows,
+                fetch=safe_get,
+            )
+        except SourceScanError as caught:
+            assert error_expected
+            assert caught.code == "response_too_large"
+        else:
+            assert not error_expected
+    assert visited == list(range(requested))
+    assert streamed == downloaded
+    assert harness.closed == 1
 
 
 async def test_repeated_cancellation_waits_for_fetch_cleanup_and_keeps_slot(monkeypatch):

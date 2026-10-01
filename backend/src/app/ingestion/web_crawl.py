@@ -373,7 +373,10 @@ async def crawl_page(
             if recipe.render_js:
                 request_count = 0
                 response_bytes = 0
+                reserved_bytes = 0
+                page_transfer_limit = min(20 * 1024 * 1024, maximum_bytes * 4)
                 network_slot = asyncio.Semaphore(2)
+                transfer_budget = asyncio.Condition()
                 origin = (urlsplit(url).scheme, urlsplit(url).netloc.lower())
                 navigation_origins = {origin}
 
@@ -393,6 +396,7 @@ async def crawl_page(
 
                     async def handle_request(route):
                         nonlocal error, request_count, response_bytes, fetched_response
+                        nonlocal reserved_bytes
                         request = route.request
                         parsed = urlsplit(request.url)
                         if request.method != "GET" or parsed.scheme not in {"http", "https"}:
@@ -418,21 +422,53 @@ async def crawl_page(
                             async with network_slot:
                                 if closing:
                                     return
+                                if response_bytes >= page_transfer_limit:
+                                    raise SourceScanError(
+                                        "response_too_large", "Page exceeded total transfer limit."
+                                    )
                                 if not await robots_allows(request.url, maximum_bytes):
                                     raise SourceScanError(
                                         "robots_disallowed", "Request disallowed."
                                     )
                                 if closing:
                                     return
-                                response = await fetch(
-                                    client,
-                                    request.url,
-                                    headers={"User-Agent": _USER_AGENT},
-                                    timeout=15.0,
-                                    max_response_bytes=maximum_bytes,
-                                )
-                                response_bytes += len(response.content)
-                                if response_bytes > min(20 * 1024 * 1024, maximum_bytes * 4):
+                                async with transfer_budget:
+                                    await transfer_budget.wait_for(
+                                        lambda: (
+                                            reserved_bytes == 0
+                                            or response_bytes + reserved_bytes < page_transfer_limit
+                                        )
+                                    )
+                                    if closing:
+                                        return
+                                    remaining_bytes = (
+                                        page_transfer_limit - response_bytes - reserved_bytes
+                                    )
+                                    if remaining_bytes <= 0:
+                                        raise SourceScanError(
+                                            "response_too_large",
+                                            "Page exceeded total transfer limit.",
+                                        )
+                                    request_limit = min(maximum_bytes, remaining_bytes)
+                                    reserved_bytes += request_limit
+                                # Failed reads may have consumed bytes before raising;
+                                # retain their reservation rather than spend it twice.
+                                used_bytes = request_limit
+                                try:
+                                    response = await fetch(
+                                        client,
+                                        request.url,
+                                        headers={"User-Agent": _USER_AGENT},
+                                        timeout=15.0,
+                                        max_response_bytes=request_limit,
+                                    )
+                                    used_bytes = len(response.content)
+                                finally:
+                                    async with transfer_budget:
+                                        reserved_bytes -= request_limit
+                                        response_bytes += used_bytes
+                                        transfer_budget.notify_all()
+                                if response_bytes > page_transfer_limit:
                                     raise SourceScanError(
                                         "response_too_large", "Page exceeded total transfer limit."
                                     )
