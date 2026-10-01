@@ -43,12 +43,12 @@ class BrowserTaskError(SourceScanError):
         super().__init__(
             error.code,
             error.message,
+            retryable=error.retryable,
             retry_after_seconds=error.retry_after_seconds,
             long_lived=error.long_lived,
             evidence=error.evidence,
         )
         self.kind = error.kind
-        self.retryable = error.retryable
 
 
 def _endpoint(base: str, path: str) -> str:

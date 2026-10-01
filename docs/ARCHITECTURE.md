@@ -88,9 +88,9 @@ Android 阅读宿主使用 `LOAD_NO_CACHE`，并在进程内第一次 WebView �
 
 扫描进度与健康迁移集中在 [scan_state.py](../backend/src/app/services/scan_state.py)：`ScanProgress.next_request`／`apply_page` 管理单次扫描的分页预算与进度，明确返回继续、完成或候选额度耗尽；部分完成与失败操作管理续扫、下次调度及租约释放，不执行 I/O 或提交事务。增量扫描遇到候选额度截断时保留当前页以便重放，不提前推进 committed checkpoint；初扫仍只接纳有界的最新条目作为基线。来源处于 `degraded` 也仍优先恢复已有 continuation，非权威回退不丢弃权威历史任务，之后完成历史扫描时保留独立更新的 Atom 进度。
 
-非权威 Atom 回退只有在整页候选完成接纳后才合并 Atom checkpoint；候选额度截断时保留旧 checkpoint 与已有权威 continuation，以部分完成释放租约，下轮通过候选去重重放未接纳内容，不把回退结果声明为权威覆盖完成。
+非权威回退只提供有限观察，不能替代权威覆盖，也不能因预算截断丢失尚未接纳的内容。
 
-续扫各轮交替让持久任务与首窗刷新先使用本轮预算，顺序记录在 continuation 中；历史进度至少每两轮推进一次，新内容发现最多延后一轮。未开始的首窗刷新不累积为历史任务。
+扫描调度必须兼顾历史补齐与新内容发现，有限预算不能导致任一方长期饥饿；分页、重放及调度顺序见[后端扫描图谱](backend-architecture.md#execution)。
 
 规则激活、选定 feed 与 feed 失效重探测分别调用明确的扫描重置操作，统一清除旧端点游标和 pending checkpoint，只保留 `head_ids`／`item_hashes` 去重锚点，不改变初扫基线。规则激活释放旧扫描租约并结束旧运行；选定 feed 则保留当前租约以继续本轮扫描。Web 结构故障计数、故障批次及 author／repair 触发由 [web_scan_health.py](../backend/src/app/services/web_scan_health.py) 在调用方事务内处理；它与只读的来源健康查询不同，不负责 Agent 的激活等待与恢复流程。
 
@@ -179,7 +179,7 @@ WebView 内的 [网页脚本](../mobile/domain/webTranslation.ts) 和 [字幕脚
 
 规则执行／预检与 Worker 周期动态扫描继续通过 [web_crawl.py](../backend/src/app/ingestion/web_crawl.py) 进入同一语义接口；静态页面保留 HTTP 路径，正常运行不自动回退 Chromium。公网目的地、robots、TLS、重定向、请求和传输限制在本地及容器模式都继续适用。容器 adapter 可以访问符合通用公网校验的站点，不维护站点域名白名单；浏览器自身没有 IP 网络，不能绕过 adapter 直连目标。Manager 与独立 Reaper 通过共享 SQLite 状态、租约和硬期限协调任务回收；两者都需要 Docker socket，只有 Manager 持有控制令牌和 capability HMAC key。部署身份同时绑定固定镜像、二进制及运行策略；断线或续租失败会使 Worker 停止使用任务并有界关闭。共享配置、两种部署模式及验收见[部署说明](deployment.md#6-后端-web-规则-agent)。
 
-浏览器探索失败跨越 `BrowserTaskError` → `RuleAgentContext.inspect` → `AgentFailure` 边界时保留明确的 `retryable` 与 `retry_after_seconds`：临时容量或传输错误进入持久 `retry_wait`，到期重新领取同一任务，不因错误码未列入通用名单而终结。未提供延迟的临时错误使用 30 秒；明确不可重试的错误保持终结失败。
+浏览器错误的重试分类与延迟属于跨模块契约，探索层和持久任务调度必须保留生产方的明确决定；临时故障可恢复，不可重试故障不能被静默重试。具体传播路径与重试策略见[后端规则 Agent 图谱](backend-architecture.md#rule-author)。
 
 执行总超时返回已完成窗口与实际错误，取消继续传播；尚未完成的调用不伪装成成功。无法形成可用规则时，模型可引用真实证据返回 `RuleAuthoringFailure`，理由为 `missing_evidence`、`unsupported_schema` 或 `no_usable_rule`；不会激活来源。普通文本或空回复会收到同时允许成功交接与有据失败的恢复反馈，供应商、权限和预算异常不进入此恢复循环。自动规则作者默认停用。API 的轻量配置指纹只包含配置值；Worker 的任务快照另保存 CLI binary／runner 与 Lightpanda 各自的执行身份，重试须匹配，供应商暂停比较排除这两项 Worker 本地身份。
 

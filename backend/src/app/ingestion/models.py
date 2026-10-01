@@ -203,12 +203,14 @@ class SourceScanError(RuntimeError):
         code: str,
         message: str,
         *,
+        retryable: bool | None = None,
         retry_after_seconds: int | None = None,
         long_lived: bool = False,
         evidence: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
+        self.retryable = retryable
         self.retry_after_seconds = retry_after_seconds
         self.long_lived = long_lived
         self.evidence = evidence or {}

@@ -348,6 +348,8 @@ sequenceDiagram
 
 [claim_due_sources／_start_run／_persist_page](../backend/src/app/workers/sync.py) 在上游请求前提交租约；之后每页独立以 **来源→扫描状态** 顺序锁定并验证租约，再把 [upsert_candidates](../backend/src/app/ingestion/candidate_queue.py)、Web frontier、[ScanProgress.apply_page](../backend/src/app/services/scan_state.py) 和 [record_web_structure_health](../backend/src/app/services/web_scan_health.py) 一起提交；scanner I/O 不持有这些锁。`ScanProgress.next_request` 将初扫、更新首窗和历史续扫分开；续扫按 continuation 的 `head_first` 逐轮交替：一轮先执行保存的 tasks 再用剩余预算刷新 head，下一轮反之，避免小预算下历史游标或新内容任一方饿死。未访问的 fresh head 不持久累积，下轮按最新 checkpoint 重新生成；已开始但未完成的 head 则作为持久任务继续。增量候选 cap 命中时 `_cursor_for_incomplete_page` 保留**当前输入页**或从 head 重启以重放，不能提前将 pending 提升为 committed；页数／原始条目达到预算则由 `finish_incomplete_run` 保留续扫并释放租约。非权威 Atom 回退不抹掉权威历史任务；`cursor_invalid` 重启 backlog。[源码：ScanProgress／PageDisposition／record_scan_failure](../backend/src/app/services/scan_state.py)。[reset_for_rule_activation／reset_for_selected_feed／reset_for_feed_rediscovery](../backend/src/app/services/scan_state.py) 清旧端点游标和 pending，仅保留 `head_ids`／`item_hashes` 去重锚点，不重置初扫基线；规则激活还终结旧运行和释放旧租约，而选定 feed 不抢占本轮租约。[源码：_activate_validated_rule](../backend/src/app/services/web_rules.py)。
 
+非权威 Atom 回退只有在整页候选完成接纳后才合并 Atom checkpoint；候选额度截断时保留旧 checkpoint 与已有权威 continuation，以部分完成释放租约，下轮通过候选去重重放未接纳内容，不把回退结果声明为权威覆盖完成。
+
 ## 候选队列：显式观察语义到内容投影
 
 ```mermaid
@@ -399,6 +401,8 @@ flowchart LR
 [services.web_rule_jobs.ensure_web_rule_job](../backend/src/app/services/web_rule_jobs.py) 是 Python 函数，不是另一个微服务：API 的 [subscribe_to_source](../backend/src/app/services/subscriptions.py) 与 Worker 的 [record_web_structure_health](../backend/src/app/services/web_scan_health.py) 可在各自进程实例内调用同一源码；只有 PostgreSQL 的 `WebRuleJob` 将意图持久交给独立 Worker 作者循环。图中 Worker／Context／Handoff／Store／持久规则服务之间也是进程内调用，不能画成 HTTP RPC 或消息代理。
 
 [run_web_rule_author_once](../backend/src/app/workers/web_rules.py) 默认仅在规则引擎启用时认领**全局串行**任务，负责快照身份、心跳、旧规则预检、模型生命周期与浏览器释放；预检旧规则成功可无模型调用地取消修复。模型入口 [run_rule_agent／DurableGuardMiddleware](../backend/src/app/web_rule_agent/runtime.py) 串行宿主工具、持久预约和记账模型调用；[RuleAgentContext](../backend/src/app/web_rule_agent/context.py) 管工具、授权页面、展示截断和 [AuthoringMemory](../backend/src/app/web_rule_agent/memory.py) 的证据。模型只提交 `FinalWebRule` 判断（或有证据的失败），不能直接改来源。[ActivationHandoff](../backend/src/app/web_rule_agent/handoff.py) 保存完整执行凭据，模型只看分页、有界展示；[JobStore](../backend/src/app/web_rule_agent/store.py) 无跨模型／网页 I/O 的长事务。最终权限属于 [services.web_rule_jobs 的 _checked／activate_web_rule_job](../backend/src/app/services/web_rule_jobs.py)，不是内存上下文。规则试跑 [ingestion.execute_web_rule](../backend/src/app/ingestion/web_rules.py) 直接运行普通 adapter，最多三窗、每窗最多 15 项；`completed` 是有界运行结果，非内容质量判决；首窗完成是必要门槛，后续失败可为 `partial`。样本**只作为事实／诊断，不直接入队或入库**，成功激活后仍由正常扫描链路发现内容。
+
+`SourceScanError.retryable` 是显式的可选分类，默认 `None` 表示沿用错误码策略；[BrowserTaskError](../backend/src/app/browser_tasks/client.py) 将内部协议的布尔值传入父类，`RuleAgentContext.inspect` 直接读取并交给 [page_failure](../backend/src/app/web_rule_agent/errors.py)。明确的 `True`／`False` 优先于通用错误码判断，临时故障进入持久 `retry_wait` 并重新领取同一任务；`retry_after_seconds` 随错误保留，未提供延迟时使用 30 秒，明确不可重试的错误保持终结失败。
 
 ## 规则交接：pending、凭据 TTL 与重启恢复
 

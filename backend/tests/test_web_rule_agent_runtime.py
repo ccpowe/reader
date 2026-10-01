@@ -651,26 +651,38 @@ async def test_preflight_http_failure_avoids_model_and_lease_loss_cancels_local_
 
 
 @pytest.mark.parametrize(
-    ("code", "retryable", "delay", "status", "expected_delay"),
+    ("error_type", "code", "retryable", "delay", "status", "expected_delay"),
     [
-        ("capacity_exhausted", True, 2, "retry_wait", 2),
-        ("runtime_unavailable", True, None, "retry_wait", 30),
-        ("runtime_identity_mismatch", False, None, "failed", 0),
-        ("ConnectError", False, 2, "failed", 0),
+        ("browser", "capacity_exhausted", True, 2, "retry_wait", 2),
+        ("browser", "runtime_unavailable", True, None, "retry_wait", 30),
+        ("browser", "runtime_identity_mismatch", False, None, "failed", 0),
+        ("browser", "ConnectError", False, 2, "failed", 0),
+        ("source", "custom_transient", True, 5, "retry_wait", 5),
+        ("source", "web_http_429", False, 2, "failed", 0),
+        ("source", "web_http_429", None, None, "retry_wait", 30),
     ],
 )
-async def test_browser_failure_controls_task_retry(code, retryable, delay, status, expected_delay):
+async def test_inspection_failure_controls_task_retry(
+    error_type, code, retryable, delay, status, expected_delay
+):
     from app.browser_tasks.client import BrowserTaskError
     from app.browser_tasks.protocol import ErrorEnvelope
+    from app.ingestion.models import SourceScanError
 
-    error = BrowserTaskError(
-        ErrorEnvelope(
-            code=code,
-            message="Browser operation failed.",
-            retryable=retryable,
-            retry_after_seconds=delay,
+    if error_type == "browser":
+        error = BrowserTaskError(
+            ErrorEnvelope(
+                code=code,
+                message="Browser operation failed.",
+                retryable=retryable,
+                retry_after_seconds=delay,
+            )
         )
-    )
+    else:
+        retry_policy = {} if retryable is None else {"retryable": retryable}
+        error = SourceScanError(
+            code, "Inspection failed.", retry_after_seconds=delay, **retry_policy
+        )
 
     class UnavailableBrowser:
         async def command(self, *args, **kwargs):

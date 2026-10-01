@@ -390,7 +390,7 @@ class RuleAgentContext:
                     {
                         "status": "fail",
                         "code": exc.code,
-                        "retryable": getattr(exc, "retryable", None),
+                        "retryable": exc.retryable,
                         "retry_after_seconds": exc.retry_after_seconds,
                     },
                     phase="inspect",
