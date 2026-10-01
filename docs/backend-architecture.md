@@ -494,6 +494,8 @@ Reaper 将不完整资源集合判为 `resource_set_changed` 前，按任务标�
 
 `BrowserTaskSession._run_guarded` 拥有单次 adapter 操作：操作结束、外层取消或续租监控失败后，必须取消尚未完成的操作并等待其清理，消费已完成任务的异常。共享 heartbeat 属于整个浏览器会话，不随单次操作取消；由会话关闭回收。
 
+Manager 的 `APP_BROWSER_TASK_ADAPTER_PORT` 进入部署身份的 `config_fingerprint`，并经 adapter 容器的 `READER_BROWSER_ADAPTER_PORT` 同时控制监听和健康检查；容器暴露端口与对 Worker 公告的 endpoint 使用同一值。端口变化会改变运行时身份，不改变 browser 内部 API 协议。源码：[controller](../backend/src/app/browser_tasks/controller.py)、[adapter_app](../backend/src/app/browser_tasks/adapter_app.py)。
+
 <a id="translation"></a>
 
 ## 翻译：模块依赖与实例归属

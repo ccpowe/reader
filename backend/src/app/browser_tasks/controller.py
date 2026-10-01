@@ -766,6 +766,7 @@ class BrowserTaskController:
                 f"READER_BROWSER_TASK_ID={record.task_id}",
                 f"READER_BROWSER_CAPABILITY_SHA256={expected_capability_hash}",
                 f"READER_BROWSER_TASK_PURPOSE={record.purpose}",
+                f"READER_BROWSER_ADAPTER_PORT={self.config.adapter_port}",
                 f"READER_BROWSER_SOURCE_URL={record.source_url}",
                 "CRAWL4_AI_BASE_DIRECTORY=/tmp/reader-crawl4ai",
                 "READER_BROWSER_RUNTIME_IDENTITY="
