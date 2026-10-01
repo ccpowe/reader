@@ -196,14 +196,13 @@ class ScanProgress:
             # it cannot advance either Atom coverage or the authoritative backlog.
             if outcome.cap_reached:
                 return PageDisposition.CANDIDATE_LIMIT
-            else:
-                state.committed_checkpoint = _merge_fallback_checkpoint(
-                    state.committed_checkpoint, page.checkpoint
-                )
-                state.next_scan_at = next_normal_scan(source, state, now)
-                _release_lease(state)
-                _finish_run(run, page, now, partial=True)
-                return PageDisposition.COMPLETE
+            state.committed_checkpoint = _merge_fallback_checkpoint(
+                state.committed_checkpoint, page.checkpoint
+            )
+            state.next_scan_at = next_normal_scan(source, state, now)
+            _release_lease(state)
+            _finish_run(run, page, now, partial=True)
+            return PageDisposition.COMPLETE
 
         if self.mode == "head":
             if self.head_checkpoint is None:

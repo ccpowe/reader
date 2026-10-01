@@ -76,7 +76,7 @@ async def _scan(factory, source_id, adapter, monkeypatch):
     await sync.scan_claimed_source(factory, sync.SourceClaim(source_id, token))
 
 
-async def test_scanning_fills_publication_date_once_without_resorting(monkeypatch):
+async def test_scanning_preserves_publication_date_through_missing_observations(monkeypatch):
     async with _database() as (factory, source_id):
         async with factory() as session:
             session.add(SourceSyncState(source_id=source_id))
@@ -143,6 +143,28 @@ async def test_scanning_fills_publication_date_once_without_resorting(monkeypatc
             )
             assert entry.published_at == dated.published_at
             assert (await session.get(Content, content_id)).published_at == dated.published_at
+            assert entry.feed_sort_at == original_sort
+
+        # A transient parse failure changes the payload hash, but must not erase
+        # the projected date. A later dated observation can then update it.
+        assert (await scan_item(undated))["candidates_changed"] == 1
+        assert await candidates.process_candidates(factory) == 1
+        async with factory() as session:
+            entry = await session.scalar(
+                select(SourceEntry).where(SourceEntry.source_id == source_id)
+            )
+            assert entry.published_at == dated.published_at
+            assert (await session.get(Content, content_id)).published_at == dated.published_at
+            assert entry.feed_sort_at == original_sort
+
+        assert (await scan_item(jittered))["candidates_changed"] == 1
+        assert await candidates.process_candidates(factory) == 1
+        async with factory() as session:
+            entry = await session.scalar(
+                select(SourceEntry).where(SourceEntry.source_id == source_id)
+            )
+            assert entry.published_at == jittered.published_at
+            assert (await session.get(Content, content_id)).published_at == jittered.published_at
             assert entry.feed_sort_at == original_sort
 
 

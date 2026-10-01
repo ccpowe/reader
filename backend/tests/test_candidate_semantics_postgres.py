@@ -176,13 +176,13 @@ async def test_listing_preserves_missing_enrichment_but_full_replaces_and_clears
             )
             assert (entry.author_name, entry.published_at, entry.feed_sort_at) == (
                 None,
-                None,
+                full.published_at,
                 original_sort,
             )
             assert (content.body_html, content.body_text, content.excerpt) == (None, None, None)
             assert (content.author_name, content.published_at, content.extraction_status) == (
                 None,
-                None,
+                full.published_at,
                 ExtractionStatus.FAILED,
             )
             assert media and not any(item.is_active for item in media)

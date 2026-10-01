@@ -263,7 +263,8 @@ async def _process_candidate(session, candidate: IngestionCandidate) -> None:
             entry.external_url = item.external_url
             entry.title = item.title
             entry.author_name = item.author_name
-            entry.published_at = item.published_at
+            # A missing date is an incomplete observation, not a deletion.
+            entry.published_at = item.published_at or entry.published_at
             entry.raw_metadata = preserve_x_metadata(entry.raw_metadata, entry_metadata)
 
     discovery_only = item.observation == ContentObservation.LISTING
@@ -297,7 +298,7 @@ async def _process_candidate(session, candidate: IngestionCandidate) -> None:
         content.url_hash = hashlib.sha256(item.external_url.encode("utf-8")).hexdigest()
         content.title = item.title
         content.author_name = item.author_name
-        content.published_at = item.published_at
+        content.published_at = item.published_at or content.published_at
         content.excerpt = safe_body_text
         content.body_html = safe_body_html
         content.body_text = safe_body_text
