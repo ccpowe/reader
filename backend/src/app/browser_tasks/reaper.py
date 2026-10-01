@@ -156,6 +156,33 @@ class BrowserTaskReaper:
         return hydrated
 
     async def _claim_and_cleanup(self, record: TaskRecord, *, reason: str, now: float) -> None:
+        if reason == "resource_set_changed":
+            # The manager can finish creating resources between our Docker and
+            # SQLite snapshots. Re-list, rather than only hydrate known IDs.
+            try:
+                resources = await self.engine.list_resources(
+                    labels={
+                        f"{LABEL_PREFIX}.managed": "true",
+                        f"{LABEL_PREFIX}.schema": POLICY_SCHEMA,
+                        f"{LABEL_PREFIX}.deployment": self.task_config.deployment_id,
+                        f"{LABEL_PREFIX}.task": record.task_id,
+                    }
+                )
+                current = await asyncio.to_thread(self.state.get, record.task_id)
+            except (DockerEngineError, StateUnavailable):
+                logger.exception("browser task reaper could not confirm task resources")
+                return
+            if current is None or current.version != record.version:
+                return
+            groups = self._valid_groups(resources)
+            if resources and record.task_id not in groups:
+                return
+            hydrated = await self._hydrate_containers(groups.get(record.task_id, []))
+            if hydrated is None:
+                return
+            reason = self._cleanup_reason(current, hydrated, now=now)
+            if reason is None:
+                return
         try:
             claimed = await asyncio.to_thread(
                 self.state.claim_cleaning, record, reason=reason, now=now

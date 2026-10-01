@@ -222,6 +222,65 @@ async def test_reaper_cleanup_claim_loses_to_renew_and_leaves_resources(tmp_path
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("snapshot", ["missing_adapter", "empty"])
+async def test_reaper_preserves_running_task_after_incomplete_resource_snapshot(tmp_path, snapshot):
+    now = 25_000.0
+    state, _ = running_store(tmp_path, task_id="race", now=now, lease=now + 100)
+
+    class CreatingEngine(ReaperEngine):
+        async def list_resources(self, *, labels):
+            resources = await super().list_resources(labels=labels)
+            if f"{LABEL_PREFIX}.task" not in labels:
+                # Creation completed after this snapshot, before reading SQLite.
+                return (
+                    [item for item in resources if item.resource_id != "race-adapter"]
+                    if snapshot == "missing_adapter"
+                    else []
+                )
+            return resources
+
+    engine = CreatingEngine(group("race", now=now))
+    reaper = BrowserTaskReaper(
+        task_config=config(), reaper_config=ReaperConfig(), state=state, engine=engine
+    )
+    await reaper.run_once(now=now)
+    assert state.get("race").state == "running"
+    assert state.get("race").cleanup_reason is None
+    assert set(engine.resources) == {"race-browser", "race-adapter", "race-volume"}
+    assert engine.removed == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("renew_during_confirmation", [False, True])
+async def test_reaper_confirms_missing_resources_against_unchanged_state(
+    tmp_path, renew_during_confirmation
+):
+    now = 26_000.0
+    state, _ = running_store(tmp_path, task_id="missing", now=now, lease=now + 100)
+
+    class MissingEngine(ReaperEngine):
+        async def list_resources(self, *, labels):
+            resources = await super().list_resources(labels=labels)
+            if renew_during_confirmation and f"{LABEL_PREFIX}.task" in labels:
+                state.renew("missing", request_id="renewed", now=now, lease_seconds=120)
+            return resources
+
+    engine = MissingEngine(group("missing", now=now)[:1])
+    reaper = BrowserTaskReaper(
+        task_config=config(), reaper_config=ReaperConfig(), state=state, engine=engine
+    )
+    await reaper.run_once(now=now)
+    stored = state.get("missing")
+    if renew_during_confirmation:
+        assert stored.state == "running"
+        assert engine.removed == []
+    else:
+        assert stored.state == "closed"
+        assert stored.cleanup_reason == "resource_set_changed"
+        assert engine.resources == {}
+
+
+@pytest.mark.asyncio
 async def test_reaper_without_database_uses_only_immutable_failure_fences():
     now = 30_000.0
     active = group("active", now=now)
