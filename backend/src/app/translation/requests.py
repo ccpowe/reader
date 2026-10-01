@@ -40,7 +40,7 @@ _PREFETCH_PURPOSES = frozenset(
 
 
 class TranslationStorageBusy(RuntimeError):
-    """Storage could not serve request preparation or translation execution."""
+    """Storage could not serve request preparation, execution or delivery."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,8 +215,11 @@ async def resolve_segments(
 
     # The preference may have changed during provider I/O. Never deliver an
     # old user-scoped web/caption response after that change.
-    latest_context = await get_translation_context(session, user_id, fresh=True)
-    await session.commit()
+    try:
+        latest_context = await get_translation_context(session, user_id, fresh=True)
+        await session.commit()
+    except SQLAlchemyTimeoutError as exc:
+        raise TranslationStorageBusy() from exc
     route_changed = (
         latest_context.cache_generation != context.cache_generation
         or latest_context.engine != context.engine

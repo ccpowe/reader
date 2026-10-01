@@ -553,6 +553,8 @@ flowchart TD
 
 普通翻译 provider 用 `TaskGroup` 管理内部子批次：任一子批次失败会取消并等待其余模型请求，全部成功时按输入批次顺序组装结果；任务组不能向上泄漏 `ExceptionGroup` 替代既有 `TranslationProviderError` 的错误码与重试信息。请求取消同样收拢 provider 内部工作，不留下无人消费的模型调用。
 
+`resolve_segments` 的数据库超时边界覆盖请求准备、执行以及交付前最后一次 fresh context 查询和提交，统一转换为 `TranslationStorageBusy`，由 HTTP 层返回既有 `503 / translation_storage_busy`；最终偏好检查失败时不交付已取得的译文，也不暴露数据库内部错误。
+
 ## 翻译：实时共享、取消与偏好栅栏
 
 ```mermaid

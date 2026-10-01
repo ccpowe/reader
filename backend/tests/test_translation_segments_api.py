@@ -398,6 +398,73 @@ async def test_segments_map_realtime_cache_checkout_timeout_to_stable_503(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failure_at", ["final_read", "final_commit"])
+async def test_segments_final_preference_timeout_returns_http_503(monkeypatch, failure_at):
+    import httpx
+    from fastapi import FastAPI
+
+    context = TranslationContext(
+        target_locale="zh-CN",
+        enabled=True,
+        engine=TranslationEngine(
+            engine_id="deepseek-v4-flash",
+            provider_name="deepseek",
+            model_name="deepseek-v4-flash",
+        ),
+    )
+    timeout = SQLAlchemyTimeoutError("QueuePool private connection details")
+    monkeypatch.setattr(
+        translation_requests,
+        "get_translation_context",
+        AsyncMock(
+            side_effect=[
+                context,
+                timeout if failure_at == "final_read" else context,
+            ]
+        ),
+    )
+    session = AsyncMock()
+    if failure_at == "final_commit":
+        session.commit.side_effect = [None, timeout]
+    app = FastAPI()
+    app.include_router(translations.router)
+    app.dependency_overrides[translations.require_current_user] = lambda: AuthenticatedUser(
+        id=uuid4(), email=None, claims={}
+    )
+    app.dependency_overrides[translations.get_session] = lambda: session
+    app.state.realtime_translation_coordinator = SimpleNamespace(
+        resolve=AsyncMock(
+            return_value={
+                "segment": TranslationProjection(
+                    item_id="segment",
+                    source_hash="source",
+                    target_locale="zh-CN",
+                    status=TranslationStatus.SUCCEEDED,
+                    translated_text="must not be delivered",
+                )
+            }
+        )
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            "/translations/segments",
+            json={
+                "segments": [_segment("segment", "source", "web_segment")],
+            },
+        )
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": {
+            "code": "translation_storage_busy",
+            "error_code": "translation_storage_busy",
+        }
+    }
+
+
+@pytest.mark.asyncio
 async def test_segments_do_not_misclassify_unrelated_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
