@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import gzip
+import tracemalloc
+import zlib
 from contextlib import asynccontextmanager
 from io import BytesIO
 from types import SimpleNamespace
@@ -13,6 +15,7 @@ from PIL import Image
 from starlette.requests import Request
 
 from app.api import sources
+from app.ingestion import url_safety
 
 
 class _Session:
@@ -46,7 +49,7 @@ class _Upstream:
         self.chunks = chunks
         self.iterated = False
 
-    async def aiter_bytes(self, *, chunk_size: int):
+    async def aiter_raw(self, *, chunk_size: int):
         self.iterated = True
         for chunk in self.chunks:
             yield chunk
@@ -225,41 +228,46 @@ async def test_avatar_proxy_releases_transaction_before_external_io(monkeypatch)
     assert not session.active_transaction
 
 
-def _gzip_response(body: bytes) -> httpx.Response:
-    compressed = gzip.compress(body)
-
-    class CompressedBody(httpx.AsyncByteStream):
+def _encoded_response(encoded: bytes, encoding: str, *, chunk_size: int = 32) -> httpx.Response:
+    class EncodedBody(httpx.AsyncByteStream):
         async def __aiter__(self):
-            for offset in range(0, len(compressed), 32):
-                yield compressed[offset : offset + 32]
+            for offset in range(0, len(encoded), chunk_size):
+                yield encoded[offset : offset + chunk_size]
 
     return httpx.Response(
         200,
         headers={
             "Content-Type": "image/png",
-            "Content-Encoding": "gzip",
-            "Content-Length": str(len(compressed)),
+            "Content-Encoding": encoding,
+            "Content-Length": str(len(encoded)),
         },
-        stream=CompressedBody(),
+        stream=EncodedBody(),
     )
 
 
-async def test_avatar_proxy_decodes_gzip_image_and_caches_decoded_bytes(monkeypatch):
+@pytest.mark.parametrize(
+    ("encoding", "compress"),
+    [("identity", bytes), ("gzip", gzip.compress), ("deflate", zlib.compress)],
+)
+async def test_avatar_proxy_requests_identity_and_caches_decoded_image(
+    monkeypatch, encoding, compress
+):
     image = BytesIO()
     Image.new("RGB", (2, 2), color=(23, 45, 67)).save(image, format="PNG")
     fetches = 0
 
-    @asynccontextmanager
-    async def stream(*_args, **_kwargs):
+    def upstream(request):
         nonlocal fetches
         fetches += 1
-        response = _gzip_response(image.getvalue())
-        try:
-            yield response
-        finally:
-            await response.aclose()
+        assert request.headers["accept-encoding"] == "identity"
+        return _encoded_response(compress(image.getvalue()), encoding)
 
-    monkeypatch.setattr(sources, "safe_stream_get", stream)
+    async def validate_url(url):
+        return url
+
+    client = url_safety.PublicAsyncClient(transport=httpx.MockTransport(upstream))
+    monkeypatch.setattr(sources, "PublicAsyncClient", lambda **kwargs: client)
+    monkeypatch.setattr(url_safety, "validate_public_http_url", validate_url)
     source = SimpleNamespace(id=uuid4(), avatar_url="https://images.example/avatar")
     user = SimpleNamespace(id=uuid4())
     response = await sources.proxy_source_avatar(
@@ -280,13 +288,18 @@ async def test_avatar_proxy_decodes_gzip_image_and_caches_decoded_bytes(monkeypa
     assert sources._avatar_cache[source.id].content == image.getvalue()
 
 
+@pytest.mark.parametrize(
+    "encoding, compress", [("gzip", gzip.compress), ("deflate", zlib.compress)]
+)
 @pytest.mark.parametrize("extra_bytes", [0, 1])
-async def test_avatar_gzip_limit_counts_decoded_bytes(monkeypatch, extra_bytes):
+async def test_avatar_compression_limit_counts_decoded_bytes(
+    monkeypatch, extra_bytes, encoding, compress
+):
     body = b"x" * (sources._MAX_AVATAR_BYTES + extra_bytes)
 
     @asynccontextmanager
     async def stream(*_args, **_kwargs):
-        response = _gzip_response(body)
+        response = _encoded_response(compress(body), encoding)
         assert int(response.headers["content-length"]) < sources._MAX_AVATAR_BYTES
         try:
             yield response
@@ -313,3 +326,78 @@ async def test_avatar_gzip_limit_counts_decoded_bytes(monkeypatch, extra_bytes):
             session=_Session(source),
         )
         assert response.status_code == 200 and response.body == body
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+async def test_avatar_compression_bomb_has_bounded_peak_allocation(encoding):
+    # Produce a 64 MiB expansion without allocating that body, then deliver the
+    # compressed bytes in one network chunk. Measure only the production reader.
+    compressor = zlib.compressobj(wbits=31 if encoding == "gzip" else 15)
+    block = b"x" * (64 * 1024)
+    encoded = b"".join(compressor.compress(block) for _ in range(1024)) + compressor.flush()
+    assert len(encoded) <= 64 * 1024
+    response = _encoded_response(encoded, encoding, chunk_size=len(encoded))
+    tracemalloc.start()
+    try:
+        with pytest.raises(sources._AvatarUnavailableError):
+            await sources._read_avatar_bytes(response)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+        await response.aclose()
+    # Allow bounded accumulator/decoder overhead, not a materialized 64 MiB body.
+    assert peak < 2 * sources._MAX_AVATAR_BYTES
+
+
+@pytest.mark.parametrize(
+    "encoding, encoded",
+    [
+        ("br", b"unsupported"),
+        ("zstd", b"unsupported"),
+        ("gzip, deflate", b"unsupported"),
+        ("unknown", b"unsupported"),
+        ("gzip", b"invalid"),
+        ("deflate", b"invalid"),
+        ("gzip", gzip.compress(b"avatar")[:-1]),
+        ("deflate", zlib.compress(b"avatar")[:-1]),
+        ("gzip", gzip.compress(b"avatar") + b"garbage"),
+        ("deflate", zlib.compress(b"avatar") + b"garbage"),
+    ],
+)
+async def test_avatar_proxy_rejects_unsupported_or_incomplete_encoding(
+    monkeypatch, encoding, encoded
+):
+    @asynccontextmanager
+    async def stream(*_args, **_kwargs):
+        response = _encoded_response(encoded, encoding)
+        try:
+            yield response
+        finally:
+            await response.aclose()
+
+    monkeypatch.setattr(sources, "safe_stream_get", stream)
+    source = SimpleNamespace(id=uuid4(), avatar_url="https://images.example/avatar")
+    with pytest.raises(HTTPException) as caught:
+        await sources.proxy_source_avatar(
+            source.id,
+            _request(),
+            current_user=SimpleNamespace(id=uuid4()),
+            session=_Session(source),
+        )
+    assert caught.value.status_code == 502
+    assert source.id not in sources._avatar_cache
+
+
+@pytest.mark.parametrize("extra_bytes", [0, 1])
+async def test_avatar_concatenated_gzip_members_share_one_decoded_limit(extra_bytes):
+    body = b"x" * sources._MAX_AVATAR_BYTES
+    encoded = gzip.compress(body) + gzip.compress(b"x" * extra_bytes)
+    response = _encoded_response(encoded, "gzip", chunk_size=len(encoded))
+    try:
+        if extra_bytes:
+            with pytest.raises(sources._AvatarUnavailableError):
+                await sources._read_avatar_bytes(response)
+        else:
+            assert await sources._read_avatar_bytes(response) == body
+    finally:
+        await response.aclose()

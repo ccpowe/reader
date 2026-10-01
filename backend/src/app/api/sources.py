@@ -6,6 +6,7 @@ import base64
 import binascii
 import json
 import logging
+import zlib
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime
@@ -431,7 +432,9 @@ async def proxy_source_avatar(
     _avatar_cache.pop(source_id, None)
     try:
         async with PublicAsyncClient(follow_redirects=True, timeout=15.0) as client:
-            async with safe_stream_get(client, avatar_url, timeout=15.0) as upstream:
+            async with safe_stream_get(
+                client, avatar_url, timeout=15.0, headers={"Accept-Encoding": "identity"}
+            ) as upstream:
                 if upstream.status_code != status.HTTP_200_OK:
                     raise _AvatarUnavailableError
                 content_type = _safe_avatar_content_type(upstream.headers.get("content-type"))
@@ -489,12 +492,40 @@ def _content_length(value: str | None) -> int | None:
 
 
 async def _read_avatar_bytes(upstream: httpx.Response) -> bytes:
-    """Bound the decoded image body, not its compressed transfer representation."""
+    """Bound allocations while decoding, before compressed input can expand."""
+    encoding = upstream.headers.get("content-encoding", "identity").strip().lower()
+    if encoding not in {"", "identity", "gzip", "deflate"}:
+        raise _AvatarUnavailableError
+    wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+    decoder = zlib.decompressobj(wbits) if encoding in {"gzip", "deflate"} else None
     content = bytearray()
-    async for chunk in upstream.aiter_bytes(chunk_size=64 * 1024):
-        if len(content) + len(chunk) > _MAX_AVATAR_BYTES:
+    wire_bytes = 0
+    chunk_size = 64 * 1024
+    try:
+        async for raw in upstream.aiter_raw(chunk_size=chunk_size):
+            wire_bytes += len(raw)
+            if wire_bytes > _MAX_AVATAR_BYTES:
+                raise _AvatarUnavailableError
+            if decoder is None:
+                content.extend(raw)
+                continue
+            while raw:
+                if decoder.eof:
+                    # Gzip permits concatenated members; deflate does not.
+                    if encoding != "gzip":
+                        raise _AvatarUnavailableError
+                    decoder = zlib.decompressobj(wbits)
+                decoded = decoder.decompress(
+                    raw, min(chunk_size, _MAX_AVATAR_BYTES - len(content) + 1)
+                )
+                if len(content) + len(decoded) > _MAX_AVATAR_BYTES:
+                    raise _AvatarUnavailableError
+                content.extend(decoded)
+                raw = decoder.unused_data if decoder.eof else decoder.unconsumed_tail
+        if decoder is not None and not decoder.eof:
             raise _AvatarUnavailableError
-        content.extend(chunk)
+    except zlib.error as exc:
+        raise _AvatarUnavailableError from exc
     return bytes(content)
 
 
