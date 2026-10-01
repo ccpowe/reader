@@ -254,6 +254,8 @@ flowchart LR
 
 `get_ranking` 先从共享 SQL 快照读取；缓存不存在或显式刷新才走带持久租约的上游请求（独立 Worker 也调用同一 `sync_due_ranking_snapshots`／`create_or_refresh_snapshot` 源码，在自己的进程实例中执行，不是 API 调 Worker）。发布 Reddit **hot** 快照时，最多前十项转成持久候选；首批是 baseline，随后发现的新条目才计更新，真正的 `Content`／`SourceEntry` 由 Worker 候选处理提交。其他榜单项在仅浏览时不入 `Content`：`save_ranking` 从实际快照按 URL 确认项目，优先复用当前用户可访问的内容，否则物化新条目并写本人 `UserSavedContent`；新物化 Reddit 使用同一社区来源，HN/GitHub 使用不供订阅的归档来源。普通信息流必须经过本人启用的订阅筛选；收藏分页能保留订阅失效后已收藏的内容。依据：[api/feed.py（`_query_feed_page`、`get_article`）](../backend/src/app/api/feed.py)、[api/rankings.py（`get_ranking`、`_ranking_response`）](../backend/src/app/api/rankings.py)、[services/ranking_snapshots.py（`get_snapshot`、`create_or_refresh_snapshot`、`sync_due_ranking_snapshots`、`_publish_snapshot`、`_enqueue_reddit_hot_admissions`）](../backend/src/app/services/ranking_snapshots.py)、[ingestion/candidate_queue.py（`upsert_candidates`）](../backend/src/app/ingestion/candidate_queue.py)、[workers/candidates.py（`process_candidates`）](../backend/src/app/workers/candidates.py)、[api/saved.py（`save_content`、`save_ranking`、`_query_saved_page`）](../backend/src/app/api/saved.py)、[services/ranking_saved.py（`persist_ranking_item`）](../backend/src/app/services/ranking_saved.py)。
 
+信息流与收藏分页的 cursor 都在查询前校验键集边界：时间戳必须带时区，UUID 字段必须是可解析的字符串；JSON 数字、空值、数组或对象不能隐式当 UUID 使用，均按既有无效游标契约返回 422，不进入数据库查询。
+
 ## 频道更新高水位与确认游标
 
 ```mermaid

@@ -359,7 +359,10 @@ def _decode_feed_cursor(value: str) -> tuple[datetime, UUID]:
         cursor_at = datetime.fromisoformat(payload["at"])
         if cursor_at.tzinfo is None or cursor_at.utcoffset() is None:
             raise ValueError("feed cursor timestamp must include a timezone")
-        return cursor_at.astimezone(UTC), UUID(payload["entry_id"])
+        entry_id = payload["entry_id"]
+        if not isinstance(entry_id, str):
+            raise ValueError("feed cursor entry ID must be a string")
+        return cursor_at.astimezone(UTC), UUID(entry_id)
     except (binascii.Error, KeyError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid feed cursor."
