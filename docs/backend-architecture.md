@@ -465,6 +465,8 @@ flowchart LR
 
 选择点是 [RuleAgentContext.get_browser](../backend/src/app/web_rule_agent/context.py) 和 [web_crawl.crawl_page](../backend/src/app/ingestion/web_crawl.py) 的 `render_js` 分支；**静态页面**仍经 `PublicHTTPStrategy` 的 HTTP 路径，不创建浏览器任务；无正常 Chromium 自动回退。本机探索由 [CLIBrowserSession](../backend/src/app/web_rule_agent/cli_browser.py) 保留一任务内 CLI＋[CDPBridge](../backend/src/app/web_rule_agent/cli_bridge.py)＋[browser_endpoint](../backend/src/app/ingestion/browser_runtime.py) 的 Lightpanda，bubblewrap 隔离；动态试跑／周期扫描另起独立 render endpoint，不改变探索会话。容器路径 [BrowserTaskClient／RemoteCLIBrowserSession／render_page_with_browser_task](../backend/src/app/browser_tasks/client.py) 则以 runtime fingerprint 请求 `explore` 或一次性 `render`，Worker 只获得 adapter endpoint、capability，不访问 Docker socket。[manager_app.create_app](../backend/src/app/browser_tasks/manager_app.py) 校验控制 bearer，[BrowserTaskController._create_resources](../backend/src/app/browser_tasks/controller.py) 建控制卷、初始化容器、无 IP 网络 browser、独立 adapter；[AdapterRuntime](../backend/src/app/browser_tasks/adapter_runtime.py) 校验 capability/task/purpose，并在 adapter 侧经固定 Unix socket relay、`safe_get` 与 robots 控制页面传输。browser 无原生联网能力；adapter 经受限公网校验对站点请求，CLI 的可导航 URL 只从最终已展示证据授权。Manager 与 [BrowserTaskReaper](../backend/src/app/browser_tasks/reaper.py) 共用本地 SQLite 生命周期事实及 Docker 标签回收，但只有 Manager 持控制 bearer／capability HMAC key；Reaper 不开放模型／页面接口。[协议：TaskPurpose／RuntimeIdentity](../backend/src/app/browser_tasks/protocol.py)。
 
+`RuleAgentContext` 只从最终交付的同源链接累积导航许可，接纳时同时遵守 `browser_tasks.protocol` 的 `MAX_OBSERVED_URLS` 和 `MAX_OBSERVED_URL_CHARS`。总字符按协议 URL 规范化后的表示计数，重复观察不重复占额度；超限链接不授予导航许可，后续命令的 `observed_urls` 保持可编码。
+
 ## 浏览器任务生命周期（仅配置容器模式）
 
 ```mermaid

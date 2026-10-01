@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
+from pydantic import AnyHttpUrl
+
+from app.browser_tasks.protocol import MAX_OBSERVED_URL_CHARS, MAX_OBSERVED_URLS
 from app.core.settings import Settings
 from app.ingestion import web_rules
 from app.ingestion.models import SourceScanError
@@ -338,15 +341,28 @@ class RuleAgentContext:
     def _remember_links(self, report: dict) -> None:
         # Parse only the bytes actually delivered, never the unbounded DOM.
         source = urlsplit(self.claim.source_url)
+        observed_chars = sum(len(str(AnyHttpUrl(url))) for url in self.observed_pages.values())
         for target in visible_links(report):
+            if len(self.observed_pages) >= MAX_OBSERVED_URLS:
+                break
+            if target in self.observed_pages:
+                continue
             parsed = urlsplit(target)
             if (
                 (parsed.scheme, parsed.netloc.lower()) == (source.scheme, source.netloc.lower())
                 and parsed.username is None
                 and parsed.password is None
-                and len(self.observed_pages) < 200
             ):
+                # The protocol counts URL-normalized characters, including
+                # percent-encoded non-ASCII paths, rather than raw HTML length.
+                try:
+                    target_chars = len(str(AnyHttpUrl(target)))
+                except ValueError:
+                    continue
+                if observed_chars + target_chars > MAX_OBSERVED_URL_CHARS:
+                    continue
                 self.observed_pages[target] = target
+                observed_chars += target_chars
 
     async def schema(self) -> dict:
         async with self.lock:

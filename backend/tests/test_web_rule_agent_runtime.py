@@ -746,6 +746,65 @@ async def test_malformed_page_links_do_not_abort_preflight(monkeypatch):
     assert "page_ref" not in result
 
 
+@pytest.mark.parametrize("limit", ["count", "ascii_chars", "unicode_chars"])
+async def test_observed_links_remain_within_protocol_budget_across_inspections(limit):
+    from pydantic import AnyHttpUrl
+
+    from app.browser_tasks.protocol import (
+        MAX_OBSERVED_URL_CHARS,
+        MAX_OBSERVED_URLS,
+        CLICommandRequest,
+    )
+
+    if limit == "count":
+        urls = [f"https://example.com/post/{index}" for index in range(MAX_OBSERVED_URLS + 1)]
+        reports = [urls]
+        accepted = urls[:MAX_OBSERVED_URLS]
+    else:
+        urls = []
+        for index in range(MAX_OBSERVED_URL_CHARS // 2048 + 1):
+            prefix = f"https://example.com/{index}/"
+            suffix = "中" * 200 if limit == "unicode_chars" else ""
+            padding = 2048 - len(str(AnyHttpUrl(prefix + suffix)))
+            urls.append(prefix + suffix + "a" * padding)
+        # Each delivered report fits the CLI output limit. Duplicates seen again
+        # must not consume characters needed by later links.
+        reports = [[urls[0], *urls[start : start + 4]] for start in range(0, len(urls), 4)]
+        accepted = urls[:-1]
+    reports.append([])
+    remaining = iter(reports)
+    requests = []
+
+    class ProtocolBrowser:
+        async def command(self, argv, *, observed_urls):
+            requests.append(
+                CLICommandRequest(
+                    request_id=uuid4(),
+                    task_id=uuid4(),
+                    argv=argv,
+                    observed_urls=list(observed_urls),
+                )
+            )
+            return {
+                "status": "ok",
+                "format": "html",
+                "url": "https://example.com/blog",
+                "output": "".join(f'<a href="{url}">post</a>' for url in next(remaining)),
+                "page_revision": None,
+                "error": None,
+            }
+
+    context = make_context()
+    context.browser = ProtocolBrowser()
+    for _ in reports:
+        await context.inspect(argv=["snapshot"])
+    assert list(context.observed_pages.values()) == accepted
+    assert [str(url) for url in requests[-1].observed_urls] == [
+        str(AnyHttpUrl(url)) for url in accepted
+    ]
+    assert urls[-1] not in context.observed_pages
+
+
 @pytest.mark.parametrize("source", ["cli", "wrapper"])
 async def test_correctable_inspection_error_reaches_model_for_correction(monkeypatch, source):
     async def inspect(**kwargs):
