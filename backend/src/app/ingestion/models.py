@@ -107,6 +107,9 @@ class DiscoveredContent:
             observation=ContentObservation(payload["observation"]),
         )
 
+    # Mark only missing publication dates: filling one must reach the queue, but
+    # relative-date jitter must not look like an edit. Dated items keep exactly
+    # the installed hash encoding, avoiding a full checkpoint/queue invalidation.
     def material_hash(self) -> str:
         """Hash reader-visible fields, excluding volatile rank/engagement counters."""
         stable_metadata = _stable_metadata(self.raw_metadata)
@@ -137,6 +140,8 @@ class DiscoveredContent:
                 for media in self.media
             ],
         }
+        if self.published_at is None:
+            material["published_at_missing"] = True
         encoded = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 

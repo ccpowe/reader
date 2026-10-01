@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -11,6 +11,7 @@ from app.ingestion.models import (
     ContentAvailability,
     ContentObservation,
     DiscoveredContent,
+    DiscoveredMedia,
     checkpoint_for_items,
 )
 
@@ -23,6 +24,31 @@ def _item(native_id: str, title: str) -> DiscoveredContent:
         external_url=f"https://example.com/{native_id}",
         published_at=None,
     )
+
+
+def test_dated_material_hash_preserves_installed_digest_and_ignores_date_jitter() -> None:
+    item = DiscoveredContent(
+        native_id="existing",
+        kind=ContentKind.ARTICLE,
+        title="既有条目",
+        external_url="https://example.com/existing",
+        published_at=datetime(2024, 1, 2, tzinfo=UTC),
+        author_name="Author",
+        excerpt_html="<p>Existing body</p>",
+        raw_metadata={"section": "tech", "score": 42},
+        media=(
+            DiscoveredMedia(original_url="https://example.com/image.png", mime_type="image/png"),
+        ),
+        source_updated_at=datetime(2024, 1, 3, tzinfo=UTC),
+    )
+    # Captured from the installed algorithm before the missing-date marker.
+    installed_digest = "bf81a64036155282c582724b6c3de0c54c0f512e6c06632e23423b2b4939b47e"
+    assert item.material_hash() == installed_digest
+    assert (
+        replace(item, published_at=item.published_at + timedelta(days=1)).material_hash()
+        == installed_digest
+    )
+    assert replace(item, published_at=None).material_hash() != installed_digest
 
 
 def test_material_hash_tracks_explicit_policy_not_metadata_control_keys() -> None:

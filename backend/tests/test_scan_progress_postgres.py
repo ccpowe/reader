@@ -1,5 +1,6 @@
 """Scanner progress and candidate admission remain one durable transition."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -10,8 +11,10 @@ from test_candidate_recovery_postgres import _database
 
 from app.core.settings import get_settings
 from app.domain.enums import ContentKind, SyncPhase, SyncRunStatus
-from app.ingestion.models import DiscoveredContent, SourceScanPage
+from app.ingestion.candidate_queue import upsert_candidates
+from app.ingestion.models import DiscoveredContent, SourceScanPage, checkpoint_for_items
 from app.storage.models import (
+    Content,
     FeedSource,
     IngestionCandidate,
     SourceEntry,
@@ -71,6 +74,76 @@ async def _scan(factory, source_id, adapter, monkeypatch):
         await session.commit()
     monkeypatch.setattr(sync, "_build_adapter", lambda *_args, **_kwargs: adapter)
     await sync.scan_claimed_source(factory, sync.SourceClaim(source_id, token))
+
+
+async def test_scanning_fills_publication_date_once_without_resorting(monkeypatch):
+    async with _database() as (factory, source_id):
+        async with factory() as session:
+            session.add(SourceSyncState(source_id=source_id))
+            await session.commit()
+
+        async def scan_item(item):
+            page = SourceScanPage(
+                items=(item,),
+                provider_mode="rss",
+                raw_items=1,
+                completed=True,
+                checkpoint=checkpoint_for_items((item,)),
+            )
+            await _scan(factory, source_id, _Pages(factory, page), monkeypatch)
+            async with factory() as session:
+                run = await session.scalar(
+                    select(SourceSyncRun)
+                    .where(SourceSyncRun.source_id == source_id)
+                    .order_by(SourceSyncRun.started_at.desc())
+                    .limit(1)
+                )
+                return run.metrics
+
+        undated = replace(_item(str(source_id)), published_at=None)
+        assert (await scan_item(undated))["candidates_changed"] == 1
+        assert await candidates.process_candidates(factory) == 1
+        async with factory() as session:
+            entry = await session.scalar(
+                select(SourceEntry).where(SourceEntry.source_id == source_id)
+            )
+            content_id = entry.content_id
+            original_sort = entry.feed_sort_at
+            assert entry.published_at is None
+            assert (await session.get(Content, content_id)).published_at is None
+
+        dated = replace(undated, published_at=datetime(2024, 1, 2, tzinfo=UTC))
+        assert (await scan_item(dated))["candidates_changed"] == 1
+        assert await candidates.process_candidates(factory) == 1
+        async with factory() as session:
+            entry = await session.scalar(
+                select(SourceEntry).where(SourceEntry.source_id == source_id)
+            )
+            assert entry.published_at == dated.published_at
+            assert (await session.get(Content, content_id)).published_at == dated.published_at
+            assert entry.feed_sort_at == original_sort
+
+        jittered = replace(dated, published_at=dated.published_at + timedelta(hours=1))
+        metrics = await scan_item(jittered)
+        assert (metrics["candidates_changed"], metrics["duplicates"]) == (0, 1)
+        assert await candidates.process_candidates(factory) == 0
+        async with factory() as session:
+            # Also exercise payload_hash deduplication without a scanner checkpoint.
+            outcome = await upsert_candidates(
+                session,
+                source_id=source_id,
+                items=(jittered,),
+                observed_at=datetime.now(UTC),
+                max_changes=10,
+            )
+            assert (outcome.changed, outcome.duplicates) == (0, 1)
+            await session.commit()
+            entry = await session.scalar(
+                select(SourceEntry).where(SourceEntry.source_id == source_id)
+            )
+            assert entry.published_at == dated.published_at
+            assert (await session.get(Content, content_id)).published_at == dated.published_at
+            assert entry.feed_sort_at == original_sort
 
 
 async def test_candidate_cap_replays_backlog_and_delayed_baseline_stays_non_update(monkeypatch):

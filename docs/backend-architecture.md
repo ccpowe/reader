@@ -371,6 +371,8 @@ flowchart TD
 
 [20260925_30 候选语义迁移](../backend/migrations/versions/20260925_30_candidate_semantics.py) 只改已有队列载荷，把旧标记迁到显式字段，保留 `payload_hash`、候选状态、租约、尝试次数和扫描 checkpoint；新运行时要求 `reader-runtime-v26`，旧生产者/消费者不能与新载荷并行读写。
 
+发布日期的去重材料只区分“缺失／已知”：`published_at` 为空时添加 `published_at_missing: true`，已有日期时不添加日期键，保持既有 `item_hashes`／`payload_hash` 编码不变。缺失标记被消除后，候选可补全 `Content` 与 `SourceEntry` 的日期；两个非空日期之间的相对时间抖动不构成内容变更。已入库的 `SourceEntry.feed_sort_at` 仍不随补日期或候选重处理而改变，不批量重写既有哈希或排序。
+
 <a id="rule-author"></a>
 
 ## 网页规则 Agent：调用与权限归属
