@@ -70,14 +70,15 @@ class ScanProgress:
                 if isinstance(context.get("latest_checkpoint"), dict)
                 else self.pending or self.committed
             )
+            # Durable work owns the budget first; a fresh head must not starve it.
             self.tasks = [
+                *(dict(task) for task in context.get("tasks", []) if isinstance(task, dict)),
                 {
                     "lane": "head",
                     "cursor": _RESTART_CURSOR,
                     "checkpoint": self.latest_checkpoint,
                     "fresh": True,
                 },
-                *(dict(task) for task in context.get("tasks", []) if isinstance(task, dict)),
             ]
 
     def next_request(self) -> SourceScanRequest | None:
@@ -247,7 +248,8 @@ class ScanProgress:
         state.pending_checkpoint = self.pending or self.latest_checkpoint
         state.continuation = {
             "latest_checkpoint": self.latest_checkpoint,
-            "tasks": [_serializable_task(value) for value in self.tasks],
+            # An unvisited fresh head is regenerated next run, not accumulated.
+            "tasks": [_serializable_task(value) for value in self.tasks if not value.get("fresh")],
         }
         state.phase = SyncPhase.CATCHING_UP
         state.provider_mode = page.provider_mode

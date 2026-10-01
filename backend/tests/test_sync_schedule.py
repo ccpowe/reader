@@ -15,17 +15,14 @@ from app.domain.enums import (
     SourceKind,
     SourceStatus,
     SyncPhase,
-    SyncRunStatus,
     TranslationPriority,
     TranslationPurpose,
 )
-from app.ingestion.candidate_queue import CandidateUpsertResult
 from app.ingestion.models import (
     ContentAvailability,
     DiscoveredContent,
     DiscoveredMedia,
     SourceScanError,
-    SourceScanPage,
 )
 from app.ingestion.url_safety import PublicAsyncClient
 from app.services import scan_state
@@ -146,85 +143,6 @@ async def test_candidate_claim_query_locks_only_the_candidate_table() -> None:
     assert "row_number() OVER" in compiled
     assert "FOR UPDATE OF ingestion_candidates SKIP LOCKED" in compiled
     session.commit.assert_awaited_once()
-
-
-def _scan_progress(
-    *,
-    kind=SourceKind.RSS,
-    initial=False,
-    committed=None,
-    pending=None,
-    continuation=None,
-    phase=SyncPhase.IDLE,
-    max_changes=40,
-):
-    source = SimpleNamespace(
-        kind=kind,
-        canonical_url="https://example.com/rss.xml",
-        config={},
-        status=SourceStatus.PENDING,
-    )
-    state = SimpleNamespace(
-        initial_sync_completed=not initial,
-        committed_checkpoint=committed or {},
-        pending_checkpoint=pending or {},
-        continuation=continuation,
-        phase=phase,
-        provider_mode=None,
-        last_complete_at=None,
-        last_attempt_at=None,
-        gap_detected=False,
-        gap_details=None,
-        last_error_code=None,
-        last_error_message=None,
-        consecutive_failures=0,
-        consecutive_limit_runs=0,
-        web_rule_structural_failures=0,
-        lease_token=uuid4(),
-        lease_expires_at=datetime.now(UTC) + timedelta(minutes=5),
-        next_scan_at=None,
-    )
-    run = SimpleNamespace(metrics={}, status=SyncRunStatus.RUNNING, provider_mode=None)
-    progress = scan_state.ScanProgress(
-        source=source,
-        state=state,
-        max_pages=4,
-        max_raw_items=120,
-        max_changes=max_changes,
-        max_response_bytes=1024,
-    )
-    return progress, source, state, run
-
-
-def test_degraded_scan_resumes_fresh_head_before_backlog() -> None:
-    previous = {"head_ids": ["old"]}
-    progress, source, state, run = _scan_progress(
-        committed=previous,
-        pending={"head_ids": ["prior-head"]},
-        phase=SyncPhase.DEGRADED,
-        continuation={
-            "latest_checkpoint": {"head_ids": ["prior-head"]},
-            "tasks": [{"lane": "backlog", "cursor": {"page": 2}, "checkpoint": previous}],
-        },
-    )
-    request = progress.next_request()
-    assert request.checkpoint == {"head_ids": ["prior-head"]}
-    assert request.continuation is None and not request.conditional
-    page = SourceScanPage(
-        items=(), provider_mode="rss", raw_items=1, completed=True, checkpoint={"head_ids": ["new"]}
-    )
-    assert (
-        progress.apply_page(
-            state, source, run, page, CandidateUpsertResult(1, 0, 1, False), datetime.now(UTC)
-        )
-        == scan_state.PageDisposition.CONTINUE
-    )
-    request = progress.next_request()
-    assert request.checkpoint == previous
-    assert request.continuation == {"page": 2}
-    assert state.phase == SyncPhase.CATCHING_UP
-    assert state.pending_checkpoint == {"head_ids": ["prior-head"]}
-    assert state.continuation["latest_checkpoint"] == {"head_ids": ["new"]}
 
 
 @pytest.mark.asyncio

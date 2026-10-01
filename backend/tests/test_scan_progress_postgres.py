@@ -104,10 +104,6 @@ async def test_candidate_cap_replays_backlog_and_delayed_baseline_stays_non_upda
         monkeypatch.setattr(settings, "ingestion_max_items_per_sync", 40)
         resumed = _Pages(factory, head, head)
         await _scan(factory, source_id, resumed, monkeypatch)
-        assert [request.checkpoint["head_ids"] for request in resumed.requests] == [
-            ["new-a", "new-b"],
-            ["baseline"],
-        ]
         async with factory() as session:
             state = await session.get(SourceSyncState, source_id)
             assert state.phase == SyncPhase.IDLE
@@ -169,11 +165,10 @@ async def test_degraded_fallback_retains_backlog_and_authoritative_commit_keeps_
         latest = {"data_api": {"head_ids": ["fresh"]}, "atom": {"head_ids": ["old-atom"]}}
         resumed = _Pages(
             factory,
-            _page(completed=True, checkpoint=latest),
             _page(completed=True, checkpoint=committed),
+            _page(completed=True, checkpoint=latest),
         )
         await _scan(factory, source_id, resumed, monkeypatch)
-        assert [request.continuation for request in resumed.requests] == [None, {"page": "history"}]
         assert all(not request.conditional for request in resumed.requests)
         async with factory() as session:
             state = await session.get(SourceSyncState, source_id)
@@ -354,6 +349,92 @@ async def test_scan_budget_saves_continuation_without_advancing_committed_head(m
                     )
                 )
             ) == {f"new-{index}" for index in range(10)}
+
+
+@pytest.mark.parametrize("limit", ["pages", "raw_items", "candidates"])
+async def test_backlog_advances_across_budget_limited_runs_before_fresh_head(monkeypatch, limit):
+    setting, budget = {
+        "pages": ("ingestion_max_pages_per_sync", 1),
+        "raw_items": ("ingestion_raw_items_per_sync", 2),
+        "candidates": ("ingestion_max_items_per_sync", 2),
+    }[limit]
+    monkeypatch.setattr(get_settings(), setting, budget)
+    committed = {"head_ids": ["known"]}
+    pending = {"head_ids": ["prior-head"]}
+    async with _database() as (factory, source_id):
+        async with factory() as session:
+            session.add(
+                SourceSyncState(
+                    source_id=source_id,
+                    initial_sync_completed=True,
+                    committed_checkpoint=committed,
+                    pending_checkpoint=pending,
+                    phase=SyncPhase.DEGRADED,
+                    continuation={
+                        "latest_checkpoint": pending,
+                        "tasks": [
+                            {"lane": "backlog", "cursor": {"page": 1}, "checkpoint": committed}
+                        ],
+                    },
+                )
+            )
+            await session.commit()
+
+        class History:
+            async def scan_page(self, request):
+                if request.continuation is None:
+                    return _page("fresh-a", "fresh-b", completed=True)
+                number = request.continuation["page"]
+                return _page(
+                    f"history-{number}-a",
+                    f"history-{number}-b",
+                    completed=number == 2,
+                    next_continuation={"page": number + 1} if number < 2 else None,
+                )
+
+        for number in (1, 2):
+            await _scan(factory, source_id, History(), monkeypatch)
+            async with factory() as session:
+                state = await session.get(SourceSyncState, source_id)
+                assert state.committed_checkpoint == committed
+                tasks = state.continuation["tasks"]
+                assert tasks == (
+                    [{"lane": "backlog", "cursor": {"page": 2}, "checkpoint": committed}]
+                    if number == 1
+                    else []
+                )
+                admitted = set(
+                    await session.scalars(
+                        select(IngestionCandidate.native_id).where(
+                            IngestionCandidate.source_id == source_id
+                        )
+                    )
+                )
+                assert admitted == {
+                    f"history-{page}-{suffix}"
+                    for page in range(1, number + 1)
+                    for suffix in ("a", "b")
+                }
+        await _scan(factory, source_id, History(), monkeypatch)
+        async with factory() as session:
+            state = await session.get(SourceSyncState, source_id)
+            assert state.continuation is None
+            assert state.committed_checkpoint["head_ids"] == ["fresh-a", "fresh-b"]
+            assert state.phase == SyncPhase.IDLE
+            assert set(
+                await session.scalars(
+                    select(IngestionCandidate.native_id).where(
+                        IngestionCandidate.source_id == source_id
+                    )
+                )
+            ) == {
+                "history-1-a",
+                "history-1-b",
+                "history-2-a",
+                "history-2-b",
+                "fresh-a",
+                "fresh-b",
+            }
 
 
 async def test_invalid_provider_cursor_restarts_backlog_without_losing_checkpoints(monkeypatch):
