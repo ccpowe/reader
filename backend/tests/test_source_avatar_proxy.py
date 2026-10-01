@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import gzip
 from contextlib import asynccontextmanager
+from io import BytesIO
 from types import SimpleNamespace
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi import HTTPException
+from PIL import Image
 from starlette.requests import Request
 
 from app.api import sources
@@ -42,8 +46,7 @@ class _Upstream:
         self.chunks = chunks
         self.iterated = False
 
-    async def aiter_raw(self, *, chunk_size: int):
-        assert chunk_size == 64 * 1024
+    async def aiter_bytes(self, *, chunk_size: int):
         self.iterated = True
         for chunk in self.chunks:
             yield chunk
@@ -220,3 +223,93 @@ async def test_avatar_proxy_releases_transaction_before_external_io(monkeypatch)
     )
     assert response.body == b"avatar"
     assert not session.active_transaction
+
+
+def _gzip_response(body: bytes) -> httpx.Response:
+    compressed = gzip.compress(body)
+
+    class CompressedBody(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for offset in range(0, len(compressed), 32):
+                yield compressed[offset : offset + 32]
+
+    return httpx.Response(
+        200,
+        headers={
+            "Content-Type": "image/png",
+            "Content-Encoding": "gzip",
+            "Content-Length": str(len(compressed)),
+        },
+        stream=CompressedBody(),
+    )
+
+
+async def test_avatar_proxy_decodes_gzip_image_and_caches_decoded_bytes(monkeypatch):
+    image = BytesIO()
+    Image.new("RGB", (2, 2), color=(23, 45, 67)).save(image, format="PNG")
+    fetches = 0
+
+    @asynccontextmanager
+    async def stream(*_args, **_kwargs):
+        nonlocal fetches
+        fetches += 1
+        response = _gzip_response(image.getvalue())
+        try:
+            yield response
+        finally:
+            await response.aclose()
+
+    monkeypatch.setattr(sources, "safe_stream_get", stream)
+    source = SimpleNamespace(id=uuid4(), avatar_url="https://images.example/avatar")
+    user = SimpleNamespace(id=uuid4())
+    response = await sources.proxy_source_avatar(
+        source.id, _request(), current_user=user, session=_Session(source)
+    )
+    assert response.headers["content-type"] == "image/png"
+    assert "content-encoding" not in response.headers
+    with Image.open(BytesIO(response.body)) as decoded:
+        assert decoded.size == (2, 2)
+        assert decoded.getpixel((0, 0)) == (23, 45, 67)
+    cached = await sources.proxy_source_avatar(
+        source.id,
+        _request(etag=response.headers["etag"]),
+        current_user=user,
+        session=_Session(source),
+    )
+    assert cached.status_code == 304 and fetches == 1
+    assert sources._avatar_cache[source.id].content == image.getvalue()
+
+
+@pytest.mark.parametrize("extra_bytes", [0, 1])
+async def test_avatar_gzip_limit_counts_decoded_bytes(monkeypatch, extra_bytes):
+    body = b"x" * (sources._MAX_AVATAR_BYTES + extra_bytes)
+
+    @asynccontextmanager
+    async def stream(*_args, **_kwargs):
+        response = _gzip_response(body)
+        assert int(response.headers["content-length"]) < sources._MAX_AVATAR_BYTES
+        try:
+            yield response
+        finally:
+            await response.aclose()
+
+    monkeypatch.setattr(sources, "safe_stream_get", stream)
+    source = SimpleNamespace(id=uuid4(), avatar_url="https://images.example/avatar")
+    if extra_bytes:
+        with pytest.raises(HTTPException) as caught:
+            await sources.proxy_source_avatar(
+                source.id,
+                _request(),
+                current_user=SimpleNamespace(id=uuid4()),
+                session=_Session(source),
+            )
+        assert caught.value.status_code == 502
+        assert source.id not in sources._avatar_cache
+    else:
+        response = await sources.proxy_source_avatar(
+            source.id,
+            _request(),
+            current_user=SimpleNamespace(id=uuid4()),
+            session=_Session(source),
+        )
+        assert response.status_code == 200 and response.body == body

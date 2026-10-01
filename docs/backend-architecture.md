@@ -168,6 +168,8 @@ flowchart TB
 
 `create_app` 安装部署访问中间件、装配发现路由、版本化路由与独立头像路由；`lifespan` 建立当前 API 进程自己的连接池、`ReaderJWTVerifier`、`AuthService`、翻译资源与限流器。`document_server_token` 只作 OpenAPI 声明，真正校验在路由前的 ASGI `ServerAccessMiddleware`：仅保护发现端点与 `/v1`，不保护 `/avatars`、健康端点；`OPTIONS` 放行。业务路由通过 `get_session` 直接操作 ORM，不存在统一 Repository 或跨进程 RPC。资料上传经 `upload_avatar` 将校验后的图像写入 `ProfileAvatar`，版本化读取由 `get_avatar` 提供；`proxy_source_avatar` 则先核查当前用户订阅，再释放数据库事务并安全代理上游图标，两条媒体路径不能混同。依据：[main.py（`create_app`、`lifespan`）](../backend/src/app/main.py)、[api/router.py（`api_router`）](../backend/src/app/api/router.py)、[core/server_access.py（`ServerAccessMiddleware`）](../backend/src/app/core/server_access.py)、[storage/database.py（`get_session`）](../backend/src/app/storage/database.py)、[api/profile.py（`upload_avatar`）](../backend/src/app/api/profile.py)、[api/avatars.py（`get_avatar`）](../backend/src/app/api/avatars.py)、[api/sources.py（`proxy_source_avatar`）](../backend/src/app/api/sources.py)。
 
+来源头像代理在逐次确认订阅权限后读取上游栅格图片，流式解码 HTTP 内容编码后再执行字节上限检查；缓存、ETag 和响应正文统一基于解码后的图片字节，不把 gzip 传输字节当图片转发。声明长度预检和上游访问安全限制继续保留。[源码：proxy_source_avatar／_read_avatar_bytes](../backend/src/app/api/sources.py)。
+
 ## 部署令牌、用户鉴权与刷新事务
 
 ```mermaid

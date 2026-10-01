@@ -489,9 +489,9 @@ def _content_length(value: str | None) -> int | None:
 
 
 async def _read_avatar_bytes(upstream: httpx.Response) -> bytes:
-    """Read a bounded upstream body without materialising an unlimited response."""
+    """Bound the decoded image body, not its compressed transfer representation."""
     content = bytearray()
-    async for chunk in upstream.aiter_raw(chunk_size=64 * 1024):
+    async for chunk in upstream.aiter_bytes(chunk_size=64 * 1024):
         if len(content) + len(chunk) > _MAX_AVATAR_BYTES:
             raise _AvatarUnavailableError
         content.extend(chunk)
