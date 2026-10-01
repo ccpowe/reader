@@ -281,6 +281,32 @@ async def test_reaper_confirms_missing_resources_against_unchanged_state(
 
 
 @pytest.mark.asyncio
+async def test_reaper_cleans_inconsistent_labels_before_lease_expiry(tmp_path):
+    now = 27_000.0
+    state, running = running_store(tmp_path, task_id="inconsistent", now=now, lease=now + 100)
+    resources = group("inconsistent", now=now)
+    resources[1].labels[f"{LABEL_PREFIX}.owner"] = "different-owner"
+    engine = ReaperEngine(resources)
+    reaper = BrowserTaskReaper(
+        task_config=config(), reaper_config=ReaperConfig(), state=state, engine=engine
+    )
+    assert now < running.lease_expires_at < running.hard_expires_at
+
+    await reaper.run_once(now=now)
+
+    stored = state.get("inconsistent")
+    assert stored.state == "closed"
+    assert stored.cleanup_reason == "resource_set_changed"
+    assert stored.resources_released is True
+    assert engine.resources == {}
+    assert set(engine.removed) == {
+        "inconsistent-browser",
+        "inconsistent-adapter",
+        "inconsistent-volume",
+    }
+
+
+@pytest.mark.asyncio
 async def test_reaper_without_database_uses_only_immutable_failure_fences():
     now = 30_000.0
     active = group("active", now=now)

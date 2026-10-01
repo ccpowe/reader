@@ -488,7 +488,7 @@ stateDiagram-v2
 
 [TaskStateStore.reserve／transition／renew／claim_cleaning／finish_cleanup](../backend/src/app/browser_tasks/state.py) 用 SQLite 短事务、版本 CAS 与 `request_id` 幂等保护控制状态；容量计算同时覆盖未确认释放的资源，`max_explore_tasks` 留出 render 槽。[BrowserTaskController._create／close](../backend/src/app/browser_tasks/controller.py) 将 Docker 外部工作放在状态事务外；任务 `creating` 时按阶段持久更新，只有两容器健康才 `running`。Worker 的 [BrowserTaskSession._heartbeat／_run_guarded／aclose](../backend/src/app/browser_tasks/client.py) 续租／失败后停止使用并尽力关闭；Manager 显式 close 与 [BrowserTaskReaper.run_once](../backend/src/app/browser_tasks/reaper.py) 对硬期限、租约宽限、资源缺失/故障、残留标签资源以竞争 `claim_cleaning` 分工回收。SQLite 暂不可用时 Reaper 只凭不可变标签事实和硬期限等安全条件回收，不凭页面内容推断任务身份。
 
-Reaper 将不完整资源集合判为 `resource_set_changed` 前，按任务标签重新列举资源、检查容器，并确认 SQLite 状态版本未变；初次 Docker 快照可能早于 `creating` → `running`。确认失败或版本变化则留待下一轮，真实缺失仍按既有 CAS 清理；仅重新 inspect 已知容器不能补上初次快照遗漏的资源。
+Reaper 将不完整资源集合判为 `resource_set_changed` 前，按任务标签重新列举资源、检查容器，并确认 SQLite 状态版本未变；初次 Docker 快照可能早于 `creating` → `running`。Docker／SQLite 读取失败或版本变化则留待下一轮；复核后仍缺失的资源，以及因标签不一致而无效的资源组（按空集合判断），均按既有 CAS 清理，不等待租约到期。仅重新 inspect 已知容器不能补上初次快照遗漏的资源。
 
 `BrowserTaskSession._run_guarded` 拥有单次 adapter 操作：操作结束、外层取消或续租监控失败后，必须取消尚未完成的操作并等待其清理，消费已完成任务的异常。共享 heartbeat 属于整个浏览器会话，不随单次操作取消；由会话关闭回收。
 

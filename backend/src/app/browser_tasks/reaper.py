@@ -175,8 +175,6 @@ class BrowserTaskReaper:
             if current is None or current.version != record.version:
                 return
             groups = self._valid_groups(resources)
-            if resources and record.task_id not in groups:
-                return
             hydrated = await self._hydrate_containers(groups.get(record.task_id, []))
             if hydrated is None:
                 return
