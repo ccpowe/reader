@@ -89,6 +89,8 @@ async def resolve_interactive_texts(
         context=context,
         create_work=False,
     )
+    if not context.can_translate or context.engine is None:
+        return InteractiveResolution(projections)
     promotion_items = [
         item
         for item in items
@@ -116,8 +118,6 @@ async def resolve_interactive_texts(
         # hit. For misses it atomically reserves request, user characters,
         # and provider characters before any provider I/O starts.
         await reserve_budget(demands)
-    if not context.can_translate or context.engine is None:
-        return InteractiveResolution(projections)
     if not direct_items:
         return InteractiveResolution(projections)
     if provider is None:

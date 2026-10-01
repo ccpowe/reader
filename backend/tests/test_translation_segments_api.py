@@ -164,38 +164,48 @@ async def test_segment_endpoint_scopes_web_text_and_captions_to_current_user(
 
 
 @pytest.mark.asyncio
-async def test_segments_reserve_request_and_only_actual_miss_characters(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("mode", ["cache_hit", "disabled", "no_engine", "unavailable"])
+async def test_segments_only_reserve_request_for_enabled_cache_hit(
+    monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
     user_id = uuid4()
     current_user = AuthenticatedUser(id=user_id, email=None, claims={})
     context = TranslationContext(
         target_locale="zh-CN",
-        enabled=True,
-        engine=TranslationEngine(
-            engine_id="deepseek-v4-flash",
-            provider_name="deepseek",
-            model_name="deepseek-v4-flash",
+        enabled=mode != "disabled",
+        engine=(
+            TranslationEngine(
+                engine_id="deepseek-v4-flash",
+                provider_name="deepseek",
+                model_name="deepseek-v4-flash",
+            )
+            if mode != "no_engine"
+            else None
         ),
-        engine_label="DeepSeek V4 Flash",
+        engine_available=mode != "unavailable",
+        engine_error_code="engine_unavailable" if mode in {"no_engine", "unavailable"} else None,
     )
     quota = SimpleNamespace(reserve=AsyncMock())
-    seen_demands: list[object] = []
-
-    async def fake_context(*_args, **_kwargs):
-        return context
-
-    async def fake_resolve(_session, items, *, reserve_budget, **_options):
-        seen_demands.extend(items)
-        await reserve_budget([])
-        return InteractiveResolution({})
-
-    monkeypatch.setattr(translation_requests, "get_translation_context", fake_context)
-    monkeypatch.setattr(translation_requests, "resolve_interactive_texts", fake_resolve)
+    monkeypatch.setattr(
+        translation_requests, "get_translation_context", AsyncMock(return_value=context)
+    )
+    if mode == "cache_hit":
+        monkeypatch.setattr(
+            "app.translation.interactive.read_text_translations",
+            AsyncMock(
+                return_value={
+                    "segment": TranslationProjection(
+                        item_id="segment",
+                        source_hash="cached",
+                        target_locale="zh-CN",
+                        status=TranslationStatus.SUCCEEDED,
+                        translated_text="缓存译文",
+                    )
+                }
+            ),
+        )
     payload = translations.ResolveTranslationSegmentsRequest(
-        segments=[
-            _segment("cache-hit", "already cached", "paragraph"),
-        ]
+        segments=[_segment("segment", "already cached", "paragraph")]
     )
     request = SimpleNamespace(
         headers={},
@@ -207,22 +217,25 @@ async def test_segments_reserve_request_and_only_actual_miss_characters(
             )
         ),
     )
-
-    await translations.resolve_translation_segments(
+    response = await translations.resolve_translation_segments(
         payload,
         request=request,
         background_tasks=BackgroundTasks(),
         current_user=current_user,
         session=AsyncMock(),
     )
-
-    quota.reserve.assert_awaited_once_with(
-        user_id,
-        requests=1,
-        actual_miss_chars=0,
-        provider_miss_chars=0,
-    )
-    assert seen_demands[0].text == "already cached"
+    if mode == "cache_hit":
+        quota.reserve.assert_awaited_once_with(
+            user_id,
+            requests=1,
+            actual_miss_chars=0,
+            provider_miss_chars=0,
+        )
+        assert response[0].translated_text == "缓存译文"
+    else:
+        quota.reserve.assert_not_awaited()
+        assert response[0].translated_text is None
+        assert response[0].error_code == context.engine_error_code
 
 
 @pytest.mark.asyncio

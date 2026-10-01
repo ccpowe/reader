@@ -531,14 +531,17 @@ flowchart TD
   segments --> split{"purpose 为 web_segment/caption<br/>或 uses_reader_format?"}
   split -->|"是"| real["RealtimeCoordinator.resolve<br/>只读缓存 + 进程内批次；不创建 Work"]
   split -->|"否"| ordinary["resolve_interactive_texts<br/>先 read_text_translations 并提交"]
-  ordinary --> check{"缓存命中/已有 pending 或 running?"}
-  check -->|"已命中或已有 Work"| ret["直接返回投影；需要时提升低优先级 Work"]
+  ordinary --> enabled{"can_translate 且存在 engine?"}
+  enabled -->|"否"| disabled["返回原文投影；不预留翻译配额"]
+  enabled -->|"是"| check{"缓存命中/已有 pending 或 running?"}
+  check -->|"已命中或已有 Work"| ret["只计请求配额，返回投影；需要时提升低优先级 Work"]
   check -->|"真正缺失/失败"| direct["预留请求及缺失字符配额；有适配器时直译"]
   direct -->|"成功"| delayed["先返回译文；BackgroundTasks 延后写 Artifact"]
   direct -->|"无适配器/可重试错误/超时"| fallback["适用时 ensure_text_translations<br/>提交持久 Work"]
   direct -->|"终态错误"| failed["返回失败投影；不自动开新持久重试周期"]
   real --> response["结束前 fresh context；若路由变化，抹除 web/caption 的旧译文"]
   ret --> response
+  disabled --> response
   delayed --> response
   fallback --> response
   failed --> response
