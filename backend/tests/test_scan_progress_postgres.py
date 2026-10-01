@@ -183,6 +183,72 @@ async def test_degraded_fallback_retains_backlog_and_authoritative_commit_keeps_
             assert state.last_error_code is None and state.last_complete_at is not None
 
 
+@pytest.mark.parametrize("has_backlog", [False, True])
+async def test_truncated_atom_fallback_replays_unadmitted_items(monkeypatch, has_backlog):
+    monkeypatch.setattr(get_settings(), "ingestion_max_items_per_sync", 1)
+    committed = {"data_api": {"head_ids": ["old"]}, "atom": {"head_ids": ["old-atom"]}}
+    pending = {"data_api": {"head_ids": ["head"]}} if has_backlog else {}
+    continuation = (
+        {
+            "latest_checkpoint": pending,
+            "tasks": [{"lane": "backlog", "cursor": {"page": "history"}, "checkpoint": committed}],
+        }
+        if has_backlog
+        else None
+    )
+    atom = _page("a", "b", completed=True).checkpoint
+    fallback = _page(
+        "a",
+        "b",
+        checkpoint={"atom": atom},
+        completed=True,
+        authoritative=False,
+        warning_code="youtube_quota_exhausted",
+    )
+    async with _database() as (factory, source_id):
+        async with factory() as session:
+            session.add(
+                SourceSyncState(
+                    source_id=source_id,
+                    initial_sync_completed=True,
+                    committed_checkpoint=committed,
+                    pending_checkpoint=pending,
+                    continuation=continuation,
+                )
+            )
+            await session.commit()
+        await _scan(factory, source_id, _Pages(factory, fallback), monkeypatch)
+        async with factory() as session:
+            state = await session.get(SourceSyncState, source_id)
+            assert state.committed_checkpoint == committed
+            assert state.continuation == continuation
+            assert state.pending_checkpoint == pending
+            assert state.last_complete_at is None
+            assert state.lease_token is None
+            assert set(
+                await session.scalars(
+                    select(IngestionCandidate.native_id).where(
+                        IngestionCandidate.source_id == source_id
+                    )
+                )
+            ) == {"a"}
+        await _scan(factory, source_id, _Pages(factory, fallback), monkeypatch)
+        async with factory() as session:
+            state = await session.get(SourceSyncState, source_id)
+            assert state.committed_checkpoint == {**committed, "atom": atom}
+            assert state.continuation == continuation
+            assert state.pending_checkpoint == pending
+            assert state.phase == SyncPhase.DEGRADED
+            assert state.last_complete_at is None
+            assert set(
+                await session.scalars(
+                    select(IngestionCandidate.native_id).where(
+                        IngestionCandidate.source_id == source_id
+                    )
+                )
+            ) == {"a", "b"}
+
+
 async def test_page_commit_failure_rolls_back_candidates_and_progress_before_retry(monkeypatch):
     async with _database() as (factory, source_id):
         async with factory() as session:

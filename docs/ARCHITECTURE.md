@@ -88,6 +88,8 @@ Android 阅读宿主使用 `LOAD_NO_CACHE`，并在进程内第一次 WebView �
 
 扫描进度与健康迁移集中在 [scan_state.py](../backend/src/app/services/scan_state.py)：`ScanProgress.next_request`／`apply_page` 管理单次扫描的分页预算与进度，明确返回继续、完成或候选额度耗尽；部分完成与失败操作管理续扫、下次调度及租约释放，不执行 I/O 或提交事务。增量扫描遇到候选额度截断时保留当前页以便重放，不提前推进 committed checkpoint；初扫仍只接纳有界的最新条目作为基线。来源处于 `degraded` 也仍优先恢复已有 continuation，非权威回退不丢弃权威历史任务，之后完成历史扫描时保留独立更新的 Atom 进度。
 
+非权威 Atom 回退只有在整页候选完成接纳后才合并 Atom checkpoint；候选额度截断时保留旧 checkpoint 与已有权威 continuation，以部分完成释放租约，下轮通过候选去重重放未接纳内容，不把回退结果声明为权威覆盖完成。
+
 规则激活、选定 feed 与 feed 失效重探测分别调用明确的扫描重置操作，统一清除旧端点游标和 pending checkpoint，只保留 `head_ids`／`item_hashes` 去重锚点，不改变初扫基线。规则激活释放旧扫描租约并结束旧运行；选定 feed 则保留当前租约以继续本轮扫描。Web 结构故障计数、故障批次及 author／repair 触发由 [web_scan_health.py](../backend/src/app/services/web_scan_health.py) 在调用方事务内处理；它与只读的来源健康查询不同，不负责 Agent 的激活等待与恢复流程。
 
 初次扫描发现的候选在交给异步处理器前会持久标记为基线，之后同步状态先完成也不会把这批历史内容变成频道新增。后续首次进入来源的内容在来源级事务锁内取得更新序号；重复抓取、已有内容的另一上游条目标识以及内容修改不产生新的提醒。Reddit 的首个 `hot` 快照使用同步状态中的持久基线标记，后续快照即使早于首批候选处理完成，也按增量处理。
