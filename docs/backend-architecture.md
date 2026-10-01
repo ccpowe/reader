@@ -656,7 +656,7 @@ flowchart TD
     Loop["_run_cleanup / 一个 Session"] --> Lock["lock_shared_lifecycle<br/>与结果发布共用事务锁"]
     Lock --> Cancel["cancel_obsolete_model_work<br/>有界取消过时路由 Work；活跃租约保留"]
     Cancel --> Retain["purge_retained_contents<br/>按来源保留最新内容；所有用户收藏受保护"]
-    Retain --> Orphan["删除没有订阅、收藏内容或剩余 Content 的来源<br/>DELETE 重查条件；有界处理"]
+    Retain --> Orphan["锁定空来源候选：FOR UPDATE SKIP LOCKED<br/>新 DELETE 语句重查订阅、收藏与 Content；有界处理"]
     Orphan --> Cache["purge_translation_cache<br/>依据有效引用与临时缓存生命周期"]
     Cache --> Commit["purge_orphan_sources 提交同一事务"]
     Save["任意用户收藏"] -.->|"阻止删除"| Retain
@@ -664,6 +664,8 @@ flowchart TD
 ```
 
 取消订阅不删除收藏；内容清理与翻译清理必须同时尊重引用和租约。清理不是无条件级联清空，也不是抓取失败后的补偿重试。`Content` 的来源归属和收藏保护由 SQL 条件、锁及外键共同约束。
+
+孤立来源回收先跳过被其他事务锁住的来源，再持有来源行锁，用独立 DELETE 语句的新 READ COMMITTED 快照复查引用。订阅用例先锁来源再插入订阅；因此未提交订阅使本轮清理跳过该来源，在候选查询快照建立后、加锁前提交的订阅则由删除前复查保护，不能依赖单条 DELETE 内重复谓词防止级联误删。
 
 源码：[`_run_cleanup`](../backend/src/app/workers/main.py)、[`cancel_obsolete_model_work/purge_orphan_sources`](../backend/src/app/workers/cleanup.py)、[`purge_retained_contents`](../backend/src/app/workers/content_retention.py)、[翻译生命周期](../backend/src/app/translation/lifecycle.py)。
 

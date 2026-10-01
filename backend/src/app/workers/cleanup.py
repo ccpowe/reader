@@ -79,13 +79,18 @@ async def cancel_obsolete_model_work(session: AsyncSession, settings: Settings) 
     return len(result.scalars().all())
 
 
-def orphan_source_delete_statement(*, limit: int = 100):
-    """Build an atomic deletion for sources no user still needs.
+async def purge_orphan_sources(session: AsyncSession, *, limit: int = 100) -> int:
+    """Run bounded retention and cache cleanup, then commit their transaction.
 
-    Content retention first locks and removes eligible unsaved contents. Only
-    empty sources are removed here, so an orphan with a saved or busy entry is
-    retained. The predicate is repeated on DELETE for concurrent subscriptions.
+    Lock empty source candidates before a fresh READ COMMITTED deletion check.
+    Busy sources are deferred; a predicate repeated within one DELETE would
+    still use its old snapshot and could cascade a newly committed subscription.
     """
+    from app.translation.lifecycle import lock_shared_lifecycle, purge_translation_cache
+    from app.workers.content_retention import purge_retained_contents
+
+    await lock_shared_lifecycle(session)
+    retained = await purge_retained_contents(session, source_limit=limit)
     has_subscription = exists(
         select(SourceSubscription.id).where(SourceSubscription.source_id == FeedSource.id)
     )
@@ -95,33 +100,24 @@ def orphan_source_delete_statement(*, limit: int = 100):
         .where(SourceEntry.source_id == FeedSource.id)
     )
     has_content = exists(select(Content.id).where(Content.authority_source_id == FeedSource.id))
-    candidates = (
-        select(FeedSource.id)
-        .where(~has_subscription, ~has_saved_entry, ~has_content)
-        .order_by(FeedSource.updated_at)
-        .limit(limit)
-    )
-    return (
-        delete(FeedSource)
-        .where(
-            FeedSource.id.in_(candidates),
-            ~has_subscription,
-            ~has_saved_entry,
-            ~has_content,
+    predicates = (~has_subscription, ~has_saved_entry, ~has_content)
+    locked_ids = list(
+        await session.scalars(
+            select(FeedSource.id)
+            .where(*predicates)
+            .order_by(FeedSource.updated_at, FeedSource.id)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
         )
-        .returning(FeedSource.id)
     )
-
-
-async def purge_orphan_sources(session: AsyncSession, *, limit: int = 100) -> int:
-    """Run bounded retention and cache cleanup, then commit their transaction."""
-    from app.translation.lifecycle import lock_shared_lifecycle, purge_translation_cache
-    from app.workers.content_retention import purge_retained_contents
-
-    await lock_shared_lifecycle(session)
-    retained = await purge_retained_contents(session, source_limit=limit)
-    result = await session.execute(orphan_source_delete_statement(limit=limit))
-    deleted_ids = list(result.scalars())
+    deleted_ids = []
+    if locked_ids:
+        result = await session.execute(
+            delete(FeedSource)
+            .where(FeedSource.id.in_(locked_ids), *predicates)
+            .returning(FeedSource.id)
+        )
+        deleted_ids = list(result.scalars())
     translations = await purge_translation_cache(session)
     await session.commit()
     return len(deleted_ids) + retained + translations

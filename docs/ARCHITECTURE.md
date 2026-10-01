@@ -118,6 +118,8 @@ Reddit 订阅的首页内容由 `hot` 快照发布时送入同一候选队列，
 
 取消订阅不等于取消收藏。内容保留策略按来源保留最新的一定数量未收藏内容，并保护收藏引用；翻译清理同时检查原文引用、引擎和临时缓存状态。规则见 [content_retention.py](../backend/src/app/workers/content_retention.py) 与 [translation/lifecycle.py](../backend/src/app/translation/lifecycle.py)。
 
+孤立来源清理由 [cleanup.py](../backend/src/app/workers/cleanup.py) 先以 `FOR UPDATE SKIP LOCKED` 锁定空来源候选，再在新 SQL 语句中复查订阅、收藏及内容引用后删除；与订阅用例的来源行锁协调，避免旧快照下的删除级联移除刚提交的订阅。
+
 ### Web／RSS 原网页与阅读模式
 
 1. [ArticleReaderScreen](../mobile/screens/ArticleReaderScreen.tsx) 根据来源类型让 Web／RSS 文章直接进入原网页，不请求文章正文 API 来决定入口。其他来源保留各自的阅读和视频流程。
