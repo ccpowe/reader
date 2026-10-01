@@ -370,7 +370,15 @@ class RuleAgentContext:
             except SourceScanError as exc:
                 # Missing binaries/changed identity and transport failures are
                 # task failures. Native command/JS errors below remain tool data.
-                failure = page_failure({"status": "fail", "code": exc.code}, phase="inspect")
+                failure = page_failure(
+                    {
+                        "status": "fail",
+                        "code": exc.code,
+                        "retryable": getattr(exc, "retryable", None),
+                        "retry_after_seconds": exc.retry_after_seconds,
+                    },
+                    phase="inspect",
+                )
                 assert failure is not None
                 raise failure from exc
             except TimeoutError as exc:

@@ -35,6 +35,66 @@ ENGINE = {
 
 
 @pytest.mark.postgres
+async def test_browser_capacity_failure_requeues_same_job_after_requested_delay():
+    from app.browser_tasks.client import BrowserTaskError
+    from app.browser_tasks.protocol import ErrorEnvelope
+    from app.web_rule_agent.context import RuleAgentContext
+
+    class AtCapacity:
+        async def command(self, *args, **kwargs):
+            raise BrowserTaskError(
+                ErrorEnvelope(
+                    code="capacity_exhausted",
+                    message="Browser slots are occupied.",
+                    retryable=True,
+                    retry_after_seconds=2,
+                )
+            )
+
+        async def aclose(self):
+            pass
+
+    async with _job_database() as (factory, source_id):
+        claim = await _start(factory, source_id)
+        store = JobStore(factory)
+        context = RuleAgentContext(claim=claim, store=store, settings=Settings(_env_file=None))
+        context.browser = AtCapacity()
+        with pytest.raises(AgentFailure) as caught:
+            await worker._execute_claim(context, None, lambda *a, **kw: pytest.fail("Model called"))
+        before_finish = datetime.now(UTC)
+        await worker._safe_finish(context, caught.value)
+        after_finish = datetime.now(UTC)
+        await store.release(claim)
+        async with factory() as session:
+            job = await session.get(WebRuleJob, claim.job_id)
+            assert (job.status, job.last_error_code) == ("retry_wait", "capacity_exhausted")
+            assert before_finish + timedelta(seconds=2) <= job.available_at
+            assert job.available_at <= after_finish + timedelta(seconds=2)
+            due = job.available_at
+        assert (
+            await _call(
+                factory,
+                jobs.claim_web_rule_job,
+                engine_snapshot=ENGINE,
+                limits=jobs.JobLimits(),
+                now=due - timedelta(microseconds=1),
+            )
+            is None
+        )
+        resumed = await _call(
+            factory,
+            jobs.claim_web_rule_job,
+            engine_snapshot=ENGINE,
+            limits=jobs.JobLimits(),
+            now=due,
+        )
+        assert resumed.job_id == claim.job_id
+        assert resumed.lease_token != claim.lease_token
+        assert resumed.budget_snapshot["attempt_count"] == 2
+        assert resumed.budget_snapshot["model_calls_reserved"] == 0
+
+
+@pytest.mark.postgres
 @pytest.mark.parametrize("artifact", ["browser_execution_identity", "cli_execution_identity"])
 async def test_worker_artifact_identity_fences_resume_without_changing_provider_pause_snapshot(
     artifact,

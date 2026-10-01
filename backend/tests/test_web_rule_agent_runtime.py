@@ -650,6 +650,45 @@ async def test_preflight_http_failure_avoids_model_and_lease_loss_cancels_local_
         await context.check()
 
 
+@pytest.mark.parametrize(
+    ("code", "retryable", "delay", "status", "expected_delay"),
+    [
+        ("capacity_exhausted", True, 2, "retry_wait", 2),
+        ("runtime_unavailable", True, None, "retry_wait", 30),
+        ("runtime_identity_mismatch", False, None, "failed", 0),
+        ("ConnectError", False, 2, "failed", 0),
+    ],
+)
+async def test_browser_failure_controls_task_retry(code, retryable, delay, status, expected_delay):
+    from app.browser_tasks.client import BrowserTaskError
+    from app.browser_tasks.protocol import ErrorEnvelope
+
+    error = BrowserTaskError(
+        ErrorEnvelope(
+            code=code,
+            message="Browser operation failed.",
+            retryable=retryable,
+            retry_after_seconds=delay,
+        )
+    )
+
+    class UnavailableBrowser:
+        async def command(self, *args, **kwargs):
+            raise error
+
+    context = make_context()
+    context.browser = UnavailableBrowser()
+    with pytest.raises(AgentFailure) as caught:
+        await context.inspect(argv=["open", context.claim.source_url])
+    failure = caught.value
+    assert (failure.code, failure.status, failure.retry_after_seconds) == (
+        code,
+        status,
+        expected_delay,
+    )
+    assert failure.__cause__ is error
+
+
 def test_tool_feedback_remains_valid_bounded_json_and_retry_after_is_obeyed():
     result = compact({"status": "pass", "validation_id": "opaque", "html": "🙂" * 60000}, 20480)
     assert len(json.dumps(result, ensure_ascii=False).encode()) <= 20480

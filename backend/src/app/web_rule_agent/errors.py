@@ -41,9 +41,11 @@ def page_failure(report: dict, *, phase: str) -> AgentFailure | None:
         return None
     if phase == "validate" and code in STRUCTURAL_CODES:
         return None
+    retryable = report.get("retryable")
     transient = (
-        bool(report.get("retryable"))
-        or code
+        bool(retryable)
+        if retryable is not None
+        else code
         in {
             "TimeoutError",
             "ReadTimeout",
@@ -58,11 +60,12 @@ def page_failure(report: dict, *, phase: str) -> AgentFailure | None:
         or code in {"web_http_408", "web_http_429"}
         or code.startswith("web_http_5")
     )
+    retry_after = report.get("retry_after_seconds")
     return AgentFailure(
         code=code,
         message=f"Page {phase} could not complete ({code}).",
         status="retry_wait" if transient else "failed",
-        retry_after_seconds=30 if transient else 0,
+        retry_after_seconds=(30 if retry_after is None else retry_after) if transient else 0,
     )
 
 

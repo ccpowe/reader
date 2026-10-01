@@ -179,6 +179,8 @@ WebView 内的 [网页脚本](../mobile/domain/webTranslation.ts) 和 [字幕脚
 
 规则执行／预检与 Worker 周期动态扫描继续通过 [web_crawl.py](../backend/src/app/ingestion/web_crawl.py) 进入同一语义接口；静态页面保留 HTTP 路径，正常运行不自动回退 Chromium。公网目的地、robots、TLS、重定向、请求和传输限制在本地及容器模式都继续适用。容器 adapter 可以访问符合通用公网校验的站点，不维护站点域名白名单；浏览器自身没有 IP 网络，不能绕过 adapter 直连目标。Manager 与独立 Reaper 通过共享 SQLite 状态、租约和硬期限协调任务回收；两者都需要 Docker socket，只有 Manager 持有控制令牌和 capability HMAC key。部署身份同时绑定固定镜像、二进制及运行策略；断线或续租失败会使 Worker 停止使用任务并有界关闭。共享配置、两种部署模式及验收见[部署说明](deployment.md#6-后端-web-规则-agent)。
 
+浏览器探索失败跨越 `BrowserTaskError` → `RuleAgentContext.inspect` → `AgentFailure` 边界时保留明确的 `retryable` 与 `retry_after_seconds`：临时容量或传输错误进入持久 `retry_wait`，到期重新领取同一任务，不因错误码未列入通用名单而终结。未提供延迟的临时错误使用 30 秒；明确不可重试的错误保持终结失败。
+
 执行总超时返回已完成窗口与实际错误，取消继续传播；尚未完成的调用不伪装成成功。无法形成可用规则时，模型可引用真实证据返回 `RuleAuthoringFailure`，理由为 `missing_evidence`、`unsupported_schema` 或 `no_usable_rule`；不会激活来源。普通文本或空回复会收到同时允许成功交接与有据失败的恢复反馈，供应商、权限和预算异常不进入此恢复循环。自动规则作者默认停用。API 的轻量配置指纹只包含配置值；Worker 的任务快照另保存 CLI binary／runner 与 Lightpanda 各自的执行身份，重试须匹配，供应商暂停比较排除这两项 Worker 本地身份。
 
 ## 必须保持的边界
