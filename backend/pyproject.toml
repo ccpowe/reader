@@ -28,6 +28,12 @@ dependencies = [
     "uvicorn[standard]>=0.34.0",
 ]
 
+[project.optional-dependencies]
+mcp = [
+    "mcp>=2.3.0,<3",
+    "youtube-transcript-api>=1.2.4,<2",
+]
+
 [project.scripts]
 reader-worker = "app.workers.main:main"
 reader-admin = "app.admin.cli:main"
@@ -37,6 +43,7 @@ reader-browser-adapter-healthcheck = "app.browser_tasks.adapter_app:healthcheck_
 reader-browser-manager = "app.browser_tasks.manager_app:main"
 reader-browser-reaper = "app.browser_tasks.reaper:main"
 reader-browser-admin = "app.browser_tasks.admin:main"
+reader-mcp = "app.mcp.server:main"
 
 [dependency-groups]
 dev = [

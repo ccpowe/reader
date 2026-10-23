@@ -8,6 +8,7 @@ from app.core.server_access import document_server_token
 
 from .auth import router as auth_router
 from .feed import router as feed_router
+from .mcp_updates import router as mcp_updates_router
 from .profile import router as profile_router
 from .rankings import router as rankings_router
 from .saved import router as saved_router
@@ -39,3 +40,4 @@ api_router.include_router(rankings_router)
 api_router.include_router(saved_router)
 api_router.include_router(translation_preferences_router)
 api_router.include_router(translations_router)
+api_router.include_router(mcp_updates_router)

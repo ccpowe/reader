@@ -125,6 +125,18 @@ Saved X ranking entries retain their original text and media information even af
 
 A website subscription may initially discover only currently available articles, and historical coverage can be limited. The backend stores the rules Agent's decisions and limitations for administrators to inspect. Main-content extraction does not determine whether a subscription succeeds.
 
+## Let an AI client use Reader through MCP
+
+Reader includes an optional **local stdio MCP server** backed by your existing Reader API. It exposes grouped subscription update counts, individual subscription updates (30 per page), ordinary and separate Reddit ranking snapshots (10 per page), original timestamped YouTube subtitles, and explicit subscription addition. It does not run a model, fetch article bodies, schedule briefings, or send notifications.
+
+On the AI client's machine, run `uv sync --extra mcp` in `backend/`, then configure the host to launch `uv --directory /absolute/path/to/reader/backend run --extra mcp reader-mcp`. Supply `READER_MCP_API_URL` (base URL before `/v1`, preserving any proxy prefix), `READER_MCP_SERVER_TOKEN`, `READER_MCP_EMAIL`, and `READER_MCP_PASSWORD` through the host's private environment. See the [configuration example](README.md#通过-mcp-交给-ai-阅读). Use HTTPS or an SSH tunnel for remote services; credentials never belong in URLs or committed host configuration.
+
+Each process uses one account, keeps rotating session tokens in memory, and logs out on normal exit. Queries do not mark content read or create translations. Time windows require a timezone and are half-open; missing publication dates fall back to first fetch. Counts cover retained data, not unread state or a complete historical archive. Update pagination remains live with a fetch cutoff; article edits/deletions are not frozen. Ranking cursors retain the initial snapshot for at most 15 minutes. Follow `next_cursor` unchanged; expired cursors must start again.
+
+Subtitles are not translated or transcribed. The reader prefers an auto-generated speech track, otherwise the first manual track; the latter is not guaranteed to match the audio language. Long transcripts are paged from a local snapshot lasting at most 30 minutes, subject to cache eviction. Missing captions, restricted access, provider blocking and network failures are reported explicitly. Subtitles do not cover unspoken visual content.
+
+Adding an existing subscription reuses it without changing its group. Success means subscribed, not that background ingestion has finished.
+
 ## Self-hosted reading spaces, managed by service
 
 The Android client connects to a service at runtime, so server URLs and translation credentials do not need to be embedded in the APK. Accounts, subscriptions, and saved items are stored by the connected Reader service and its database.

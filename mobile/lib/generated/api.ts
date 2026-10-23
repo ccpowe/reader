@@ -888,6 +888,92 @@ export type SourceSubscriptionResponse = {
 };
 
 /**
+ * SubscriptionUpdateCount
+ */
+export type SubscriptionUpdateCount = {
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Source Id
+     */
+    source_id: string;
+    /**
+     * Source Kind
+     */
+    source_kind: string;
+    /**
+     * Source Name
+     */
+    source_name: string | null;
+    /**
+     * Subscription Id
+     */
+    subscription_id: string;
+};
+
+/**
+ * SubscriptionUpdateItem
+ */
+export type SubscriptionUpdateItem = {
+    /**
+     * Content Id
+     */
+    content_id: string;
+    /**
+     * Content Type
+     */
+    content_type: string;
+    /**
+     * Effective At
+     */
+    effective_at: string;
+    /**
+     * External Url
+     */
+    external_url: string;
+    /**
+     * Fetched At
+     */
+    fetched_at: string;
+    /**
+     * Published At
+     */
+    published_at: string | null;
+    /**
+     * Source Id
+     */
+    source_id: string;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
+ * SubscriptionUpdatesResponse
+ */
+export type SubscriptionUpdatesResponse = {
+    /**
+     * Items
+     */
+    items: Array<SubscriptionUpdateItem>;
+    /**
+     * Next Cursor
+     */
+    next_cursor: string | null;
+    /**
+     * Subscription Id
+     */
+    subscription_id: string;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
  * SyncPhase
  *
  * Runtime coverage state for a source scanner.
@@ -1097,6 +1183,24 @@ export type TranslationSegmentResponse = {
 };
 
 /**
+ * UpdateGroup
+ */
+export type UpdateGroup = {
+    /**
+     * Name
+     */
+    name: string | null;
+    /**
+     * Subscriptions
+     */
+    subscriptions: Array<SubscriptionUpdateCount>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
  * UpdateProfileRequest
  */
 export type UpdateProfileRequest = {
@@ -1140,6 +1244,28 @@ export type UpdateTranslationPreferenceRequest = {
      * Target Locale
      */
     target_locale?: string | null;
+};
+
+/**
+ * UpdatesSummaryResponse
+ */
+export type UpdatesSummaryResponse = {
+    /**
+     * End Time
+     */
+    end_time: string;
+    /**
+     * Groups
+     */
+    groups: Array<UpdateGroup>;
+    /**
+     * Start Time
+     */
+    start_time: string;
+    /**
+     * Total
+     */
+    total: number;
 };
 
 /**
@@ -1656,6 +1782,89 @@ export type GetArticleV1FeedContentIdGetResponses = {
 };
 
 export type GetArticleV1FeedContentIdGetResponse = GetArticleV1FeedContentIdGetResponses[keyof GetArticleV1FeedContentIdGetResponses];
+
+export type ListSubscriptionUpdatesV1McpSubscriptionsSubscriptionIdUpdatesGetData = {
+    body?: never;
+    path: {
+        /**
+         * Subscription Id
+         */
+        subscription_id: string;
+    };
+    query: {
+        /**
+         * Start Time
+         */
+        start_time: string;
+        /**
+         * End Time
+         */
+        end_time: string;
+        /**
+         * Cursor
+         */
+        cursor?: string | null;
+    };
+    url: '/v1/mcp/subscriptions/{subscription_id}/updates';
+};
+
+export type ListSubscriptionUpdatesV1McpSubscriptionsSubscriptionIdUpdatesGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListSubscriptionUpdatesV1McpSubscriptionsSubscriptionIdUpdatesGetError = ListSubscriptionUpdatesV1McpSubscriptionsSubscriptionIdUpdatesGetErrors[keyof ListSubscriptionUpdatesV1McpSubscriptionsSubscriptionIdUpdatesGetErrors];
+
+export type ListSubscriptionUpdatesV1McpSubscriptionsSubscriptionIdUpdatesGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SubscriptionUpdatesResponse;
+};
+
+export type ListSubscriptionUpdatesV1McpSubscriptionsSubscriptionIdUpdatesGetResponse = ListSubscriptionUpdatesV1McpSubscriptionsSubscriptionIdUpdatesGetResponses[keyof ListSubscriptionUpdatesV1McpSubscriptionsSubscriptionIdUpdatesGetResponses];
+
+export type GetUpdatesSummaryV1McpUpdatesSummaryGetData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Start Time
+         */
+        start_time: string;
+        /**
+         * End Time
+         */
+        end_time: string;
+        /**
+         * Group
+         *
+         * Omit for all groups; pass an empty string for ungrouped subscriptions.
+         */
+        group?: string | null;
+    };
+    url: '/v1/mcp/updates/summary';
+};
+
+export type GetUpdatesSummaryV1McpUpdatesSummaryGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetUpdatesSummaryV1McpUpdatesSummaryGetError = GetUpdatesSummaryV1McpUpdatesSummaryGetErrors[keyof GetUpdatesSummaryV1McpUpdatesSummaryGetErrors];
+
+export type GetUpdatesSummaryV1McpUpdatesSummaryGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: UpdatesSummaryResponse;
+};
+
+export type GetUpdatesSummaryV1McpUpdatesSummaryGetResponse = GetUpdatesSummaryV1McpUpdatesSummaryGetResponses[keyof GetUpdatesSummaryV1McpUpdatesSummaryGetResponses];
 
 export type GetCurrentUserV1MeGetData = {
     body?: never;

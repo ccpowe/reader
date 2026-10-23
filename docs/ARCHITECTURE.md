@@ -18,6 +18,7 @@ Reader 采用前后端分离结构。后端是一个 Python 应用，分别以 A
 | Scweet 状态库 | 独立保存 Scweet 采集账号与运行状态，不使用 Reader 业务数据库 | [Scweet 服务说明](../services/README.md) |
 | Codex 凭据库 | Reader 专用文件库；API 与 Worker 在文件锁内按需刷新和原子写回，Docker 使用独立持久卷 | [llm/codex_auth.py](../backend/src/app/llm/codex_auth.py) |
 | Reader 管理 CLI | 按需运行；用户、配额和规则操作访问 PostgreSQL，Codex 凭据操作访问独立文件库 | [admin/cli.py](../backend/src/app/admin/cli.py) |
+| Reader MCP | AI 宿主启动的可选本地 stdio 进程；用独立 Reader 账户会话查询 API、添加订阅，直接获取公开 YouTube 字幕；不访问数据库或调用模型 | [mcp/server.py](../backend/src/app/mcp/server.py)、[mcp/client.py](../backend/src/app/mcp/client.py) |
 
 RSS／网站、YouTube、X 供应商、排行提供方和模型提供方是外部依赖。具体供应商及启用条件由 [settings.py](../backend/src/app/core/settings.py) 和相应 adapter 决定。
 
@@ -29,6 +30,7 @@ RSS／网站、YouTube、X 供应商、排行提供方和模型提供方是外�
 | 前端数据与页面 | 发起业务请求、管理服务端数据缓存、展示原文和异步结果 | [lib/api.ts](../mobile/lib/api.ts)、[state/](../mobile/state/) 连接页面与后端；缓存键包含服务器和用户身份 |
 | 阅读与翻译界面 | 加载原网页、按需提取和清洗阅读正文，发现可翻译文本、安排可见内容请求并处理导航和视频切换 | [ArticleReaderScreen.tsx](../mobile/screens/ArticleReaderScreen.tsx)、[TranslatableWebView.tsx](../mobile/components/TranslatableWebView.tsx)、[webReaderExtraction.ts](../mobile/domain/webReaderExtraction.ts) 与翻译调度器协作 |
 | API 与业务服务 | 校验请求和用户权限，处理订阅、资料、排行、收藏等业务，组装响应 | [api/](../backend/src/app/api/) 保留 HTTP 契约；[subscriptions.py](../backend/src/app/services/subscriptions.py) 拥有订阅事务，[source_health.py](../backend/src/app/services/source_health.py) 解释来源健康状态；其他业务继续使用共享持久层及服务 |
+| MCP 访问 | 将六个模型工具映射到有权限的 Reader API 和公开字幕读取；连接与令牌轮换集中在 HTTP 客户端，冻结榜单／字幕分页封装在各自读取模块 | [mcp/](../backend/src/app/mcp/)；新增更新统计与列表通过 [mcp_updates.py](../backend/src/app/api/mcp_updates.py) 和 [查询服务](../backend/src/app/services/mcp_updates.py) 保持原文只读，不走前端翻译需求路径 |
 | 来源接入与入库 | 来源身份规范化、上游请求、分页、候选去重、内容与媒体入库 | [workers/sync.py](../backend/src/app/workers/sync.py) 拥有扫描 I/O 和事务，[scan_state.py](../backend/src/app/services/scan_state.py) 拥有扫描状态迁移，[web_scan_health.py](../backend/src/app/services/web_scan_health.py) 解释 Web 结构健康并触发修复；[ingestion/](../backend/src/app/ingestion/) 提供来源适配，[workers/candidates.py](../backend/src/app/workers/candidates.py) 消费候选 |
 | 翻译 | 请求策略、需求与缓存身份、任务领取、批处理、实时合并、配额和结果生命周期 | [requests.py](../backend/src/app/translation/requests.py) 协调用户请求，[projection.py](../backend/src/app/translation/projection.py) 区分只读查询与需求创建；API 驱动交互式／实时请求并复用批处理隔离函数，Worker 的 `TranslationExecutor` 领取和执行持久任务 |
 | 网页规则 Agent | 针对单个来源保存有界证据和发现，生成、执行并评估列表规则后交接激活 | [web_rule_agent/](../backend/src/app/web_rule_agent/)、[workers/web_rules.py](../backend/src/app/workers/web_rules.py) 调用受限工具和规则服务；[browser.py](../backend/src/app/web_rule_agent/browser.py) 统一探索页面接口 |
@@ -55,6 +57,7 @@ RSS／网站、YouTube、X 供应商、排行提供方和模型提供方是外�
 | Codex 订阅登录 | 属于 Reader 部署，由管理员导入专用登录；访问／刷新令牌和刷新状态存于私有文件库，所有进程只使用同一份刷新链，不属于客户端或单个 Reader 账户 |
 | 后台运行状态 | 来源游标、候选、扫描租约、规则任务、预算和心跳由服务端管理。规则任务独立保存候选、执行事实、模型判断与版本绑定凭据；diagnostics 中的 authoring checkpoint 仅为恢复提示。页面读取有限状态投影，不拥有调度权 |
 | 客户端本地数据 | 保存连接坐标、会话凭据、界面语言和缓存；公共连接元数据与凭据分开，查询缓存按服务器和用户隔离。WebView 提取的正文仅保留在当前阅读界面的内存状态，不写入服务端 Content 或离线文章库 |
+| MCP 本地状态 | 每个 stdio 进程绑定一个账户；登录／轮换令牌、冻结榜单与字幕快照只保存在内存，退出不保留游标或内容；不构成服务端历史归档 |
 
 账户信息和翻译偏好由后端管理；界面语言由 [mobile/i18n/](../mobile/i18n/) 在客户端管理，两者独立。当前运行链路使用 Reader 自有认证；历史迁移代码中的 Supabase 引用不代表仍依赖其认证服务。
 
@@ -182,6 +185,14 @@ WebView 内的 [网页脚本](../mobile/domain/webTranslation.ts) 和 [字幕脚
 浏览器错误的重试分类与延迟属于跨模块契约，探索层和持久任务调度必须保留生产方的明确决定；临时故障可恢复，不可重试故障不能被静默重试。具体传播路径与重试策略见[后端规则 Agent 图谱](backend-architecture.md#rule-author)。
 
 执行总超时返回已完成窗口与实际错误，取消继续传播；尚未完成的调用不伪装成成功。无法形成可用规则时，模型可引用真实证据返回 `RuleAuthoringFailure`，理由为 `missing_evidence`、`unsupported_schema` 或 `no_usable_rule`；不会激活来源。普通文本或空回复会收到同时允许成功交接与有据失败的恢复反馈，供应商、权限和预算异常不进入此恢复循环。自动规则作者默认停用。API 的轻量配置指纹只包含配置值；Worker 的任务快照另保存 CLI binary／runner 与 Lightpanda 各自的执行身份，重试须匹配，供应商暂停比较排除这两项 Worker 本地身份。
+
+### MCP 查询与添加订阅
+
+1. AI 宿主通过环境私密注入服务地址、部署 token 和 Reader 账号；MCP 用普通登录／刷新接口建立独立会话。所有 Reader 请求保留路径前缀、验证 TLS、不跟随重定向；刷新失败不自动重新登录绕过会话撤销，正常退出注销本次会话。
+2. 更新统计及列表限定当前用户的启用订阅，不使用首页 `include_in_home` 过滤。时间范围必须带时区且为半开区间；以 `Content.published_at` 为准，缺失时取同内容来源条目的最早抓取时间，按 Content 去重，零更新订阅也返回。签名游标绑定用户、订阅、时间窗口及首次查询的抓取截止时间，每页 30 条；这是保留数据上的实时查询，不能冻结发布时间修改、并发提交或保留清理，也不代表完整历史覆盖。
+3. 榜单通过既有认证 API 读取，可能初始化缺失快照，但不强制刷新、不建立翻译需求。MCP 在本地冻结首批结果，普通榜单和独立 Reddit 工具均每页 10 条；快照固定 15 分钟有效并受容量淘汰约束。Reddit 续页重新检查订阅权限，不把新榜单替换进旧分页。
+4. 字幕工具只把已校验的 YouTube 链接转换成视频 ID，从固定 YouTube 目的地获取字幕，不发送 Reader 凭据，不翻译／转写／分析画面。优先自动语音轨道，无此轨道时选择首个人工轨道并披露语言选择限制；本地快照固定 30 分钟有效，长结果分段交付。无字幕、限制访问、上游阻断与网络错误明确区分，不伪造空成功。
+5. 添加订阅复用既有来源 API 和订阅事务；模型只能在用户明确要求时调用。重复添加复用已有订阅并保留分组，成功表示订阅已建立或恢复，不等待后台内容同步。此过程不赋予模型删除、管理凭据或访问其他用户数据的能力。
 
 ## 必须保持的边界
 

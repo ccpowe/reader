@@ -12,6 +12,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
     model {
         reader = person "读者" "连接 Reader 服务，订阅、浏览、收藏、阅读和翻译内容。"
         operator = person "管理员" "通过管理命令维护用户、翻译配额、网页规则任务及 Codex 订阅凭据。"
+        aiHost = softwareSystem "AI 宿主" "通过本地 stdio MCP 查询 Reader、读取公开字幕并按用户要求添加订阅；模型筛选和简报编排属于宿主。" "External"
 
         websites = softwareSystem "内容网站与 RSS" "提供文章、RSS/Atom、来源头像和可提取网页。" "External"
         youtube = softwareSystem "YouTube" "提供频道、视频、播放器及字幕。" "External"
@@ -87,6 +88,12 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                     "platforms" "原生公开数据使用 Expo SQLite localStorage 适配、凭据使用 SecureStore；Web 凭据使用 sessionStorage/内存。"
                 }
             }
+            mcp = container "Reader MCP" "AI 宿主启动的单账户 stdio 进程；管理 Reader HTTP 会话、冻结榜单分页与原始字幕读取，不直接访问数据库。" "Python / MCP SDK" "Optional" {
+                properties {
+                    "sources" "backend/src/app/mcp/"
+                }
+            }
+
 
             api = container "Reader API" "服务发现、认证和用户业务；直接处理交互翻译，也建立持久工作。" "Python / FastAPI" {
                 properties {
@@ -105,7 +112,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                 }
                 content = component "信息流、收藏与资料" "按用户范围查询内容、维护收藏，管理个人资料和头像。" "FastAPI / SQLAlchemy" {
                     properties {
-                        "sources" "backend/src/app/api/feed.py; backend/src/app/api/saved.py; backend/src/app/api/profile.py; backend/src/app/api/avatars.py; backend/src/app/services/ranking_saved.py; backend/src/app/domain/x_relations.py"
+                        "sources" "backend/src/app/api/feed.py; backend/src/app/api/saved.py; backend/src/app/api/profile.py; backend/src/app/api/avatars.py; backend/src/app/services/ranking_saved.py; backend/src/app/domain/x_relations.py; backend/src/app/api/mcp_updates.py; backend/src/app/services/mcp_updates.py"
                     }
                 }
                 rankings = component "排行快照" "读取或刷新榜单；发布适用 Reddit hot 快照时写入持久候选。" "Python / HTTPX / SQLAlchemy" {
@@ -242,6 +249,8 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         // C1：系统边界与外部依赖。只描述 Reader 实际使用的外部能力。
         reader -> system "订阅、浏览、收藏、阅读和翻译"
         operator -> system "维护用户、配额和规则任务"
+        reader -> aiHost "请求信息筛选、简报与追问"
+        aiHost -> system "通过 MCP 查询信息和添加订阅"
         system -> websites "获取内容、feed 与头像；加载阅读页面"
         system -> youtube "获取频道内容，播放视频并读取字幕"
         system -> x "加载原网页；选择 Scweet 时采集内容"
@@ -257,6 +266,9 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         reader -> system.client "操作应用" "界面交互" "ContainerRelationship"
         operator -> system.admin "执行管理命令" "CLI" "ContainerRelationship"
         system.client -> system.api "服务发现、账户与业务请求" "HTTP(S) / JSON" "ContainerRelationship"
+        aiHost -> system.mcp "发现与调用六个工具" "MCP / stdio" "ContainerRelationship"
+        system.mcp -> system.api "按账户查询更新、排行及添加订阅" "HTTP(S) / JSON / Reader 会话" "ContainerRelationship"
+        system.mcp -> youtube "获取原始字幕，不翻译或转写" "HTTPS / 字幕接口" "ContainerRelationship"
         system.client -> system.localState "保存连接、语言及隔离的凭据" "平台存储 API" "ContainerRelationship"
         system.client -> websites "加载原网页或打开外链" "HTTPS / WebView / 系统浏览器" "ContainerRelationship"
         system.client -> youtube "加载视频与字幕" "HTTPS / 原生 WebView" "ContainerRelationship"
@@ -400,12 +412,12 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         }
         container system "C2-Containers" {
             title "C2 · Reader 运行单元与数据存储"
-            include reader operator system.client system.localState system.api system.worker system.browserManager system.browserReaper system.browserState system.browserAdapter system.browserSandbox system.database system.codexCredentials system.admin system.scweet system.scweetState
+            include reader operator aiHost system.client system.localState system.mcp system.api system.worker system.browserManager system.browserReaper system.browserState system.browserAdapter system.browserSandbox system.database system.codexCredentials system.admin system.scweet system.scweetState
             autoLayout lr 350 80
         }
         container system "C2-ExternalDependencies" {
             title "C2 · Reader 外部依赖"
-            include system.client system.api system.worker system.browserManager system.browserReaper system.browserAdapter system.browserSandbox system.scweet websites youtube x apify reddit hackerNews github techTwitter models codexIdentity
+            include system.client system.mcp system.api system.worker system.browserManager system.browserReaper system.browserAdapter system.browserSandbox system.scweet aiHost websites youtube x apify reddit hackerNews github techTwitter models codexIdentity
             autoLayout lr 350 80
         }
         component system.client "C3-Client" {

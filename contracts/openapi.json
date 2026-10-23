@@ -1779,6 +1779,142 @@
         "title": "SourceSubscriptionResponse",
         "type": "object"
       },
+      "SubscriptionUpdateCount": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_kind": {
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
+          },
+          "subscription_id": {
+            "title": "Subscription Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subscription_id",
+          "source_id",
+          "source_name",
+          "source_kind",
+          "count"
+        ],
+        "title": "SubscriptionUpdateCount",
+        "type": "object"
+      },
+      "SubscriptionUpdateItem": {
+        "properties": {
+          "content_id": {
+            "title": "Content Id",
+            "type": "string"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "external_url": {
+            "title": "External Url",
+            "type": "string"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_id",
+          "source_id",
+          "title",
+          "external_url",
+          "content_type",
+          "published_at",
+          "fetched_at",
+          "effective_at"
+        ],
+        "title": "SubscriptionUpdateItem",
+        "type": "object"
+      },
+      "SubscriptionUpdatesResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionUpdateItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "subscription_id": {
+            "title": "Subscription Id",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subscription_id",
+          "total",
+          "items",
+          "next_cursor"
+        ],
+        "title": "SubscriptionUpdatesResponse",
+        "type": "object"
+      },
       "SyncPhase": {
         "description": "Runtime coverage state for a source scanner.",
         "enum": [
@@ -2250,6 +2386,39 @@
         "title": "TranslationSegmentResponse",
         "type": "object"
       },
+      "UpdateGroup": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "subscriptions": {
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionUpdateCount"
+            },
+            "title": "Subscriptions",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "total",
+          "subscriptions"
+        ],
+        "title": "UpdateGroup",
+        "type": "object"
+      },
       "UpdateProfileRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2353,6 +2522,39 @@
           }
         },
         "title": "UpdateTranslationPreferenceRequest",
+        "type": "object"
+      },
+      "UpdatesSummaryResponse": {
+        "properties": {
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/UpdateGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start_time",
+          "end_time",
+          "total",
+          "groups"
+        ],
+        "title": "UpdatesSummaryResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -3353,6 +3555,176 @@
         "summary": "Get Article",
         "tags": [
           "feed"
+        ]
+      }
+    },
+    "/v1/mcp/subscriptions/{subscription_id}/updates": {
+      "get": {
+        "description": "Read 30 raw updates with a signed, account/window-bound continuation cursor.\n\nThis endpoint never marks content read. Missing or disabled subscriptions\nreturn 404; invalid bounds or expired/mismatched cursors return 422.",
+        "operationId": "list_subscription_updates_v1_mcp_subscriptions__subscription_id__updates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_time",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Start Time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_time",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "End Time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 1024,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionUpdatesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ReaderServerToken": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Subscription Updates",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/v1/mcp/updates/summary": {
+      "get": {
+        "description": "Read all enabled subscriptions in [start_time, end_time), including zero counts.\n\nPublication time falls back to first fetch. No read/translation state changes;\ninvalid or naive time bounds return 422.",
+        "operationId": "get_updates_summary_v1_mcp_updates_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_time",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Start Time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_time",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "End Time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Omit for all groups; pass an empty string for ungrouped subscriptions.",
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Omit for all groups; pass an empty string for ungrouped subscriptions.",
+              "title": "Group"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatesSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "ReaderServerToken": []
+          },
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Updates Summary",
+        "tags": [
+          "mcp"
         ]
       }
     },

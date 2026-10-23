@@ -21,6 +21,7 @@
 | `src/app/browser_tasks/` | 可选容器浏览器任务的内部协议、Worker 客户端、adapter、控制器和回收器；公共 DTO 入口为 `protocol.py` |
 | `src/app/translation/`、`src/app/llm/` | 翻译请求入口为 `translation/requests.py`，只读／需求创建入口为 `translation/projection.py`，实时执行为 `translation/realtime.py`；公共模型入口为 `llm/factory.py` |
 | `src/app/admin/cli.py`、`src/app/ingestion/web_rule_cli.py` | 管理与网页规则诊断命令 |
+| `src/app/mcp/` | 可选本地 stdio MCP；`server.py` 注册六个工具，`client.py` 管理 Reader HTTP 会话，榜单和字幕分页仅存在于进程内存 |
 | `migrations/` | Alembic 迁移，版本位于 `versions/` |
 | `tests/`、`scripts/` | 后端测试及接口导出、数据库验证等脚本；标记与测试配置见 `pyproject.toml` |
 | `pyproject.toml`、`uv.lock`、`.env.example`、`compose.postgres.yml` | 依赖、命令注册、环境示例与本地数据库配置 |
@@ -38,6 +39,8 @@
 | 将选定数据库迁移到当前版本，先核对目标 | `uv run alembic upgrade head` |
 | 启动 API | `uv run uvicorn app.main:app --host 127.0.0.1 --port 8000` |
 | 启动 Worker | `uv run reader-worker` |
+| 安装／运行可选 MCP | `uv sync --extra mcp`；`uv run --extra mcp reader-mcp`，凭据由宿主环境注入，见 [MCP 使用说明](../README.md#通过-mcp-交给-ai-阅读) |
+| MCP 行为检查 | `PYTHON_DOTENV_DISABLED=1 uv run --extra mcp pytest -q tests/test_mcp_client.py tests/test_mcp_rankings.py tests/test_mcp_transcripts.py -m 'not live_provider'` |
 | 指定测试 | `PYTHON_DOTENV_DISABLED=1 uv run pytest -q tests/<测试文件>.py -m 'not postgres and not live_provider'` |
 | 常规后端测试 | `PYTHON_DOTENV_DISABLED=1 uv run pytest -q -m 'not postgres and not live_provider'` |
 | lint | `uv run ruff check src tests` |

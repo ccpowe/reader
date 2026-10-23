@@ -111,6 +111,12 @@ Use it as the worker deployment's readiness/alerting signal; a non-200 response
 contains stable loop names and error codes, not exception messages. Keep it on
 the management network for the same reason as `/ready`.
 
+## Local MCP bridge
+
+Install optional dependencies with `uv sync --extra mcp` and launch `uv run --extra mcp reader-mcp` from a private AI-host environment. This stdio process connects to the existing authenticated API; it is not an unauthenticated HTTP `/mcp` endpoint and needs no direct database access. Docker API/Worker images do not install this optional client extra.
+
+The six tools, host configuration, time/pagination semantics and provider limitations are documented in the [Reader MCP guide](../README.md#通过-mcp-交给-ai-阅读). Business endpoints and generated types remain part of the normal OpenAPI contract. The bridge does not automatically load `backend/.env`.
+
 ## Layout
 
 - `app/api`: HTTP routes and request/response schemas.
