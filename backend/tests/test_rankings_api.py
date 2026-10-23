@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from app.api import rankings
 from app.core.settings import Settings
@@ -374,3 +375,321 @@ def test_techtwitter_saved_preview_without_context_cannot_leak_translations() ->
         ("\n", None),
     ]
     assert response.body_segments[0].segment_id.endswith(":body:0")
+
+
+def _isolated_ranking_app() -> FastAPI:
+    app = FastAPI()
+    app.include_router(rankings.router)
+
+    async def current_user() -> SimpleNamespace:
+        return SimpleNamespace(id=uuid4())
+
+    async def session() -> AsyncMock:
+        return AsyncMock()
+
+    app.dependency_overrides[rankings.require_current_user] = current_user
+    app.dependency_overrides[rankings.get_session] = session
+    return app
+
+
+def test_product_hunt_date_and_github_period_reject_wrong_scopes_and_future(monkeypatch) -> None:
+    monkeypatch.setattr(
+        rankings,
+        "get_settings",
+        lambda: SimpleNamespace(product_hunt_token=SecretStr("secret")),
+    )
+    app = _isolated_ranking_app()
+    future = date.today().replace(year=date.today().year + 1).isoformat()
+    with TestClient(app) as client:
+        assert client.get("/rankings/github", params={"date": "2026-10-20"}).status_code == 422
+        assert client.get("/rankings/hacker_news", params={"period": "daily"}).status_code == 422
+        assert client.get("/rankings/product_hunt", params={"period": "weekly"}).status_code == 422
+        assert client.get("/rankings/product_hunt", params={"date": "2026-2-3"}).status_code == 422
+        assert client.get("/rankings/product_hunt", params={"date": future}).status_code == 422
+        assert client.get("/rankings/github", params={"period": "yearly"}).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_product_hunt_disabled_returns_clear_503_before_reading_cache(monkeypatch) -> None:
+    monkeypatch.setattr(
+        rankings,
+        "get_settings",
+        lambda: SimpleNamespace(product_hunt_token=None),
+    )
+    read_snapshot = AsyncMock()
+    monkeypatch.setattr(rankings, "get_snapshot", read_snapshot)
+    with pytest.raises(HTTPException) as raised:
+        await rankings.get_ranking(
+            "product_hunt",
+            limit=100,
+            refresh=False,
+            subreddit="MachineLearning",
+            sort="hot",
+            time_filter="week",
+            date="2026-10-20",
+            _current_user=SimpleNamespace(id=uuid4()),
+            session=AsyncMock(),
+        )
+    assert raised.value.status_code == 503
+    assert raised.value.detail == "Product Hunt ranking is not configured."
+    read_snapshot.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_product_hunt_historical_ranking_cache_metadata_and_github_period(
+    monkeypatch,
+) -> None:
+    historical_day = date(2026, 10, 20)
+    item = RankingItem(
+        rank=1,
+        title="Launch",
+        url="https://www.producthunt.com/posts/launch",
+        product_id="post-1",
+        website_url="https://example.org/",
+        description="A tagline",
+    )
+    data = RankingData(
+        kind="product_hunt",
+        title="Product Hunt",
+        subtitle="Featured launches",
+        items=[item],
+        fetched_at=datetime.now(UTC),
+        truncated=True,
+    )
+    requests = []
+
+    async def snapshot(_session, request):
+        requests.append(request)
+        return data
+
+    monkeypatch.setattr(
+        rankings,
+        "get_settings",
+        lambda: Settings(_env_file=None, product_hunt_token="secret"),
+    )
+    monkeypatch.setattr(rankings, "get_snapshot", snapshot)
+    monkeypatch.setattr(
+        rankings,
+        "get_translation_context",
+        AsyncMock(return_value=_translation_context()),
+    )
+    result = await rankings.get_ranking(
+        "product_hunt",
+        limit=100,
+        refresh=False,
+        subreddit="MachineLearning",
+        sort="hot",
+        time_filter="week",
+        date=historical_day.isoformat(),
+        _current_user=SimpleNamespace(id=uuid4()),
+        session=AsyncMock(),
+    )
+    assert requests[0].day == historical_day
+    assert result.date == historical_day.isoformat()
+    assert (result.timezone, result.order, result.truncated) == (
+        "America/Los_Angeles",
+        "RANKING",
+        True,
+    )
+    assert (result.items[0].product_id, result.items[0].website_url) == (
+        "post-1",
+        "https://example.org/",
+    )
+
+    async def github_snapshot(_session, request):
+        requests.append(request)
+        return RankingData(
+            kind="github",
+            title="GitHub Trending",
+            subtitle="Repositories · today",
+            items=[],
+            fetched_at=datetime.now(UTC),
+        )
+
+    monkeypatch.setattr(rankings, "get_snapshot", github_snapshot)
+    github = await rankings.get_ranking(
+        "github",
+        limit=100,
+        refresh=False,
+        subreddit="MachineLearning",
+        sort="hot",
+        time_filter="week",
+        period="daily",
+        _current_user=SimpleNamespace(id=uuid4()),
+        session=AsyncMock(),
+    )
+    assert requests[-1].period == "daily"
+    assert github.period == "daily"
+
+
+@pytest.mark.asyncio
+async def test_product_hunt_omitted_date_uses_los_angeles_calendar_day(monkeypatch) -> None:
+    monkeypatch.setattr(
+        rankings,
+        "get_settings",
+        lambda: Settings(_env_file=None, product_hunt_token="secret"),
+    )
+    requests = []
+
+    async def snapshot(_session, request):
+        requests.append(request)
+        return RankingData(
+            kind="product_hunt",
+            title="Product Hunt",
+            subtitle="Featured launches",
+            items=[],
+            fetched_at=datetime.now(UTC),
+        )
+
+    monkeypatch.setattr(rankings, "get_snapshot", snapshot)
+    monkeypatch.setattr(
+        rankings,
+        "get_translation_context",
+        AsyncMock(return_value=_translation_context()),
+    )
+    result = await rankings.get_ranking(
+        "product_hunt",
+        limit=100,
+        refresh=False,
+        subreddit="MachineLearning",
+        sort="hot",
+        time_filter="week",
+        _current_user=SimpleNamespace(id=uuid4()),
+        session=AsyncMock(),
+    )
+    assert requests[0].day == datetime.now(rankings.PRODUCT_HUNT_TIMEZONE).date()
+    assert result.date == requests[0].day.isoformat()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("selected_day", "age_seconds", "expected_votes"),
+    [
+        ("2026-10-22", 20, 10),
+        ("2026-10-22", 61, 331),
+        ("2026-10-21", 20, 10),
+        ("2026-10-21", 61, 331),
+    ],
+)
+async def test_product_hunt_date_query_revalidates_official_counts(
+    monkeypatch, selected_day, age_seconds, expected_votes
+) -> None:
+    now = datetime(2026, 10, 22, 12, tzinfo=UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz)
+
+    def data(votes, at):
+        return RankingData(
+            kind="product_hunt",
+            title="Product Hunt",
+            subtitle="Featured",
+            items=[
+                RankingItem(
+                    rank=1,
+                    title="Launch",
+                    score=votes,
+                    url="https://www.producthunt.com/posts/launch",
+                )
+            ],
+            fetched_at=at,
+        )
+
+    monkeypatch.setattr(rankings, "datetime", Clock)
+    monkeypatch.setattr(
+        rankings, "get_settings", lambda: Settings(_env_file=None, product_hunt_token="secret")
+    )
+    monkeypatch.setattr(
+        rankings,
+        "get_snapshot",
+        AsyncMock(return_value=data(10, now - timedelta(seconds=age_seconds))),
+    )
+    monkeypatch.setattr(
+        rankings, "create_or_refresh_snapshot", AsyncMock(return_value=data(331, now))
+    )
+    monkeypatch.setattr(
+        rankings, "get_translation_context", AsyncMock(return_value=_translation_context())
+    )
+    response = await rankings.get_ranking(
+        "product_hunt",
+        limit=100,
+        refresh=False,
+        subreddit="MachineLearning",
+        sort="hot",
+        time_filter="week",
+        date=selected_day,
+        _current_user=SimpleNamespace(id=uuid4()),
+        session=AsyncMock(),
+    )
+    assert response.items[0].score == expected_votes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("refresh_completed", [True, False])
+async def test_product_hunt_previous_day_does_not_reuse_recent_pre_close_capture(
+    monkeypatch, refresh_completed
+):
+    now = datetime(2026, 10, 22, 7, 0, 10, tzinfo=UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz)
+
+    captured = RankingData(
+        kind="product_hunt",
+        title="Product Hunt",
+        subtitle="Featured",
+        items=[
+            RankingItem(
+                rank=1, title="Old", score=0, url="https://www.producthunt.com/posts/launch"
+            )
+        ],
+        fetched_at=now - timedelta(seconds=20),
+    )
+    official = RankingData(
+        kind="product_hunt",
+        title="Product Hunt",
+        subtitle="Featured",
+        items=[
+            RankingItem(
+                rank=1, title="Launch", score=331, url="https://www.producthunt.com/posts/launch"
+            )
+        ],
+        fetched_at=now,
+    )
+    monkeypatch.setattr(rankings, "datetime", Clock)
+    monkeypatch.setattr(
+        rankings, "get_settings", lambda: Settings(_env_file=None, product_hunt_token="secret")
+    )
+    monkeypatch.setattr(rankings, "get_snapshot", AsyncMock(return_value=captured))
+    monkeypatch.setattr(
+        rankings,
+        "create_or_refresh_snapshot",
+        AsyncMock(return_value=official if refresh_completed else captured),
+    )
+    monkeypatch.setattr(
+        rankings, "get_translation_context", AsyncMock(return_value=_translation_context())
+    )
+    operation = rankings.get_ranking(
+        "product_hunt",
+        limit=100,
+        refresh=False,
+        subreddit="MachineLearning",
+        sort="hot",
+        time_filter="week",
+        date="2026-10-21",
+        _current_user=SimpleNamespace(id=uuid4()),
+        session=AsyncMock(),
+    )
+    if refresh_completed:
+        response = await operation
+        assert response.items[0].score == 331
+        assert response.fetched_at == now
+    else:
+        with pytest.raises(HTTPException) as raised:
+            await operation
+        assert raised.value.status_code == 503
+        assert raised.value.headers["Retry-After"]

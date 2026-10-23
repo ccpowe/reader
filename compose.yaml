@@ -16,6 +16,7 @@ x-reader-environment: &reader-environment
   APP_AUTH_JWT_SECRET_FILE: /run/secrets/auth-jwt-secret
   APP_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek-api-key
   APP_OPENROUTER_API_KEY_FILE: /run/secrets/openrouter-api-key
+  APP_PRODUCT_HUNT_TOKEN_FILE: /run/secrets/product-hunt-token
   APP_DEEPSEEK_API_BASE: ${APP_DEEPSEEK_API_BASE:-https://api.deepseek.com}
   APP_DEEPSEEK_MODEL: ${APP_DEEPSEEK_MODEL:-deepseek-flash}
   APP_OPENROUTER_API_BASE: ${APP_OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}
@@ -52,11 +53,13 @@ x-api-secrets: &api-secrets
   - auth-jwt-secret
   - deepseek-api-key
   - openrouter-api-key
+  - product-hunt-token
 
 x-worker-secrets: &worker-secrets
   - database-password
   - deepseek-api-key
   - openrouter-api-key
+  - product-hunt-token
   - youtube-data-api-key
   - browser-manager-token
   - scweet-service-token
@@ -288,6 +291,7 @@ services:
       APP_DATABASE_PASSWORD_FILE: /run/secrets/database-password
       APP_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek-api-key
       APP_OPENROUTER_API_KEY_FILE: /run/secrets/openrouter-api-key
+      APP_PRODUCT_HUNT_TOKEN_FILE: /run/secrets/product-hunt-token
       APP_DEEPSEEK_API_BASE: ${APP_DEEPSEEK_API_BASE:-https://api.deepseek.com}
       APP_DEEPSEEK_MODEL: ${APP_DEEPSEEK_MODEL:-deepseek-flash}
       APP_OPENROUTER_API_BASE: ${APP_OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}
@@ -405,6 +409,8 @@ secrets:
     file: .docker/secrets/deepseek-api-key
   openrouter-api-key:
     file: .docker/secrets/openrouter-api-key
+  product-hunt-token:
+    file: .docker/secrets/product-hunt-token
   youtube-data-api-key:
     file: .docker/secrets/youtube-data-api-key
   browser-manager-token:

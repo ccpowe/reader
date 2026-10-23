@@ -7,7 +7,12 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.dialects import postgresql
 
-from app.api.saved import _saved_item_response, get_ranking_saved_state
+from app.api.saved import (
+    SaveRankingRequest,
+    _saved_item_response,
+    get_ranking_saved_state,
+    save_ranking,
+)
 from app.core.auth import AuthenticatedUser
 from app.domain.enums import TranslationStatus
 from app.services import ranking_saved
@@ -281,3 +286,32 @@ def test_existing_x_subscription_keeps_its_regular_saved_reading_path():
     assert response.ranking_kind is None
     assert response.ranking_item is None
     assert response.source_kind == "x"
+
+
+@pytest.mark.asyncio
+async def test_github_daily_save_uses_daily_snapshot_and_product_hunt_is_unsupported(monkeypatch):
+    saved_id = uuid4()
+    save = AsyncMock(return_value=saved_id)
+    monkeypatch.setattr("app.api.saved.persist_ranking_item", save)
+    user = AuthenticatedUser(id=uuid4(), email=None, claims={})
+    result = await save_ranking(
+        SaveRankingRequest(kind="github", period="daily", url="https://github.com/a/b"),
+        current_user=user,
+        session=AsyncMock(),
+    )
+    assert result.content_id == str(saved_id)
+    assert save.await_args.kwargs["request"] == RankingRequest(kind="github", period="daily")
+    with pytest.raises(HTTPException) as error:
+        await save_ranking(
+            SaveRankingRequest(kind="hacker_news", period="daily", url="https://example.com/"),
+            current_user=user,
+            session=AsyncMock(),
+        )
+    assert error.value.status_code == 422
+    with pytest.raises(ValueError, match="Product Hunt"):
+        await ranking_saved.persist_ranking_item(
+            AsyncMock(),
+            user_id=user.id,
+            request=RankingRequest(kind="product_hunt"),
+            url="https://www.producthunt.com/posts/example",
+        )

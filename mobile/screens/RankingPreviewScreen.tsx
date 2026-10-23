@@ -44,6 +44,7 @@ export function RankingPreviewScreen({
   const [translationState, setTranslationState] = useState(INITIAL_TRANSLATION_STATE);
   const [liveItem, setLiveItem] = useState(item);
   const isXRanking = item.ranking_context?.kind === 'techtwitter';
+  const isProductHunt = item.ranking_kind === 'product_hunt';
   const [previewMode, setPreviewMode] = useState<'reader' | 'web'>('reader');
   const [webOpened, setWebOpened] = useState(false);
   const showWeb = !isXRanking || previewMode === 'web';
@@ -68,7 +69,7 @@ export function RankingPreviewScreen({
   // Resolve persisted state before displaying an actionable save button.
   useEffect(() => {
     const context = captureRuntimeContext(runtime);
-    if (!context || item.saved_content_id) return;
+    if (!context || isProductHunt || item.saved_content_id) return;
     let cancelled = false;
     setSaveBusy(true);
     void getRankingSavedState(session, item.url, context.runtime).then((state) => {
@@ -81,11 +82,11 @@ export function RankingPreviewScreen({
       if (!cancelled && isRuntimeContextCurrent(context)) setSaveBusy(false);
     });
     return () => { cancelled = true; };
-  }, [item.saved_content_id, item.url, runtime, session]);
+  }, [isProductHunt, item.saved_content_id, item.url, runtime, session]);
 
   async function toggleSaved() {
     const context = captureRuntimeContext(runtime);
-    if (!context || mutationBusy.current) return;
+    if (!context || isProductHunt || mutationBusy.current) return;
     mutationBusy.current = true;
     setSaveBusy(true);
     try {
@@ -246,7 +247,7 @@ export function RankingPreviewScreen({
 
   return (
     <View style={styles.page}>
-      <DetailHeader title={liveItem.translated_title?.trim() || liveItem.title} onBack={onBack} onSave={() => void toggleSaved()} saved={saved} saveBusy={saveBusy} onShare={() => void share()} onExternalOpen={() => void openBrowserTab()} />
+      <DetailHeader title={liveItem.translated_title?.trim() || liveItem.title} onBack={onBack} onSave={isProductHunt ? undefined : () => void toggleSaved()} saved={saved} saveBusy={saveBusy} onShare={() => void share()} onExternalOpen={() => void openBrowserTab()} />
       <View style={styles.previewStage}>
         {isXRanking ? (
           <View

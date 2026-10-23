@@ -121,18 +121,40 @@ def create_server(settings: MCPSettings) -> MCPServer:
 
     @server.tool(annotations=read)
     async def list_ranking_snapshot(
-        kind: Literal["hacker_news", "github", "techtwitter"],
+        kind: Literal["hacker_news", "github", "techtwitter", "product_hunt"],
         ctx: Context[ToolContext],
         cursor: Cursor = None,
+        date: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Product Hunt only: YYYY-MM-DD in America/Los_Angeles; omit for today. "
+                    "Historical launch records are queried at fetched_at, not final historic ranks."
+                )
+            ),
+        ] = None,
+        period: Annotated[
+            Literal["daily", "weekly", "monthly"] | None,
+            Field(description="GitHub only: daily, weekly (default), or monthly."),
+        ] = None,
     ) -> dict[str, Any]:
         """Read an existing ranking in provider order, 10 items per frozen page.
 
         The API may initialize a missing snapshot; this never forces a refresh.
         Pages retain the first snapshot for at most 15 minutes. Use the
-        separate Reddit tool for community-specific rankings.
+        separate Reddit tool for community-specific rankings. Product Hunt
+        historical dates show launch records queried at fetched_at with current
+        scores and API RANKING order, not official final historical ranks or
+        necessarily the website leaderboard. Continue with the same date and
+        cursor; omitted dates stay bound across midnight. GitHub period defaults
+        to weekly; keep the chosen period when paging.
         """
         state = ctx.request_context.lifespan_context
-        return await _result(state.rankings.list_ranking_snapshot(state.reader, kind, cursor))
+        return await _result(
+            state.rankings.list_ranking_snapshot(
+                state.reader, kind, cursor, date=date, period=period
+            )
+        )
 
     @server.tool(annotations=read)
     async def list_reddit_ranking_snapshot(

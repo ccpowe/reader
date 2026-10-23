@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from datetime import date as CalendarDate
 from typing import Literal
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthenticatedUser, require_current_user
+from app.core.settings import get_settings
 from app.domain.enums import TranslationPurpose, TranslationStatus
 from app.ingestion.source_identity import MAX_RAW_SUBREDDIT_LENGTH, canonical_reddit_identity
 from app.services.ranking_snapshots import (
@@ -24,7 +26,12 @@ from app.services.ranking_snapshots import (
     get_snapshot,
     user_has_active_reddit_subscription,
 )
-from app.services.rankings import RankingItem, split_ranking_body
+from app.services.rankings import (
+    PRODUCT_HUNT_TIMEZONE,
+    RankingItem,
+    product_hunt_bounds,
+    split_ranking_body,
+)
 from app.storage.database import get_session
 from app.translation.domain import TranslationProjection
 from app.translation.projection import (
@@ -72,15 +79,22 @@ class RankingItemResponse(BaseModel):
     bookmark_count: int | None = None
     video_url: str | None = None
     video_thumbnail_url: str | None = None
+    product_id: str | None = None
+    website_url: str | None = None
 
 
 class RankingResponse(BaseModel):
-    kind: Literal["hacker_news", "reddit", "github", "techtwitter"]
+    kind: Literal["hacker_news", "reddit", "github", "techtwitter", "product_hunt"]
     title: str
     subtitle: str
     effective_engine_fingerprint: str | None
     items: list[RankingItemResponse]
     fetched_at: datetime
+    date: str | None = None
+    timezone: Literal["America/Los_Angeles"] | None = None
+    order: Literal["RANKING"] | None = None
+    truncated: bool | None = None
+    period: Literal["daily", "weekly", "monthly"] | None = None
 
 
 def _to_response(
@@ -144,7 +158,7 @@ def body_segments_for_item(kind: str, item: RankingItem) -> list[tuple[str, str]
 
 @router.get("/{kind}", response_model=RankingResponse)
 async def get_ranking(
-    kind: Literal["hacker_news", "reddit", "github", "techtwitter"],
+    kind: Literal["hacker_news", "reddit", "github", "techtwitter", "product_hunt"],
     limit: int = Query(default=100, ge=1, le=100),
     refresh: bool = Query(default=False),
     subreddit: str = Query(
@@ -154,13 +168,44 @@ async def get_ranking(
     time_filter: Literal["day", "week", "month", "year"] = Query(default="week"),
     _current_user: AuthenticatedUser = Depends(require_current_user),
     session: AsyncSession = Depends(get_session),
+    date: str | None = None,
+    period: Literal["daily", "weekly", "monthly"] | None = None,
 ) -> RankingResponse:
     """Return ranking originals together with any existing successful translations.
 
     The response identifies the effective translation engine. Cache misses stay
     empty so clients can render the original text and request only those missing
     segments through the interactive translation endpoint.
+
+    Product Hunt uses featured API RANKING for the specified Los Angeles day.
+    Historical scores and order reflect the fetch time, not closing-day standings;
+    API RANKING need not match the website leaderboard.
+    Product Hunt date queries revalidate against the official API after the
+    shared refresh cooldown. Historical days never reuse a pre-close capture.
     """
+    if kind != "product_hunt" and date is not None:
+        raise HTTPException(status_code=422, detail="date is only supported for product_hunt.")
+    if kind != "github" and period is not None:
+        raise HTTPException(status_code=422, detail="period is only supported for github.")
+    day: CalendarDate | None = None
+    if kind == "product_hunt":
+        today = datetime.now(PRODUCT_HUNT_TIMEZONE).date()
+        if date is not None:
+            try:
+                day = CalendarDate.fromisoformat(date)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="date must be YYYY-MM-DD.") from exc
+            if day.isoformat() != date:
+                raise HTTPException(status_code=422, detail="date must be YYYY-MM-DD.")
+        else:
+            day = today
+        if day > today:
+            raise HTTPException(
+                status_code=422, detail="Product Hunt date cannot be in the future."
+            )
+        token = get_settings().product_hunt_token
+        if token is None or not token.get_secret_value():
+            raise HTTPException(status_code=503, detail="Product Hunt ranking is not configured.")
     if kind == "reddit":
         try:
             identity = canonical_reddit_identity(subreddit)
@@ -177,9 +222,23 @@ async def get_ranking(
         subreddit=subreddit.removeprefix("r/"),
         sort=sort,
         time_filter=time_filter,
+        day=day,
+        period=period or "weekly",
     )
     try:
-        if refresh:
+        if kind == "product_hunt":
+            data = None if refresh else await get_snapshot(session, request)
+            now = datetime.now(UTC)
+            cooldown = timedelta(seconds=get_settings().ranking_manual_refresh_cooldown_seconds)
+            end = product_hunt_bounds(request.product_hunt_day)[1]
+            pre_close = data is not None and end <= now and data.fetched_at < end
+            if data is None or data.fetched_at < now - cooldown or pre_close:
+                data = await create_or_refresh_snapshot(session, request, force=True)
+                if data.fetched_at < now - cooldown or (end <= now and data.fetched_at < end):
+                    raise RankingRefreshInProgress(
+                        "Official Product Hunt date query is refreshing."
+                    )
+        elif refresh:
             data = await create_or_refresh_snapshot(session, request, force=True)
         else:
             data = await get_snapshot(session, request)
@@ -190,6 +249,8 @@ async def get_ranking(
             _current_user.id,
             data,
             limit=limit,
+            day=day,
+            period=period or "weekly",
         )
     except RankingRefreshRateLimited as exc:
         raise HTTPException(
@@ -220,6 +281,8 @@ async def _ranking_response(
     data: RankingData,
     *,
     limit: int,
+    day: CalendarDate | None = None,
+    period: Literal["daily", "weekly", "monthly"] = "weekly",
 ) -> RankingResponse:
     items = data.items[:limit]
     context = await get_translation_context(session, user_id)
@@ -274,6 +337,11 @@ async def _ranking_response(
             for item in items
         ],
         fetched_at=data.fetched_at,
+        date=day.isoformat() if data.kind == "product_hunt" and day is not None else None,
+        timezone="America/Los_Angeles" if data.kind == "product_hunt" else None,
+        order="RANKING" if data.kind == "product_hunt" else None,
+        truncated=data.truncated if data.kind == "product_hunt" else None,
+        period=period if data.kind == "github" else None,
     )
 
 

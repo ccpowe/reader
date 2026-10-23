@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 import asyncpg
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import create_async_engine
 from test_postgres_migrations import _assert_disposable_database, _test_dsn, _test_guard_token
@@ -19,8 +19,16 @@ from app.api.feed import get_article
 from app.api.saved import _query_saved_page, get_ranking_saved_state, save_content, unsave_content
 from app.core.auth import AuthenticatedUser
 from app.domain.enums import MediaType, SourceKind, SourceStatus, SourceVisibility
+from app.services import ranking_snapshots
 from app.services.ranking_saved import persist_ranking_item
-from app.services.ranking_snapshots import RankingRequest, ranking_item_payload
+from app.services.ranking_snapshots import (
+    RankingData,
+    RankingRequest,
+    create_or_refresh_snapshot,
+    get_snapshot,
+    ranking_item_payload,
+    sync_due_ranking_snapshots,
+)
 from app.services.rankings import RankingItem
 from app.storage.database import build_session_factory
 from app.storage.models import (
@@ -732,5 +740,137 @@ async def test_reddit_subscription_rolls_back_snapshot_failure_and_reuses_quota(
                     limit=1,
                 )
     finally:
+        await engine.dispose()
+        await connection.close()
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_product_hunt_date_keyed_cache_publish_and_current_day_worker_seed(monkeypatch):
+    """A date is replaced in place; other dates persist and only today is worker-due."""
+    from app.core.settings import Settings
+    from app.services.rankings import PRODUCT_HUNT_TIMEZONE, RankingItem
+
+    dsn = _test_dsn()
+    connection = await asyncpg.connect(dsn)
+    engine = create_async_engine(dsn.replace("postgresql://", "postgresql+asyncpg://", 1))
+    factory = build_session_factory(engine)
+    historical = RankingRequest(kind="product_hunt", day=date(2025, 1, 2))
+    another_day = RankingRequest(kind="product_hunt", day=date(2025, 1, 3))
+    today = RankingRequest(kind="product_hunt", day=datetime.now(PRODUCT_HUNT_TIMEZONE).date())
+    live_calls = []
+    worker_calls = []
+    monkeypatch.setattr(
+        ranking_snapshots,
+        "get_settings",
+        lambda: Settings(_env_file=None, product_hunt_token="test-only"),
+    )
+
+    async def live(request, *, limit):
+        live_calls.append(request)
+        revision = live_calls.count(request)
+        return RankingData(
+            kind="product_hunt",
+            title="Product Hunt",
+            subtitle=f"Featured launches · {request.product_hunt_day.isoformat()}",
+            items=[
+                RankingItem(
+                    rank=1,
+                    title=f"Launch revision {revision}",
+                    url=f"https://www.producthunt.com/posts/{request.product_hunt_day.isoformat()}",
+                    description="Tagline",
+                    native_id=f"ph-{request.product_hunt_day.isoformat()}",
+                    product_id=f"ph-{request.product_hunt_day.isoformat()}",
+                    website_url="https://example.org/launch",
+                    image_urls=("https://cdn.example.org/launch.png",),
+                    score=revision,
+                    comments=2,
+                )
+            ],
+            fetched_at=datetime.now(UTC),
+            truncated=revision == 1,
+        )
+
+    guarded = False
+    try:
+        await _assert_disposable_database(connection, _test_guard_token())
+        guarded = True
+        monkeypatch.setattr(ranking_snapshots, "fetch_live_ranking", live)
+        async with factory() as session:
+            await session.execute(
+                delete(RankingSnapshot).where(
+                    RankingSnapshot.cache_key.in_(
+                        (historical.cache_key, another_day.cache_key, today.cache_key)
+                    )
+                )
+            )
+            await session.commit()
+            first = await create_or_refresh_snapshot(session, historical)
+            second = await get_snapshot(session, historical)
+            assert first == second and first.truncated
+            assert second.items[0].product_id == "ph-2025-01-02"
+            assert second.items[0].website_url == "https://example.org/launch"
+            assert second.items[0].image_urls == ("https://cdn.example.org/launch.png",)
+            assert live_calls == [historical]
+            other = await create_or_refresh_snapshot(session, another_day)
+            assert other.items[0].title == "Launch revision 1"
+            await session.execute(
+                update(RankingSnapshot)
+                .where(RankingSnapshot.cache_key == historical.cache_key)
+                .values(next_refresh_at=datetime.now(UTC) - timedelta(days=1))
+            )
+            await session.commit()
+            revised = await create_or_refresh_snapshot(session, historical)
+            assert revised.items[0].title == "Launch revision 2"
+            assert revised.items[0].score == 2
+            assert revised.truncated is False
+            assert live_calls == [historical, another_day, historical]
+            assert await get_snapshot(session, another_day) == other
+            await session.execute(
+                update(RankingSnapshot)
+                .where(RankingSnapshot.cache_key.in_((historical.cache_key, another_day.cache_key)))
+                .values(next_refresh_at=datetime.now(UTC) - timedelta(days=1))
+            )
+            await session.commit()
+        async with factory() as session:
+            stored_historical = await get_snapshot(session, historical)
+            stored_other = await get_snapshot(session, another_day)
+            assert stored_historical == revised
+            assert stored_other == other
+            assert ranking_snapshots._request_from_snapshot(
+                await session.get(RankingSnapshot, historical.cache_key)
+            ) == historical
+            assert ranking_snapshots._request_from_snapshot(
+                await session.get(RankingSnapshot, another_day.cache_key)
+            ) == another_day
+
+        async def record_worker(_session, request, *, force=False):
+            worker_calls.append(request)
+            return None
+
+        monkeypatch.setattr(ranking_snapshots, "create_or_refresh_snapshot", record_worker)
+        async with factory() as session:
+            await sync_due_ranking_snapshots(session, limit=30)
+        assert today in worker_calls
+        assert historical not in worker_calls
+        assert another_day not in worker_calls
+        assert {
+            record["cache_key"]: record["total"]
+            for record in await connection.fetch(
+                """
+                SELECT cache_key, count(*) AS total
+                FROM ranking_snapshots
+                WHERE cache_key = ANY($1::text[])
+                GROUP BY cache_key
+                """,
+                [historical.cache_key, another_day.cache_key],
+            )
+        } == {historical.cache_key: 1, another_day.cache_key: 1}
+    finally:
+        if guarded:
+            await connection.execute(
+                "DELETE FROM ranking_snapshots WHERE cache_key = ANY($1::text[])",
+                [historical.cache_key, another_day.cache_key, today.cache_key],
+            )
         await engine.dispose()
         await connection.close()

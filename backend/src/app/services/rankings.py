@@ -6,13 +6,16 @@ import asyncio
 import calendar
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Any, Literal
 from urllib.parse import urlencode, urlsplit
+from zoneinfo import ZoneInfo
 
 import feedparser
 import httpx
 from bs4 import BeautifulSoup
+
+from app.core.settings import get_settings
 
 BODY_SEGMENT_MAX_UTF16_UNITS = 8_000
 
@@ -40,6 +43,124 @@ class RankingItem:
     bookmark_count: int | None = None
     video_url: str | None = None
     video_thumbnail_url: str | None = None
+    product_id: str | None = None
+    website_url: str | None = None
+
+
+PRODUCT_HUNT_TIMEZONE = ZoneInfo("America/Los_Angeles")
+PRODUCT_HUNT_API_URL = "https://api.producthunt.com/v2/api/graphql"
+_PRODUCT_HUNT_POSTS_QUERY = """
+query ProductHuntDaily(
+  $first: Int!, $after: String, $postedAfter: DateTime!, $postedBefore: DateTime!
+) {
+  posts(
+    first: $first, after: $after, order: RANKING, featured: true,
+    postedAfter: $postedAfter, postedBefore: $postedBefore
+  ) {
+    edges {
+      node { id name tagline url website votesCount commentsCount createdAt thumbnail { url } }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
+
+class ProductHuntError(RuntimeError):
+    """Product Hunt returned an unusable response, not an empty board."""
+
+
+def product_hunt_bounds(day: date) -> tuple[datetime, datetime]:
+    """Calendar-day half-open bounds; UTC duration varies across DST transitions."""
+    start = datetime.combine(day, time.min, tzinfo=PRODUCT_HUNT_TIMEZONE)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=PRODUCT_HUNT_TIMEZONE)
+    return start.astimezone(UTC), end.astimezone(UTC)
+
+
+async def fetch_product_hunt_daily(day: date, limit: int = 100) -> tuple[list[RankingItem], bool]:
+    """Fetch featured posts in API RANKING order for an LA calendar day.
+
+    Historical votes and positions are observed now, not closing-day records.
+    """
+    token = get_settings().product_hunt_token
+    if token is None or not token.get_secret_value():
+        raise ProductHuntError("Product Hunt is not configured.")
+    after_bound, before_bound = product_hunt_bounds(day)
+    target = min(max(limit, 1), 100)
+    items: list[RankingItem] = []
+    cursor: str | None = None
+    seen_cursors: set[str] = set()
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as client:
+        while len(items) < target:
+            response = await client.post(
+                PRODUCT_HUNT_API_URL,
+                headers={"Authorization": f"Bearer {token.get_secret_value()}"},
+                json={
+                    "query": _PRODUCT_HUNT_POSTS_QUERY,
+                    "variables": {
+                        "first": min(50, target - len(items)),
+                        "after": cursor,
+                        "postedAfter": after_bound.isoformat(),
+                        "postedBefore": before_bound.isoformat(),
+                    },
+                },
+            )
+            response.raise_for_status()
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise ProductHuntError("Product Hunt returned invalid JSON.") from exc
+            if not isinstance(payload, dict) or payload.get("errors"):
+                raise ProductHuntError("Product Hunt API returned errors.")
+            connection = payload.get("data")
+            connection = connection.get("posts") if isinstance(connection, dict) else None
+            if not isinstance(connection, dict):
+                raise ProductHuntError("Product Hunt posts response is missing.")
+            edges, page_info = connection.get("edges"), connection.get("pageInfo")
+            if not isinstance(edges, list) or not isinstance(page_info, dict):
+                raise ProductHuntError("Product Hunt pagination response is invalid.")
+            for edge in edges:
+                node = edge.get("node") if isinstance(edge, dict) else None
+                if not isinstance(node, dict):
+                    raise ProductHuntError("Product Hunt post is invalid.")
+                product_id = _optional_text(node.get("id"))
+                title = _optional_text(node.get("name"))
+                url = _http_url(node.get("url"))
+                if product_id is None or title is None or url is None:
+                    raise ProductHuntError("Product Hunt post is incomplete.")
+                thumbnail = node.get("thumbnail")
+                image_url = _http_url(thumbnail.get("url")) if isinstance(thumbnail, dict) else None
+                items.append(
+                    RankingItem(
+                        rank=len(items) + 1,
+                        title=title,
+                        url=url,
+                        source_label="Product Hunt",
+                        description=_optional_text(node.get("tagline")),
+                        score=_optional_count(node.get("votesCount")),
+                        comments=_optional_count(node.get("commentsCount")),
+                        image_urls=(image_url,) if image_url else (),
+                        native_id=product_id,
+                        product_id=product_id,
+                        website_url=_http_url(node.get("website")),
+                        published_at=_parse_provider_datetime(node.get("createdAt")),
+                    )
+                )
+            has_next = page_info.get("hasNextPage")
+            if not isinstance(has_next, bool) or len(items) > target:
+                raise ProductHuntError("Product Hunt pagination response is invalid.")
+            if not has_next:
+                return items, False
+            if not edges:
+                raise ProductHuntError("Product Hunt pagination did not advance.")
+            if len(items) >= target:
+                return items, True
+            next_cursor = page_info.get("endCursor")
+            if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen_cursors:
+                raise ProductHuntError("Product Hunt pagination did not advance.")
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+    return items, False
 
 
 async def fetch_hacker_news(limit: int = 20) -> list[RankingItem]:
@@ -174,11 +295,16 @@ async def fetch_reddit_ranking(
     return items
 
 
-async def fetch_github_trending(limit: int = 20) -> list[RankingItem]:
-    """Parse GitHub's public weekly Trending page into repository cards."""
+async def fetch_github_trending(
+    limit: int = 20, *, period: Literal["daily", "weekly", "monthly"] = "weekly"
+) -> list[RankingItem]:
+    """Parse GitHub's public Trending page into repository cards."""
+    if period not in {"daily", "weekly", "monthly"}:
+        raise ValueError(f"unsupported GitHub period: {period}")
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
         response = await client.get(
-            "https://github.com/trending?since=weekly",
+            "https://github.com/trending",
+            params={"since": period},
             headers={"User-Agent": "ReaderLearningApp/0.1 (+https://example.invalid)"},
         )
         response.raise_for_status()
@@ -186,6 +312,8 @@ async def fetch_github_trending(limit: int = 20) -> list[RankingItem]:
     items: list[RankingItem] = []
     # GitHub Trending intentionally exposes a single Top-25 page.
     articles = soup.select("article.Box-row")[: min(_bounded_limit(limit), 25)]
+    period_label = {"daily": "today", "weekly": "this week", "monthly": "this month"}[period]
+    period_pattern = re.compile(rf"([\d,]+)\s+stars\s+{re.escape(period_label)}\b", re.IGNORECASE)
     for rank, article in enumerate(articles, start=1):
         link = article.select_one("h2 a[href]")
         if link is None:
@@ -197,7 +325,7 @@ async def fetch_github_trending(limit: int = 20) -> list[RankingItem]:
         stars = _linked_stat(article, "/stargazers")
         forks = _linked_stat(article, "/forks")
         period_text = article.get_text(" ", strip=True)
-        period_match = re.search(r"([\d,]+)\s+stars\s+this\s+week", period_text, re.IGNORECASE)
+        period_match = period_pattern.search(period_text)
         avatars = tuple(
             str(image["src"])
             for image in article.select("img.avatar-user[src]")

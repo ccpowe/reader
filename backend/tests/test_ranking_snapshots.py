@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -50,6 +50,69 @@ def test_snapshot_intervals_are_conservative_for_external_providers() -> None:
     assert refresh_interval(RankingRequest(kind="reddit", sort="rising")) == timedelta(hours=1)
     assert refresh_interval(RankingRequest(kind="reddit", sort="top")) == timedelta(hours=6)
     assert refresh_interval(RankingRequest(kind="techtwitter")) == timedelta(minutes=15)
+    assert refresh_interval(
+        RankingRequest(kind="product_hunt", day=date(2026, 10, 20))
+    ) == timedelta(minutes=30)
+
+
+def test_product_hunt_date_and_github_period_have_distinct_durable_keys() -> None:
+    historical = RankingRequest(kind="product_hunt", day=date(2026, 10, 20))
+    current = RankingRequest(kind="product_hunt", day=date(2026, 10, 21))
+    assert historical.cache_key == "ranking:v2:product_hunt:2026-10-20"
+    assert historical.parameters == {"date": "2026-10-20"}
+    assert historical.cache_key != current.cache_key
+    assert RankingRequest(kind="github").cache_key == "ranking:v2:github"
+    assert RankingRequest(kind="github", period="weekly").cache_key == "ranking:v2:github"
+    assert RankingRequest(kind="github", period="daily").cache_key == "ranking:v2:github:daily"
+    assert RankingRequest(kind="github", period="monthly").cache_key == "ranking:v2:github:monthly"
+    assert _request_from_snapshot(SimpleNamespace(kind="github", parameters={})) == RankingRequest(
+        kind="github"
+    )
+    assert _request_from_snapshot(
+        SimpleNamespace(kind="github", parameters={"period": "monthly"})
+    ) == RankingRequest(kind="github", period="monthly")
+    assert (
+        _request_from_snapshot(
+            SimpleNamespace(kind="product_hunt", parameters=historical.parameters)
+        )
+        == historical
+    )
+    with pytest.raises(ValueError):
+        _request_from_snapshot(SimpleNamespace(kind="product_hunt", parameters={"date": "broken"}))
+    with pytest.raises(ValueError):
+        _request_from_snapshot(SimpleNamespace(kind="github", parameters={"period": "yearly"}))
+
+
+def test_product_hunt_snapshot_roundtrip_preserves_truncation_and_identity() -> None:
+    item = RankingItem(
+        rank=1,
+        title="Launch",
+        description="Tagline",
+        url="https://www.producthunt.com/posts/launch",
+        native_id="post-1",
+        product_id="post-1",
+        website_url="https://example.com/",
+        image_urls=("https://cdn.example/launch.png",),
+        score=21,
+        comments=3,
+    )
+    data = RankingData(
+        kind="product_hunt",
+        title="Product Hunt",
+        subtitle="Featured launches",
+        items=[item],
+        fetched_at=datetime.now(UTC),
+        truncated=True,
+    )
+    assert (
+        _data_from_snapshot(
+            SimpleNamespace(
+                kind="product_hunt", payload=_payload_from_data(data), fetched_at=data.fetched_at
+            )
+        )
+        == data
+    )
+    assert ranking_item_from_payload(ranking_item_payload(item)) == item
 
 
 def test_snapshot_key_is_shared_by_equivalent_reddit_input() -> None:
@@ -64,6 +127,7 @@ def test_snapshot_windows_match_each_provider_capability() -> None:
     assert _snapshot_item_limit(RankingRequest(kind="reddit")) == 100
     assert _snapshot_item_limit(RankingRequest(kind="github")) == 25
     assert _snapshot_item_limit(RankingRequest(kind="techtwitter")) == 50
+    assert _snapshot_item_limit(RankingRequest(kind="product_hunt", day=date(2026, 10, 20))) == 100
 
 
 def test_techtwitter_snapshot_and_saved_metadata_roundtrip_without_losing_originals() -> None:

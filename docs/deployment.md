@@ -98,6 +98,7 @@ Issue、放进 APK、截图或实验 workspace。
 | `APP_DEEPSEEK_API_KEY` / `APP_OPENROUTER_API_KEY` | 使用 API key 翻译时二选一必需 | 在 DeepSeek 或 OpenRouter 创建 API key，并与默认翻译引擎匹配 | `backend/.env` |
 | `APP_CODEX_SUBSCRIPTION_AUTH_FILE` | 使用 Codex 订阅翻译时必需 | 指向 Reader 自有的可写凭据库；使用独立 Codex 登录导入，见下文 | `backend/.env` 保存路径，凭据仅在服务器私有目录 |
 | `APP_YOUTUBE_DATA_API_KEY` | 可选 | 在 Google Cloud 创建项目、启用 YouTube Data API v3、创建并限制 API key | `backend/.env` |
+| `APP_PRODUCT_HUNT_TOKEN` | 可选 | 在 [Product Hunt 开发者后台](https://www.producthunt.com/v2/oauth/applications)创建 Confidential 应用并生成 Developer Token；默认非商业用途 | `backend/.env` 或私密进程环境；Docker 使用 `.docker/inputs/product-hunt-token` |
 
 连接 token 和 JWT 签名密钥用途不同，不应共用。示例值仅展示配置格式，实际部署生成
 随机值并保存在受限 `.env`，不提交到仓库。更换连接 token 后客户端重新输入即可，

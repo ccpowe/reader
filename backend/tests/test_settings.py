@@ -5,6 +5,16 @@ from app.core.settings import Settings
 from app.storage import database
 
 
+def test_product_hunt_token_is_optional_backend_only_and_excluded_from_settings_dump(monkeypatch):
+    monkeypatch.delenv("APP_PRODUCT_HUNT_TOKEN", raising=False)
+    assert Settings(_env_file=None).product_hunt_token is None
+    monkeypatch.setenv("APP_PRODUCT_HUNT_TOKEN", "test-only-secret")
+    settings = Settings(_env_file=None)
+    assert settings.product_hunt_token.get_secret_value() == "test-only-secret"
+    assert "product_hunt_token" not in settings.model_dump()
+    assert "test-only-secret" not in repr(settings)
+
+
 def test_web_browser_defaults_to_lightpanda_without_requiring_installation():
     settings = Settings(_env_file=None)
     assert settings.ingestion_browser_engine == "lightpanda"

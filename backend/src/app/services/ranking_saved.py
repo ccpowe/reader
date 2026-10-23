@@ -59,6 +59,9 @@ async def persist_ranking_item(
 ) -> UUID:
     from app.translation.lifecycle import lock_shared_lifecycle
 
+    if request.kind == "product_hunt":
+        raise ValueError("Product Hunt ranking items are not supported by the saved archive.")
+
     if request.kind == "reddit":
         identity = canonical_reddit_identity(request.subreddit)
         subreddit = identity.canonical_key.removeprefix("reddit:")

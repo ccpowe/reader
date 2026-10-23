@@ -46,7 +46,7 @@ try {
     ['getSavedContentPage', () => api.getSavedContentPage(session), { items: [], next_cursor: null }],
     ['resolveTitleTranslations', () => api.resolveTitleTranslations(session, ['article']), []],
     ['getSources', () => api.getSources(session), []],
-    ['getRanking', () => api.getRanking(session, 'hackernews'), { items: [] }],
+    ['getRanking', () => api.getRanking(session, 'hacker_news'), { items: [] }],
     ['removeSourceSubscription', () => api.removeSourceSubscription(session, 'source'), null],
     ['updateSourceSubscriptionFolder', () => api.updateSourceSubscriptionFolder(session, 'source', 'folder'), { source_id: 'source' }],
     ['setSavedContent', () => api.setSavedContent(session, 'article', false), null],
@@ -100,6 +100,9 @@ try {
     await invoke();
     assert.equal(timers.size, 0, `${name}: successful request cleanup`);
   }
+  resetRuntime();
+  globalThis.fetch = async () => new Response(JSON.stringify({ detail: 'Product Hunt is not configured' }), { status: 503 });
+  await assert.rejects(api.getRanking(session, 'product_hunt'), /Product Hunt is not configured/, 'unconfigured Product Hunt surfaces the backend error');
   globalThis.fetch = async () => new Response('Bad gateway', { status: 502 });
   await assert.rejects(api.getProfile(session), error => error instanceof HttpResponseError && error.status === 502);
   globalThis.fetch = async () => new Response('{"detail":"Cannot delete"}', { status: 403 });

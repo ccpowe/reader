@@ -228,6 +228,9 @@ class Settings(BaseSettings):
     )
     youtube_daily_quota_soft_limit: int = Field(default=8_000, ge=0, le=10_000)
 
+    # Backend-only GraphQL bearer credential; never expose through API settings.
+    product_hunt_token: SecretStr | None = Field(default=None, exclude=True)
+
     # Translation limits are durable, cross-process PostgreSQL budgets. Keep
     # the names explicit so operators can distinguish the per-user miss
     # budget from the provider-wide budget. A zero value is useful for a

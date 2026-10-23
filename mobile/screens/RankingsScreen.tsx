@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AppState,
   ActivityIndicator,
   Image,
   Pressable,
@@ -17,6 +18,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 
 import { BottomSheetModal } from '../components/BottomSheetModal';
+import { ProductHuntDatePicker } from '../components/ProductHuntDatePicker';
 import { CategoryPager } from '../components/CategoryPager';
 import { PageHeaderContent } from '../components/PageHeader';
 import { XRankingContent } from '../components/XRankingContent';
@@ -31,9 +33,11 @@ import { useCollapsingChrome, useChromeStyle } from '../hooks/useCollapsingChrom
 import {
   type RankingItem,
   type RankingKind,
+  type GithubRankingPeriod,
   type RedditRankingSort,
 } from '../lib/api';
 import { formatCount, relativeTime } from '../domain/formatting';
+import { isProductHuntDate, productHuntToday, shiftProductHuntDate } from '../domain/productHuntDate';
 import { redditCommunitiesFromSources } from '../domain/source';
 import { useSources } from '../hooks/useSources';
 import { useTranslationPreference } from '../hooks/useTranslationPreference';
@@ -48,8 +52,15 @@ import { readerQueryKeys } from '../state/queryClient';
 import { protectsQueryKeys, removeObsoleteQueries } from '../state/queryLifecycle';
 
 const RANKING_CHROME_HEIGHT = PAGE_HEADER_HEIGHT + 46;
-const RANKING_KINDS: RankingKind[] = ['hacker_news', 'reddit', 'github', 'techtwitter'];
+const RANKING_KINDS: RankingKind[] = ['hacker_news', 'reddit', 'github', 'product_hunt', 'techtwitter'];
 const EMPTY_RANKING_ITEMS: RankingItem[] = [];
+const GITHUB_PERIODS: GithubRankingPeriod[] = ['daily', 'weekly', 'monthly'];
+const PRODUCT_HUNT_RECENT_DATES = 8;
+
+function recentProductHuntDates(current: string[], date: string): string[] {
+  if (current[current.length - 1] === date) return current;
+  return [...current.filter((day) => day !== date), date].slice(-PRODUCT_HUNT_RECENT_DATES);
+}
 
 export function RankingsScreen({
   onProfile,
@@ -67,11 +78,37 @@ export function RankingsScreen({
   const [kind, setKind] = useState<RankingKind>('hacker_news');
   const [redditCommunity, setRedditCommunity] = useState<string | null>(null);
   const [redditSort, setRedditSort] = useState<RedditRankingSort>('hot');
+  const [githubPeriod, setGithubPeriod] = useState<GithubRankingPeriod>('weekly');
+  const [productHuntTodayDate, setProductHuntTodayDate] = useState(productHuntToday);
+  // null follows the LA calendar day as it rolls over; an explicit date stays selected across tabs.
+  const [selectedProductHuntDate, setSelectedProductHuntDate] = useState<string | null>(null);
+  const productHuntDate = selectedProductHuntDate ?? productHuntTodayDate;
+  const [recentDates, setRecentDates] = useState<string[]>(() => [productHuntTodayDate]);
+  useEffect(() => {
+    if (!active) return;
+    const updateToday = () => setProductHuntTodayDate(productHuntToday());
+    updateToday();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') updateToday();
+    });
+    const timer = setInterval(() => {
+      if (!AppState.currentState || AppState.currentState === 'active') updateToday();
+    }, 30_000);
+    return () => { subscription.remove(); clearInterval(timer); };
+  }, [active]);
+  useEffect(() => {
+    setRecentDates((current) => recentProductHuntDates(current, productHuntDate));
+  }, [productHuntDate]);
+  const changeProductHuntDate = (date: string) => {
+    if (!isProductHuntDate(date, productHuntTodayDate)) return;
+    setSelectedProductHuntDate(date === productHuntTodayDate ? null : date);
+    setRecentDates((current) => recentProductHuntDates(current, date));
+  };
   const [visibleCounts, setVisibleCounts] = useState<ReadonlyMap<string, number>>(new Map());
   const positionRegistry = useRef<ListPositionRegistry>(new Map()).current;
   const currentVariant = rankingVariantKey(kind, kind === 'reddit' && redditCommunity
     ? { subreddit: redditCommunity, sort: redditSort }
-    : undefined);
+    : kind === 'github' ? { period: githubPeriod } : kind === 'product_hunt' ? { date: productHuntDate } : undefined);
   return <RankingsScreenContent
     active={active}
     chromeProgress={chromeProgress}
@@ -79,6 +116,11 @@ export function RankingsScreen({
     onChangeKind={setKind}
     onChangeRedditCommunity={setRedditCommunity}
     onChangeRedditSort={setRedditSort}
+    onChangeGithubPeriod={setGithubPeriod}
+    productHuntDate={productHuntDate}
+    productHuntTodayDate={productHuntTodayDate}
+    recentProductHuntDates={recentDates}
+    onChangeProductHuntDate={changeProductHuntDate}
     onChangeVisibleCount={(count) => setVisibleCounts((current) => {
       if ((current.get(currentVariant) ?? 20) === count) return current;
       const next = new Map(current);
@@ -90,6 +132,7 @@ export function RankingsScreen({
     onOpenItem={onOpenItem}
     onProfile={onProfile}
     positionRegistry={positionRegistry}
+    githubPeriod={githubPeriod}
     redditCommunity={redditCommunity}
     redditSort={redditSort}
     session={session}
@@ -105,9 +148,15 @@ function RankingsScreenContent({
   onChangeKind,
   onChangeRedditCommunity,
   onChangeRedditSort,
+  onChangeGithubPeriod,
+  productHuntDate,
+  productHuntTodayDate,
+  recentProductHuntDates,
+  onChangeProductHuntDate,
   onChangeVisibleCount,
   onOpenItem,
   positionRegistry,
+  githubPeriod,
   redditCommunity,
   redditSort,
   session,
@@ -119,10 +168,16 @@ function RankingsScreenContent({
   onChangeKind: (kind: RankingKind) => void;
   onChangeRedditCommunity: (community: string | null) => void;
   onChangeRedditSort: (sort: RedditRankingSort) => void;
+  productHuntDate: string;
+  productHuntTodayDate: string;
+  recentProductHuntDates: readonly string[];
+  onChangeProductHuntDate: (date: string) => void;
+  onChangeGithubPeriod: (period: GithubRankingPeriod) => void;
   onChangeVisibleCount: (count: number) => void;
   onOpenItem: (item: RankingItem) => void;
   onProfile?: () => void;
   positionRegistry: ListPositionRegistry;
+  githubPeriod: GithubRankingPeriod;
   redditCommunity: string | null;
   redditSort: RedditRankingSort;
   session: Session;
@@ -132,6 +187,9 @@ function RankingsScreenContent({
   const [showCommunityPicker, setShowCommunityPicker] = useState(false);
   const [draftCommunity, setDraftCommunity] = useState<string | null>(null);
   const [draftSort, setDraftSort] = useState<RedditRankingSort>('hot');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showGithubPeriods, setShowGithubPeriods] = useState(false);
+  const [showProductHuntInfo, setShowProductHuntInfo] = useState(false);
   const readerClient = useQueryClient();
   const [visibleXKeys, setVisibleXKeys] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
@@ -149,6 +207,8 @@ function RankingsScreenContent({
     () => redditCommunity ? { subreddit: redditCommunity, sort: redditSort } : undefined,
     [redditCommunity, redditSort],
   );
+  const githubOptions = useMemo<RankingOptions>(() => ({ period: githubPeriod }), [githubPeriod]);
+  const productHuntOptions = useMemo<RankingOptions>(() => ({ date: productHuntDate }), [productHuntDate]);
   const hackerQuery = useRanking(
     session,
     'hacker_news',
@@ -174,8 +234,19 @@ function RankingsScreenContent({
   const githubQuery = useRanking(
     session,
     'github',
-    undefined,
+    githubOptions,
     active && kind === 'github',
+    visibleCount,
+    translation.enabled,
+    translation.targetLocale,
+    translation.effectiveEngineId,
+    translation.effectiveEngineFingerprint,
+  );
+  const productHuntQuery = useRanking(
+    session,
+    'product_hunt',
+    productHuntOptions,
+    active && kind === 'product_hunt',
     visibleCount,
     translation.enabled,
     translation.targetLocale,
@@ -194,15 +265,16 @@ function RankingsScreenContent({
     translation.effectiveEngineFingerprint,
     visibleXKeys,
   );
-  const rankingQueries = { hacker_news: hackerQuery, reddit: redditQuery, github: githubQuery, techtwitter: xQuery };
-  const rankingKeys = useMemo(() => RANKING_KINDS.map((targetKind) => readerQueryKeys.rankings(
-    session.user.id,
-    rankingVariantKey(targetKind, targetKind === 'reddit' ? redditOptions : undefined),
-    translation.targetLocale,
-    translation.enabled,
-    translation.effectiveEngineFingerprint,
-    runtime?.identity.server_id,
-  )), [redditOptions, runtime?.identity.server_id, session.user.id, translation.effectiveEngineFingerprint, translation.enabled, translation.targetLocale]);
+  const rankingQueries = { hacker_news: hackerQuery, reddit: redditQuery, github: githubQuery, product_hunt: productHuntQuery, techtwitter: xQuery };
+  const rankingKeys = useMemo(() => [
+    ...RANKING_KINDS.filter((targetKind) => targetKind !== 'github' && targetKind !== 'product_hunt').map((targetKind) => rankingVariantKey(targetKind, targetKind === 'reddit' ? redditOptions : undefined)),
+    ...GITHUB_PERIODS.map((period) => rankingVariantKey('github', { period })),
+    ...recentProductHuntDates.map((date) => rankingVariantKey('product_hunt', { date })),
+    rankingVariantKey('product_hunt', productHuntOptions),
+  ].map((variant) => readerQueryKeys.rankings(
+    session.user.id, variant, translation.targetLocale, translation.enabled,
+    translation.effectiveEngineFingerprint, runtime?.identity.server_id,
+  )), [productHuntOptions, recentProductHuntDates, redditOptions, runtime?.identity.server_id, session.user.id, translation.effectiveEngineFingerprint, translation.enabled, translation.targetLocale]);
 
   useEffect(() => {
     void removeObsoleteQueries({
@@ -211,21 +283,13 @@ function RankingsScreenContent({
       queryClient: readerClient,
     });
     return () => {
-      const currentKey = readerQueryKeys.rankings(
-        session.user.id,
-        rankingVariantKey(kind, kind === 'reddit' ? redditOptions : undefined),
-        translation.targetLocale,
-        translation.enabled,
-        translation.effectiveEngineFingerprint,
-        runtime?.identity.server_id,
-      );
       queueMicrotask(() => void removeObsoleteQueries({
-        isProtected: protectsQueryKeys([currentKey]),
+        isProtected: protectsQueryKeys(rankingKeys),
         prefix: readerQueryKeys.rankingsPrefix(session.user.id, runtime?.identity.server_id),
         queryClient: readerClient,
       }));
     };
-  }, [kind, rankingKeys, readerClient, redditOptions, runtime?.identity.server_id, session.user.id, translation.effectiveEngineFingerprint, translation.enabled, translation.targetLocale]);
+  }, [rankingKeys, readerClient, runtime?.identity.server_id, session.user.id]);
 
   useEffect(() => {
     const next = redditCommunity && redditCommunities.includes(redditCommunity)
@@ -248,7 +312,7 @@ function RankingsScreenContent({
           readerClient,
           session,
           targetKind,
-          targetKind === 'reddit' ? redditOptions : undefined,
+          targetKind === 'reddit' ? redditOptions : targetKind === 'github' ? githubOptions : targetKind === 'product_hunt' ? productHuntOptions : undefined,
           runtime?.identity.server_id,
           runtime,
           translation.targetLocale,
@@ -261,6 +325,8 @@ function RankingsScreenContent({
     kind,
     readerClient,
     redditCommunitiesResolved,
+    githubOptions,
+    productHuntOptions,
     redditCommunity,
     redditOptions,
     runtime,
@@ -270,7 +336,7 @@ function RankingsScreenContent({
     translation.targetLocale,
   ]);
 
-  const { onScroll, revealChrome } = useCollapsingChrome(active, chromeProgress, kind, { height: RANKING_CHROME_HEIGHT });
+  const { onScroll, revealChrome } = useCollapsingChrome(active, chromeProgress, kind === 'github' ? `github:${githubPeriod}` : kind === 'product_hunt' ? rankingVariantKey(kind, productHuntOptions) : kind, { height: RANKING_CHROME_HEIGHT });
   const headerStyle = useChromeStyle(chromeProgress, RANKING_CHROME_HEIGHT);
 
   function loadMoreIfNeeded(targetKind: RankingKind) {
@@ -282,8 +348,17 @@ function RankingsScreenContent({
 
   function renderRankingPage(targetKind: RankingKind) {
     return <RankingPage
+      key={targetKind === 'github' ? `github:${githubPeriod}` : targetKind === 'product_hunt' ? rankingVariantKey(targetKind, productHuntOptions) : targetKind}
       active={active && targetKind === kind}
       kind={targetKind}
+      githubPeriod={githubPeriod}
+      onOpenGithubPeriods={() => setShowGithubPeriods(true)}
+      productHuntDate={productHuntDate}
+      productHuntTodayDate={productHuntTodayDate}
+      productHuntOptions={productHuntOptions}
+      onChangeProductHuntDate={onChangeProductHuntDate}
+      onOpenDatePicker={() => setShowDatePicker(true)}
+      onOpenProductHuntInfo={() => setShowProductHuntInfo(true)}
       onLoadMore={() => loadMoreIfNeeded(targetKind)}
       onVisibleItems={(items) => {
         if (!active || targetKind !== 'techtwitter' || kind !== 'techtwitter') return;
@@ -295,6 +370,7 @@ function RankingsScreenContent({
       onScroll={onScroll}
       positionRegistry={positionRegistry}
       query={rankingQueries[targetKind]}
+      githubOptions={githubOptions}
       redditCommunity={redditCommunity}
       redditOptions={redditOptions}
       redditSort={redditSort}
@@ -336,6 +412,7 @@ function RankingsScreenContent({
           <RankingTab active={kind === 'hacker_news'} label="Hacker News" onPress={() => { revealChrome(); onChangeKind('hacker_news'); }} />
           <RankingTab active={kind === 'reddit'} label="Reddit" onPress={() => { revealChrome(); onChangeKind('reddit'); }} />
           <RankingTab active={kind === 'github'} label="GitHub" onPress={() => { revealChrome(); onChangeKind('github'); }} />
+          <RankingTab active={kind === 'product_hunt'} label="Product Hunt" onPress={() => { revealChrome(); onChangeKind('product_hunt'); }} />
           <RankingTab active={kind === 'techtwitter'} label={t('xTrendingTab')} onPress={() => { revealChrome(); onChangeKind('techtwitter'); }} />
         </ScrollView>
       </Reanimated.View>
@@ -360,6 +437,41 @@ function RankingsScreenContent({
         </Pressable>)}
         <Pressable accessibilityRole="button" disabled={!draftCommunity || !redditCommunities.includes(draftCommunity)} onPress={() => { if (!draftCommunity || !redditCommunities.includes(draftCommunity)) return; onChangeRedditCommunity(draftCommunity); onChangeRedditSort(draftSort); setShowCommunityPicker(false); }} style={styles.applyButton}><Text style={styles.applyText}>{t('viewRankings')}</Text></Pressable>
       </BottomSheetModal>
+      <BottomSheetModal onClose={() => setShowGithubPeriods(false)} visible={showGithubPeriods}>
+        <View style={styles.filterSheet}>
+          <View style={styles.sheetHeading}>
+            <Text style={styles.modalTitle}>{t('githubChoosePeriod')}</Text>
+            <Pressable accessibilityLabel={t('closeRankingFilters')} accessibilityRole="button" onPress={() => setShowGithubPeriods(false)} style={styles.closeButton}><Feather name="x" size={22} color={colors.textMuted} /></Pressable>
+          </View>
+          {GITHUB_PERIODS.map((period) => <Pressable
+            accessibilityLabel={t(period === 'daily' ? 'githubDaily' : period === 'weekly' ? 'githubWeekly' : 'githubMonthly')}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: githubPeriod === period }}
+            key={period}
+            onPress={() => { onChangeGithubPeriod(period); setShowGithubPeriods(false); }}
+            style={styles.communityChoice}
+          >
+            <Text style={styles.communityChoiceText}>{t(period === 'daily' ? 'githubDaily' : period === 'weekly' ? 'githubWeekly' : 'githubMonthly')}</Text>
+            <View style={[styles.radio, githubPeriod === period && styles.radioSelected]} />
+          </Pressable>)}
+        </View>
+      </BottomSheetModal>
+      <ProductHuntDatePicker
+        onClose={() => setShowDatePicker(false)}
+        onSelectDate={onChangeProductHuntDate}
+        selectedDate={productHuntDate}
+        today={productHuntTodayDate}
+        visible={showDatePicker}
+      />
+      <BottomSheetModal onClose={() => setShowProductHuntInfo(false)} visible={showProductHuntInfo}>
+        <View style={styles.filterSheet}>
+          <View style={styles.sheetHeading}>
+            <Text style={styles.modalTitle}>{t('productHuntInfo')}</Text>
+            <Pressable accessibilityLabel={t('productHuntCloseInfo')} accessibilityRole="button" onPress={() => setShowProductHuntInfo(false)} style={styles.closeButton}><Feather name="x" size={22} color={colors.textMuted} /></Pressable>
+          </View>
+          <Text style={styles.productHuntInfoText}>{t('productHuntFetchCaveat')}</Text>
+        </View>
+      </BottomSheetModal>
     </View>
   );
 }
@@ -368,6 +480,15 @@ const rankingItemId = (item: RankingItem) => item.translation_key;
 
 function RankingPage({
   active,
+  githubPeriod,
+  githubOptions,
+  productHuntDate,
+  productHuntTodayDate,
+  productHuntOptions,
+  onChangeProductHuntDate,
+  onOpenDatePicker,
+  onOpenGithubPeriods,
+  onOpenProductHuntInfo,
   kind,
   onLoadMore,
   onVisibleItems,
@@ -384,6 +505,15 @@ function RankingPage({
   visibleCount,
 }: {
   active: boolean;
+  githubPeriod: GithubRankingPeriod;
+  githubOptions: RankingOptions;
+  onOpenGithubPeriods: () => void;
+  productHuntDate: string;
+  productHuntTodayDate: string;
+  productHuntOptions: RankingOptions;
+  onChangeProductHuntDate: (date: string) => void;
+  onOpenDatePicker: () => void;
+  onOpenProductHuntInfo: () => void;
   kind: RankingKind;
   onLoadMore: () => void;
   onVisibleItems: (items: readonly RankingItem[]) => void;
@@ -399,10 +529,28 @@ function RankingPage({
   sourcesPending: boolean;
   visibleCount: number;
 }) {
-  const { t } = useTranslation('feed');
+  const { t, i18n } = useTranslation('feed');
   const items = query.ranking?.items ?? EMPTY_RANKING_ITEMS;
   const shownItems = useMemo(() => items.slice(0, visibleCount), [items, visibleCount]);
-  const memoryKey = rankingVariantKey(kind, kind === 'reddit' ? redditOptions : undefined);
+  const memoryKey = rankingVariantKey(kind, kind === 'reddit' ? redditOptions : kind === 'github' ? githubOptions : kind === 'product_hunt' ? productHuntOptions : undefined);
+  const yesterday = shiftProductHuntDate(productHuntTodayDate, -1);
+  const canGoPreviousDay = productHuntDate > '0001-01-01';
+  const nextDate = shiftProductHuntDate(productHuntDate, 1);
+  const displayDate = useMemo(() => {
+    const date = new Date(`${productHuntDate}T12:00:00Z`);
+    return new Intl.DateTimeFormat(i18n.language, {
+      month: 'short', day: 'numeric',
+      ...(productHuntDate.slice(0, 4) !== productHuntTodayDate.slice(0, 4) ? { year: 'numeric' as const } : {}),
+      timeZone: 'UTC',
+    }).format(date);
+  }, [i18n.language, productHuntDate, productHuntTodayDate]);
+  const fetchedAt = query.ranking?.fetched_at;
+  const fetchedTime = useMemo(() => fetchedAt
+    ? new Intl.DateTimeFormat(i18n.language, {
+      year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      timeZone: 'America/Los_Angeles',
+    }).format(new Date(fetchedAt))
+    : null, [fetchedAt, i18n.language]);
   const position = useListPositionMemory({
     active,
     itemId: rankingItemId,
@@ -425,6 +573,7 @@ function RankingPage({
     return <RankingCard
       item={item}
       kind={kind}
+      githubPeriod={githubPeriod}
       onOpenItem={onOpenItem}
       onRetryBody={retryBodyTranslation}
       onRetryTitle={retryTitleTranslation}
@@ -436,7 +585,7 @@ function RankingPage({
       titleRetrying={isTitleRetrying(item)}
       titleTimedOut={timedOutSegmentIds.has(`${item.translation_key}:title`)}
     />;
-  }, [failedSegmentIds, isTitleRetrying, kind, onOpenItem, redditCommunity, redditSort,
+  }, [failedSegmentIds, githubPeriod, isTitleRetrying, kind, onOpenItem, redditCommunity, redditSort,
     retryBodyTranslation, retryTitleTranslation, timedOutSegmentIds, translating, translationEnabled]);
   const message = kind === 'reddit' && !redditCommunity
     ? t('redditSubscriptionRequired')
@@ -463,6 +612,37 @@ function RankingPage({
     scrollEventThrottle={16}
     showsVerticalScrollIndicator={false}
     ListHeaderComponent={<>
+      {kind === 'github' ? <View style={styles.filterToolbar}>
+        <Text numberOfLines={1} style={styles.filterTitle}>{t('githubTrendingRepositories')}</Text>
+        <Pressable
+          accessibilityLabel={t('githubChoosePeriod')}
+          accessibilityRole="button"
+          onPress={onOpenGithubPeriods}
+          style={styles.periodMenuButton}
+        >
+          <Text style={styles.periodMenuText}>{t(githubPeriod === 'daily' ? 'githubDaily' : githubPeriod === 'weekly' ? 'githubWeekly' : 'githubMonthly')}</Text>
+          <Feather color={colors.textMuted} name="chevron-down" size={16} />
+        </Pressable>
+      </View> : null}
+      {kind === 'product_hunt' ? <>
+        <View style={styles.filterToolbar}>
+          <Pressable accessibilityLabel={t('productHuntChooseDate')} accessibilityRole="button" onPress={onOpenDatePicker} style={styles.dateMenuButton}>
+            <Text numberOfLines={1} style={styles.dateMenuText}>
+              {productHuntDate === productHuntTodayDate ? `${t('productHuntToday')} · ` : productHuntDate === yesterday ? `${t('productHuntYesterday')} · ` : ''}{displayDate}
+            </Text>
+            <Feather color={colors.textMuted} name="chevron-down" size={16} />
+          </Pressable>
+          <View style={styles.dateNavigation}>
+            <Pressable accessibilityLabel={t('productHuntPreviousDay')} accessibilityRole="button" accessibilityState={{ disabled: !canGoPreviousDay }} disabled={!canGoPreviousDay} onPress={() => onChangeProductHuntDate(shiftProductHuntDate(productHuntDate, -1))} style={styles.dateArrow}><Feather color={canGoPreviousDay ? colors.textStrong : colors.textMuted} name="chevron-left" size={20} /></Pressable>
+            <Pressable accessibilityLabel={t('productHuntToday')} accessibilityRole="button" onPress={() => onChangeProductHuntDate(productHuntTodayDate)} style={styles.todayButton}><Text style={styles.todayButtonText}>{t('productHuntToday')}</Text></Pressable>
+            <Pressable accessibilityLabel={t('productHuntNextDay')} accessibilityRole="button" accessibilityState={{ disabled: nextDate > productHuntTodayDate }} disabled={nextDate > productHuntTodayDate} onPress={() => onChangeProductHuntDate(nextDate)} style={styles.dateArrow}><Feather color={nextDate > productHuntTodayDate ? colors.textMuted : colors.textStrong} name="chevron-right" size={20} /></Pressable>
+          </View>
+        </View>
+        <View style={styles.productHuntMetadata}>
+          <Text style={styles.productHuntMeta}>{t('productHuntTimeZone')}{fetchedTime ? ` · ${t('productHuntFetchedAt', { time: fetchedTime })}` : ''}</Text>
+          <Pressable accessibilityLabel={t('productHuntInfo')} accessibilityRole="button" onPress={onOpenProductHuntInfo} style={styles.infoButton}><Feather color={colors.textMuted} name="info" size={17} /></Pressable>
+        </View>
+      </> : null}
       {kind === 'reddit' && redditCommunity ? <Pressable accessibilityLabel={t('switchRedditChannel')} accessibilityRole="button" onPress={onOpenRedditFilters} style={styles.rankingIntro}>
         <Text numberOfLines={1} style={styles.rankingTitle}>r / {redditCommunity}</Text>
         <Text style={styles.rankingSubtitle}>· {t(redditSort === 'top' ? 'sortTop' : redditSort === 'rising' ? 'sortRising' : 'sortHot')}</Text>
@@ -477,6 +657,7 @@ function RankingPage({
 
 const RankingCard = memo(function RankingCard({
   item,
+  githubPeriod,
   kind,
   onOpenItem,
   onRetryTitle,
@@ -491,6 +672,7 @@ const RankingCard = memo(function RankingCard({
 }: {
   item: RankingItem;
   kind: RankingKind;
+  githubPeriod: GithubRankingPeriod;
   onOpenItem: (item: RankingItem) => void;
   onRetryTitle: (item: RankingItem) => void | Promise<void>;
   onRetryBody: (item: RankingItem) => void;
@@ -504,14 +686,17 @@ const RankingCard = memo(function RankingCard({
 }) {
   const onOpen = useCallback(() => onOpenItem({
     ...item,
-    ranking_context: {
+    ranking_kind: kind,
+    ranking_context: kind === 'product_hunt' ? undefined : {
       kind,
       ...(kind === 'reddit' ? { subreddit: redditCommunity ?? undefined, sort: redditSort, time_filter: 'week' as const } : {}),
+      ...(kind === 'github' ? { period: githubPeriod } : {}),
     },
-  }), [item, kind, onOpenItem, redditCommunity, redditSort]);
+  }), [githubPeriod, item, kind, onOpenItem, redditCommunity, redditSort]);
   const retryTitle = useCallback(() => { void onRetryTitle(item); }, [item, onRetryTitle]);
   const retryBody = useCallback(() => onRetryBody(item), [item, onRetryBody]);
   if (kind === 'techtwitter') return <Pressable accessibilityRole="button" onPress={onOpen} style={styles.xRow}><Text style={styles.rankNumber}>{String(item.rank).padStart(2, '0')}</Text><XRankingContent item={item} translated={translationEnabled} onRetryTranslation={retryBody} translationBusy={translationBusy} translationRetryNeeded={translationRetryNeeded} /></Pressable>;
+  if (kind === 'product_hunt') return <ProductHuntRankingCard item={item} onPress={onOpen} onRetryTitle={retryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
   if (kind === 'github') return <GithubRankingCard item={item} onPress={onOpen} onRetryTitle={retryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
   if (kind === 'reddit') return <RedditRankingCard item={item} onPress={onOpen} onRetryTitle={retryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
   return <HackerNewsRankingCard item={item} onPress={onOpen} onRetryTitle={retryTitle} titleRetrying={titleRetrying} titleTimedOut={titleTimedOut} />;
@@ -606,6 +791,34 @@ function GithubRankingCard({ item, onPress, onRetryTitle, titleRetrying, titleTi
   );
 }
 
+function ProductHuntRankingCard({ item, onPress, onRetryTitle, titleRetrying, titleTimedOut }: { item: RankingItem; onPress: () => void; onRetryTitle: () => void; titleRetrying: boolean; titleTimedOut: boolean }) {
+  const { t } = useTranslation('feed');
+  return (
+    <Pressable accessibilityLabel={`${item.rank} ${item.translated_title?.trim() || item.title} · Product Hunt`} accessibilityRole="button" onPress={onPress} style={styles.productHuntRow}>
+      <Text style={styles.rankNumber}>{String(item.rank).padStart(2, '0')}</Text>
+      {item.image_urls?.[0] ? <Image source={{ uri: item.image_urls[0] }} style={styles.productHuntThumb} /> : null}
+      <View style={styles.rankCopy}>
+        <RankingTitle
+          numberOfLines={2}
+          onRetry={onRetryTitle}
+          retrying={titleRetrying}
+          status={item.title_translation_status}
+          timedOut={titleTimedOut}
+          title={item.title}
+          titleStyle={styles.productHuntTitle}
+          translatedTitle={item.translated_title}
+        />
+        {item.description ? <Text numberOfLines={3} style={styles.productHuntDescription}>{item.translated_description?.trim() || item.description}</Text> : null}
+        <Text style={styles.rankSource}>{t('productHuntOriginal')}</Text>
+        <View style={styles.rankMeta}>
+          {item.score != null ? <View style={styles.metric}><Feather color={colors.textMuted} name="arrow-up" size={12} /><Text style={styles.metricText}>{t('productHuntVotes', { value: formatCount(item.score) })}</Text></View> : null}
+          {item.comments != null ? <Text style={styles.metricText}>{t('commentCount', { count: item.comments, value: formatCount(item.comments) })}</Text> : null}
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
 function RankingTab({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
   return <Pressable accessibilityLabel={label} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={onPress} style={[styles.rankingTab, active && styles.rankingTabActive]}><Text style={[styles.rankingTabText, active && styles.rankingTabTextActive]}>{label}</Text></Pressable>;
 }
@@ -629,6 +842,21 @@ const styles = StyleSheet.create({
   rankingTabActive: { borderBottomColor: colors.textStrong }, rankingTabText: { color: '#777B74', fontSize: 13, lineHeight: 20.8 }, rankingTabTextActive: { color: colors.textStrong, fontWeight: '700' },
   rankingList: { gap: 0, paddingBottom: SCREEN_LIST_BOTTOM_PADDING, paddingHorizontal: SCREEN_HORIZONTAL_PADDING, paddingTop: RANKING_CHROME_HEIGHT },
   rankingIntro: { alignItems: 'center', flexDirection: 'row', gap: 8, minHeight: 40, marginBottom: 0 },
+  filterToolbar: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 52, gap: 4 },
+  filterTitle: { color: colors.textStrong, flexShrink: 1, fontSize: 14, fontWeight: '600' },
+  periodMenuButton: { alignItems: 'center', flexDirection: 'row', gap: 4, justifyContent: 'flex-end', minHeight: 44, paddingLeft: 8 },
+  periodMenuText: { color: colors.textStrong, fontSize: 13, fontWeight: '600' },
+  dateMenuButton: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: 3, minHeight: 44, minWidth: 0 },
+  dateMenuText: { color: colors.textStrong, flexShrink: 1, fontSize: 14, fontWeight: '600' },
+  dateNavigation: { alignItems: 'center', flexDirection: 'row' },
+  dateArrow: { alignItems: 'center', justifyContent: 'center', minHeight: 44, minWidth: 44 },
+  todayButton: { alignItems: 'center', justifyContent: 'center', minHeight: 44, minWidth: 44 },
+  todayButtonText: { color: colors.textStrong, fontSize: 12, fontWeight: '600' },
+  productHuntMetadata: { alignItems: 'center', flexDirection: 'row', minHeight: 32, marginBottom: 5 },
+  productHuntMeta: { color: colors.textMuted, flex: 1, fontSize: 11, lineHeight: 16 },
+  infoButton: { alignItems: 'center', justifyContent: 'center', minHeight: 44, minWidth: 44 },
+  filterSheet: { alignSelf: 'center', maxWidth: 420, width: '100%' },
+  productHuntInfoText: { color: colors.textMuted, fontSize: 14, lineHeight: 21, marginTop: 14 },
   rankingTitle: { color: colors.textStrong, fontSize: 14, fontWeight: '600', flexShrink: 1 },
   rankingSubtitle: { color: colors.textMuted, fontSize: 12, flex: 1 },
   xIntro: { color: colors.textMuted, fontSize: 12, paddingVertical: 12 },
@@ -645,6 +873,10 @@ const styles = StyleSheet.create({
   redditTitle: { color: colors.textPrimary, fontSize: 17, fontWeight: '700', lineHeight: 27.2 },
   redditDescription: { color: colors.textTertiary, fontSize: 13, lineHeight: 18, marginTop: 6 },
   redditThumb: { backgroundColor: colors.imagePlaceholder, borderRadius: radii.sm, height: 86, marginTop: 3, width: 86 },
+  productHuntRow: { borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', gap: 12, paddingVertical: 20 },
+  productHuntThumb: { backgroundColor: colors.imagePlaceholder, borderRadius: radii.sm, height: 52, width: 52 },
+  productHuntTitle: { color: colors.textPrimary, fontSize: 17, fontWeight: '700', lineHeight: 25 },
+  productHuntDescription: { color: colors.textTertiary, fontSize: 13, lineHeight: 19, marginTop: 6 },
   githubRow: { borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', gap: 13, paddingVertical: 20 },
   githubRepo: { color: colors.textPrimary, fontSize: 17, fontWeight: '700', lineHeight: 27.2 },
   githubDescription: { color: colors.textTertiary, fontSize: 13, lineHeight: 19, marginTop: 8 },

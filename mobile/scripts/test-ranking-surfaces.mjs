@@ -39,12 +39,16 @@ const item = {
   translation_locale: 'zh-CN',
   url: 'https://example.test/item',
 };
+const productHuntItem = { ...item, title: 'Useful Product', description: 'A practical tagline',
+  translation_key: 'ph-1', image_urls: ['https://example.test/icon.png'], score: 120,
+  comments: 9, url: 'https://www.producthunt.com/posts/useful-product', website_url: 'https://example.test/product' };
 let rankingRetryCalls = 0;
 let previewRetryCalls = 0;
 const clearedPreviewQueueFailures = [];
 const runtime = { generation: 1, identity: { server_id: 'ranking-surface-test' } };
 const savedState = { content_id: null, is_saved: false };
 let saveCalls = 0;
+let savedStateReads = 0;
 let saveFailure = false;
 let resolveSave;
 let blockSave = false;
@@ -52,6 +56,11 @@ const alerts = [];
 const retryingIds = new Set();
 const rankingRetrying = new Set();
 
+let productHuntError = false;
+let productHuntCurrentDate;
+let productHuntArchiveDate;
+let tree;
+let xCard;
 try {
   execFileSync(
     process.execPath,
@@ -104,6 +113,7 @@ try {
   Module._load = function load(request, parent, isMain) {
     if (request === '../assets/icons/refresh-cw.png') return 1;
     if (request === 'react-native') return {
+      AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       ActivityIndicator,
       Alert: { alert: (...args) => alerts.push(args) },
       Linking: { openURL: async () => {} },
@@ -119,6 +129,7 @@ try {
       View,
     };
     if (request === '@expo/vector-icons') return { MaterialCommunityIcons: host('MaterialCommunityIcons'), Feather: host('Feather') };
+    if (request === '@expo/vector-icons/Feather') return { default: host('Feather') };
     if (request === 'react-native-reanimated') return {
       default: Reanimated,
       ...Reanimated,
@@ -131,9 +142,9 @@ try {
     };
     if (request === 'expo-web-browser') return { openBrowserAsync: async () => {} };
     if (request === '@tanstack/react-query') return { ...reactQuery, useQueryClient: () => ({ fetchQuery: async ({ queryFn }) => queryFn(), setQueryData: () => {} }) };
-    if (request === '../components/BottomSheetModal') return { BottomSheetModal: ({ visible, children }) => visible ? React.createElement(View, null, children) : null };
+    if (request === '../components/BottomSheetModal' || request === './BottomSheetModal') return { BottomSheetModal: ({ visible, children }) => visible ? React.createElement(View, null, children) : null };
     if (request === '../components/RankingTitle') return originalLoad.call(this, request, parent, isMain);
-    if (request === '../components/CategoryPager') return { CategoryPager: ({ renderPage, options }) => renderPage(options[0]) };
+    if (request === '../components/CategoryPager') return { CategoryPager: ({ renderPage, selected }) => renderPage(selected) };
     if (request === '../components/PageHeader') return {
       IconButton: () => null,
       PageHeaderContent: ({ title }) => React.createElement(Text, null, title),
@@ -178,17 +189,23 @@ try {
     if (request === '../hooks/useRanking') {
       return {
         prefetchRanking: async () => {},
-        rankingVariantKey: (kind, options) => kind === 'reddit' ? `reddit:${options?.subreddit ?? ''}:${options?.sort ?? ''}` : kind,
-        useRanking: () => {
+        rankingVariantKey: (kind, options) => kind === 'github' ? `github:${options?.period ?? 'weekly'}` : kind === 'reddit' ? `reddit:${options?.subreddit ?? ''}:${options?.sort ?? ''}` : kind === 'product_hunt' ? `product_hunt:${options?.date ?? productHuntCurrentDate}` : kind,
+        useRanking: (_session, kind, options) => {
           const [status, setStatus] = React.useState('failed');
           return {
+            failedSegmentIds: new Set(),
             isFetching: false,
             isTitleRetrying: () => false,
             loading: false,
-            message: '',
-            ranking: { items: [{ ...item, title_translation_status: status, translated_title: status === 'succeeded' ? 'Translated ranking title' : null }], kind: 'hacker_news', subtitle: 'Today', title: 'Hacker News' },
+            message: kind === 'product_hunt' && productHuntError ? 'Product Hunt is not configured' : '',
+            ranking: { items: kind === 'product_hunt' && productHuntError ? [] : [{
+              ...(kind === 'product_hunt' ? { ...productHuntItem, title: options?.date === productHuntCurrentDate ? 'Latest launch' : options?.date === shiftProductHuntDate(productHuntCurrentDate, -1) ? 'Yesterday launch' : options?.date === productHuntArchiveDate ? 'Archive launch' : 'Other launch' } : kind === 'github' ? { ...item, title: ({ daily: 'Daily repository', weekly: 'Weekly repository', monthly: 'Monthly repository' })[options?.period] } : item),
+              title_translation_status: kind === 'hacker_news' ? status : 'succeeded',
+              translated_title: kind === 'hacker_news' && status === 'succeeded' ? 'Translated ranking title' : null,
+            }], fetched_at: '2026-10-22T18:35:00Z', kind, subtitle: 'Today', title: kind },
             refresh: async () => {},
             refreshing: false,
+            retryBodyTranslation: () => {},
             retryTitleTranslation: () => {
               if (status === 'succeeded' || rankingRetrying.has(item.translation_key)) return;
               rankingRetrying.add(item.translation_key);
@@ -196,6 +213,8 @@ try {
               setStatus('succeeded');
             },
             timedOutSegmentIds: new Set(),
+            translating: false,
+            translationEnabled: true,
           };
         },
       };
@@ -209,7 +228,7 @@ try {
     } };
     if (request === '../state/queryLifecycle') return { protectsQueryKeys: () => () => false, removeObsoleteQueries: async () => {} };
     if (request === '../lib/api') return {
-      getRankingSavedState: async () => ({ ...savedState }),
+      getRankingSavedState: async () => { savedStateReads++; return { ...savedState }; },
       saveRankingContent: async (_session, body) => {
         assert.equal(body.kind, 'hacker_news'); assert.equal(body.url, item.url);
         saveCalls++;
@@ -258,7 +277,31 @@ try {
   assert.equal(rankingBodyText(failedX, true), xItem.body_text, 'partial failure leaves original body readable');
   const xRanking = { kind: 'techtwitter', effective_engine_fingerprint: 'test-fingerprint', items: [xItem] };
   assert.deepEqual(missingRankingTranslationSegments(xRanking, 20, 'zh-CN', true, 'test-fingerprint', new Set([xItem.translation_key])), [], 'translated body skips title and summary');
-  const { rankingQueryOptions } = require(join(outputDirectory, 'hooks/useRanking.js'));
+  assert.deepEqual(missingRankingTranslationSegments({
+    kind: 'product_hunt', effective_engine_fingerprint: 'test-fingerprint', items: [{ ...productHuntItem, title_translation_status: null, description_translation_status: null }],
+  }, 20, 'zh-CN', true, 'test-fingerprint').map(segment => [segment.purpose, segment.text]), [
+    ['ranking_title', 'Useful Product'], ['ranking_description', 'A practical tagline'],
+  ], 'Product Hunt name and tagline use the existing ranking translation purposes');
+  const { productHuntToday, shiftProductHuntDate, shiftProductHuntMonth } = require(join(outputDirectory, 'domain/productHuntDate.js'));
+  productHuntCurrentDate = productHuntToday();
+  productHuntArchiveDate = `${shiftProductHuntMonth(productHuntCurrentDate.slice(0, 7), -1)}-15`;
+  const { rankingQueryOptions, rankingVariantKey } = require(join(outputDirectory, 'hooks/useRanking.js'));
+  assert.deepEqual(['daily', 'weekly', 'monthly'].map(period => rankingVariantKey('github', { period })),
+    ['github:daily', 'github:weekly', 'github:monthly'], 'each GitHub period has an independent ranking cache and list-memory key');
+  assert.equal(rankingVariantKey('github'), 'github:weekly');
+  assert.equal(rankingVariantKey('product_hunt'), `product_hunt:${productHuntCurrentDate}`);
+  assert.equal(rankingVariantKey('product_hunt', { date: '2025-06-20' }), 'product_hunt:2025-06-20');
+  assert.notEqual(rankingVariantKey('product_hunt', { date: '2025-06-20' }), rankingVariantKey('product_hunt', { date: '2025-06-19' }));
+  const githubCacheKeys = ['daily', 'weekly', 'monthly'].map(period => rankingQueryOptions(
+    { user: { id: 'ranking-cache-user' } }, 'github', { period }, runtime.identity.server_id,
+    runtime, 'zh-CN', true, 'test-fingerprint',
+  ).queryKey);
+  assert.equal(new Set(githubCacheKeys.map(key => JSON.stringify(key))).size, 3, 'React Query keeps separate GitHub period data');
+  const phCacheKeys = ['2025-06-20', '2025-06-19'].map(date => rankingQueryOptions(
+    { user: { id: 'ranking-cache-user' } }, 'product_hunt', { date }, runtime.identity.server_id,
+    runtime, 'zh-CN', true, 'test-fingerprint',
+  ).queryKey);
+  assert.notDeepEqual(phCacheKeys[0], phCacheKeys[1], 'separate Product Hunt dates retain independent React Query identities');
   const cache = new reactQuery.QueryClient();
   const options = rankingQueryOptions({ user: { id: 'ranking-cache-user' } }, 'techtwitter', undefined, runtime.identity.server_id, runtime, 'zh-CN', true, 'test-fingerprint');
   cache.setQueryDefaults(options.queryKey, options);
@@ -296,7 +339,6 @@ try {
   assert.equal(restored.translation_locale, null, 'saved title translation locale does not contaminate body');
   assert.equal(restored.saved_content_id, 'saved-x');
   const { XRankingContent } = require(join(outputDirectory, 'components/XRankingContent.js'));
-  let xCard;
   await act(async () => { xCard = create(React.createElement(XRankingContent, { item: missingX, translated: false })); });
   const xBody = () => xCard.root.findAll((node) => node.type === 'Text' && node.props.children === missingX.body_text)[0];
   assert.equal(xBody().props.numberOfLines, 5, 'X card initially shows five lines of original body');
@@ -304,12 +346,13 @@ try {
   await act(async () => { xCard.root.findAll((node) => node.type === 'Pressable' && node.props.accessibilityRole === 'button')[0].props.onPress({ stopPropagation() {} }); });
   assert.equal(xBody().props.numberOfLines, undefined, 'body expands without losing original text');
   await act(async () => { xCard.unmount(); });
+  xCard = undefined;
   const { RankingsScreen } = require(join(outputDirectory, 'screens/RankingsScreen.js'));
   const { RankingPreviewScreen } = require(join(outputDirectory, 'screens/RankingPreviewScreen.js'));
   const session = { access_token: 'test-token', user: { id: 'user-1' } };
-  const treeProps = { active: true, chromeProgress: { value: 0 }, onOpenItem: () => { openCalls += 1; }, session };
+  let openedRankingItem;
+  const treeProps = { active: true, chromeProgress: { value: 0 }, onOpenItem: (opened) => { openCalls += 1; openedRankingItem = opened; }, session };
   let openCalls = 0;
-  let tree;
   await act(async () => { tree = create(React.createElement(RankingsScreen, treeProps)); });
   const retryButton = () => tree.root.findAll((node) => node.type === 'Pressable' && node.props.accessibilityLabel === '重试翻译标题')[0];
   assert.ok(retryButton(), 'RankingsScreen mounts the failed title affordance');
@@ -322,7 +365,73 @@ try {
   assert.equal(rankingRetryCalls, 1, 'RankingsScreen invokes one explicit retry');
   assert.equal(openCalls, 0, 'retry never opens the ranking card');
   assert.equal(retryButton(), undefined, 'successful retry removes the failed affordance');
+  const rankingTab = label => tree.root.findAll(node => node.type === 'Pressable' && node.props.accessibilityRole === 'tab' && node.props.accessibilityLabel === label)[0];
+  const control = label => tree.root.findAll(node => node.type === 'Pressable' && node.props.accessibilityLabel === label)[0];
+  const text = value => tree.root.findAll(node => node.type === 'Text' && node.props.children === value);
+  await act(async () => { rankingTab('GitHub').props.onPress(); });
+  assert.ok(text('Weekly repository').length, 'GitHub starts on weekly results');
+  await act(async () => { control('选择时间范围').props.onPress(); });
+  const period = label => tree.root.findAll(node => node.type === 'Pressable' && node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === label)[0];
+  assert.equal(period('本周').props.accessibilityState.checked, true, 'period sheet reflects current selection');
+  await act(async () => { period('今日').props.onPress(); });
+  assert.equal(period('今日'), undefined, 'selecting a period closes the sheet');
+  assert.ok(text('Daily repository').length, 'GitHub shows the selected period’s results');
+  await act(async () => { control('1 Daily repository').props.onPress(); });
+  assert.equal(openedRankingItem.ranking_context.period, 'daily', 'opening a repository keeps its selected period');
+  await act(async () => { rankingTab('Product Hunt').props.onPress(); });
+  assert.ok(text('Latest launch').length, 'Product Hunt starts with the Los Angeles today ranking');
+  assert.ok(text(productHuntItem.description).length, 'Product Hunt shows its tagline');
+  assert.ok(tree.root.findAll(node => node.type === 'Image' && node.props.source?.uri === productHuntItem.image_urls[0]).length, 'Product Hunt shows thumbnail');
+  assert.ok(text('Product Hunt 原帖 ↗').length, 'Product Hunt original link attribution is visible');
+  assert.ok(text('120 票').length);
+  await act(async () => { control('1 Latest launch · Product Hunt').props.onPress(); });
+  assert.equal(openedRankingItem.url, productHuntItem.url);
+  assert.equal(openedRankingItem.ranking_context, undefined, 'Product Hunt never receives a save context');
+  assert.equal(control('后一天').props.disabled, true, 'future day navigation is unavailable today');
+  assert.ok(tree.root.findAll(node => node.type === 'Text' && Array.isArray(node.props.children) && node.props.children.join('').includes('查询时间：')).length, 'compact metadata shows fetched time');
+  assert.equal(text('按所选日期查询 Product Hunt 官方 API；票数及排序为查询时所见，并非当日最终榜单。').length, 0, 'caveat stays hidden behind info');
+  await act(async () => { control('榜单说明').props.onPress(); });
+  assert.ok(text('按所选日期查询 Product Hunt 官方 API；票数及排序为查询时所见，并非当日最终榜单。').length, 'info sheet reveals official-data caveat');
+  await act(async () => { control('关闭榜单说明').props.onPress(); });
+  assert.equal(text('按所选日期查询 Product Hunt 官方 API；票数及排序为查询时所见，并非当日最终榜单。').length, 0);
+  await act(async () => { control('前一天').props.onPress(); });
+  assert.ok(text('Yesterday launch').length, 'previous day changes the displayed ranking');
+  assert.equal(control('后一天').props.disabled, false);
+  await act(async () => { control('后一天').props.onPress(); });
+  assert.ok(text('Latest launch').length, 'next day restores today’s ranking');
+  await act(async () => { control('选择日期').props.onPress(); });
+  assert.ok(control('关闭日期选择'), 'date toolbar opens the calendar');
+  assert.equal(control('下个月').props.disabled, true, 'future months are unavailable');
+  const futureDate = shiftProductHuntDate(productHuntCurrentDate, 1);
+  if (futureDate.slice(0, 7) === productHuntCurrentDate.slice(0, 7)) {
+    const futureDayLabel = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', timeZone: 'UTC' }).format(new Date(`${futureDate}T12:00:00Z`));
+    assert.equal(control(futureDayLabel).props.disabled, true, 'calendar future days are disabled');
+  }
+  await act(async () => { control('上个月').props.onPress(); });
+  assert.equal(control('下个月').props.disabled, false, 'past month can navigate back toward today');
+  const archiveDayLabel = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', timeZone: 'UTC' }).format(new Date(`${productHuntArchiveDate}T12:00:00Z`));
+  await act(async () => { control(archiveDayLabel).props.onPress(); });
+  assert.equal(control('关闭日期选择'), undefined, 'calendar day selection closes the sheet');
+  assert.ok(text('Archive launch').length, 'calendar date changes the displayed historical ranking');
+  await act(async () => { rankingTab('GitHub').props.onPress(); });
+  assert.ok(text('Daily repository').length, 'GitHub selection survives switching tabs');
+  await act(async () => { rankingTab('Product Hunt').props.onPress(); });
+  assert.ok(text('Archive launch').length, 'Product Hunt date survives switching tabs');
+  await act(async () => { control('今天').props.onPress(); });
+  assert.ok(text('Latest launch').length, 'Today returns to the live Los Angeles date');
+  assert.equal(control('后一天').props.disabled, true);
+  productHuntError = true;
+  await act(async () => { tree.update(React.createElement(RankingsScreen, treeProps)); });
+  assert.ok(text('Product Hunt is not configured').length, 'backend-disabled error is visible');
+  productHuntError = false;
+  await act(async () => { rankingTab('GitHub').props.onPress(); });
+  await act(async () => { control('选择时间范围').props.onPress(); });
+  assert.equal(period('今日').props.accessibilityState.checked, true, 'GitHub period persists when switching ranking types');
+  await act(async () => { period('本月').props.onPress(); });
+  assert.ok(text('Monthly repository').length, 'monthly selection updates the ranking');
 
+  await act(async () => { tree.unmount(); });
+  tree = undefined;
   await act(async () => { tree = create(React.createElement(RankingPreviewScreen, { item: { ...item, ranking_context: { kind: 'hacker_news' } }, onBack: () => {}, session })); });
   const previewRetry = () => tree.root.findAll((node) => node.type === 'Pressable' && node.props.accessibilityLabel === '重试翻译标题')[0];
   assert.ok(previewRetry(), 'RankingPreviewScreen mounts the failed title affordance');
@@ -360,6 +469,17 @@ try {
   await act(async () => { translateButton().props.onPress(); });
   assert.equal(translateButton().props.accessibilityState.selected, false, 'drag release never translates');
   await act(async () => { tree.unmount(); });
+  tree = undefined;
+
+  const readsBeforeProductHunt = savedStateReads;
+  const savesBeforeProductHunt = saveCalls;
+  await act(async () => { tree = create(React.createElement(RankingPreviewScreen, { item: openedRankingItem, onBack: () => {}, session })); });
+  assert.equal(savedStateReads, readsBeforeProductHunt, 'Product Hunt preview never requests saved state');
+  assert.equal(tree.root.findAll(node => node.type === 'Pressable' && node.props.accessibilityLabel === '收藏').length, 0, 'Product Hunt preview has no save action');
+  assert.equal(tree.root.findAll(node => node.type === 'WebView' && node.props.source?.uri === productHuntItem.url).length, 1, 'Product Hunt preview opens the original post');
+  assert.equal(saveCalls, savesBeforeProductHunt);
+  await act(async () => { tree.unmount(); });
+  tree = undefined;
 
   await act(async () => {
     tree = create(React.createElement(RankingPreviewScreen, {
@@ -392,8 +512,11 @@ try {
   await act(async () => { button('翻译正文').props.onPress(); });
   assert.equal(visibleBody().length, 1, 'original text remains available after switching views');
   await act(async () => { tree.unmount(); });
+  tree = undefined;
 } finally {
+  if (tree) await act(async () => { tree.unmount(); });
+  if (xCard) await act(async () => { xCard.unmount(); });
   rmSync(outputDirectory, { force: true, recursive: true });
 }
 
-console.log('Mounted RankingsScreen and RankingPreviewScreen failed-title retry passed.');
+console.log('Ranking tabs, period selection, Product Hunt cards, preview saving, and title retry passed.');

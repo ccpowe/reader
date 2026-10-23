@@ -459,6 +459,10 @@ export type RankingItemResponse = {
      */
     language: string | null;
     /**
+     * Product Id
+     */
+    product_id?: string | null;
+    /**
      * Published At
      */
     published_at?: string | null;
@@ -522,12 +526,20 @@ export type RankingItemResponse = {
      * Video Url
      */
     video_url?: string | null;
+    /**
+     * Website Url
+     */
+    website_url?: string | null;
 };
 
 /**
  * RankingResponse
  */
 export type RankingResponse = {
+    /**
+     * Date
+     */
+    date?: string | null;
     /**
      * Effective Engine Fingerprint
      */
@@ -543,15 +555,31 @@ export type RankingResponse = {
     /**
      * Kind
      */
-    kind: 'hacker_news' | 'reddit' | 'github' | 'techtwitter';
+    kind: 'hacker_news' | 'reddit' | 'github' | 'techtwitter' | 'product_hunt';
+    /**
+     * Order
+     */
+    order?: 'RANKING' | null;
+    /**
+     * Period
+     */
+    period?: 'daily' | 'weekly' | 'monthly' | null;
     /**
      * Subtitle
      */
     subtitle: string;
     /**
+     * Timezone
+     */
+    timezone?: 'America/Los_Angeles' | null;
+    /**
      * Title
      */
     title: string;
+    /**
+     * Truncated
+     */
+    truncated?: boolean | null;
 };
 
 /**
@@ -668,6 +696,10 @@ export type SaveRankingRequest = {
      * Kind
      */
     kind: 'hacker_news' | 'reddit' | 'github' | 'techtwitter';
+    /**
+     * Period
+     */
+    period?: 'daily' | 'weekly' | 'monthly' | null;
     /**
      * Sort
      */
@@ -1986,7 +2018,7 @@ export type GetRankingV1RankingsKindGetData = {
         /**
          * Kind
          */
-        kind: 'hacker_news' | 'reddit' | 'github' | 'techtwitter';
+        kind: 'hacker_news' | 'reddit' | 'github' | 'techtwitter' | 'product_hunt';
     };
     query?: {
         /**
@@ -2009,6 +2041,14 @@ export type GetRankingV1RankingsKindGetData = {
          * Time Filter
          */
         time_filter?: 'day' | 'week' | 'month' | 'year';
+        /**
+         * Date
+         */
+        date?: string | null;
+        /**
+         * Period
+         */
+        period?: 'daily' | 'weekly' | 'monthly' | null;
     };
     url: '/v1/rankings/{kind}';
 };

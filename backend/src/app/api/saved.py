@@ -60,6 +60,7 @@ class SaveRankingRequest(BaseModel):
     subreddit: str = Field(default="MachineLearning", min_length=2, max_length=100)
     sort: Literal["hot", "rising", "top"] = "hot"
     time_filter: Literal["day", "week", "month", "year"] = "week"
+    period: Literal["daily", "weekly", "monthly"] | None = None
 
 
 class SavedItemResponse(BaseModel):
@@ -408,6 +409,8 @@ async def save_ranking(
     current_user: AuthenticatedUser = Depends(require_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> SavedStateResponse:
+    if payload.period is not None and payload.kind != "github":
+        raise HTTPException(422, "period is only supported for github.")
     try:
         content_id = await persist_ranking_item(
             session,
@@ -417,6 +420,7 @@ async def save_ranking(
                 subreddit=payload.subreddit,
                 sort=payload.sort,
                 time_filter=payload.time_filter,
+                period=payload.period or "weekly",
             ),
             url=payload.url,
         )

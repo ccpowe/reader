@@ -6,6 +6,7 @@ import {
   getRanking,
   type Ranking,
   type RankingKind,
+  type GithubRankingPeriod,
   type RedditRankingSort,
   type TranslationSegmentResult,
 } from '../lib/api';
@@ -19,20 +20,25 @@ import {
   missingRankingTranslationSegments,
   translationResultMatchesRankingRoute,
 } from '../domain/rankingTranslationProjection';
+import { productHuntToday } from '../domain/productHuntDate';
 
 export type RankingOptions = {
   subreddit?: string;
   sort?: RedditRankingSort;
   timeFilter?: 'day' | 'week' | 'month' | 'year';
+  period?: GithubRankingPeriod;
+  date?: string;
 };
 
 /**
- * The query-key variant identifies one logical ranking view. React Query owns
- * the cache; this function only serialises the selected Reddit filters.
+ * The query-key variant identifies one logical ranking view, including its
+ * selected Reddit filters, GitHub period, or Product Hunt LA calendar date.
  */
 export function rankingVariantKey(kind: RankingKind, options?: RankingOptions): string {
-  if (kind !== 'reddit') return kind;
-  return `reddit:${(options?.subreddit ?? 'MachineLearning').toLowerCase()}:${options?.sort ?? 'hot'}:${options?.timeFilter ?? 'week'}`;
+  if (kind === 'product_hunt') return `product_hunt:${options?.date ?? productHuntToday()}`;
+  if (kind === 'github') return `github:${options?.period ?? 'weekly'}`;
+  if (kind === 'reddit') return `reddit:${(options?.subreddit ?? 'MachineLearning').toLowerCase()}:${options?.sort ?? 'hot'}:${options?.timeFilter ?? 'week'}`;
+  return kind;
 }
 
 export function rankingQueryOptions(
@@ -45,16 +51,19 @@ export function rankingQueryOptions(
   translationEnabled: boolean,
   engineFingerprint: string | null,
 ) {
+  const requestOptions = kind === 'product_hunt'
+    ? { ...options, date: options?.date ?? productHuntToday() }
+    : options;
   return queryOptions<Ranking, Error, Ranking, ReturnType<typeof readerQueryKeys.rankings>>({
     queryKey: readerQueryKeys.rankings(
       session.user.id,
-      rankingVariantKey(kind, options),
+      rankingVariantKey(kind, requestOptions),
       targetLocale,
       translationEnabled,
       engineFingerprint,
       serverId,
     ),
-    queryFn: () => getRanking(session, kind, options, false, runtime ?? undefined),
+    queryFn: () => getRanking(session, kind, requestOptions, false, runtime ?? undefined),
     gcTime: Infinity,
     structuralSharing: (previous, incoming) => replaceEqualDeep(
       previous,
@@ -106,25 +115,24 @@ export function useRanking(
 ) {
   const queryClient = useQueryClient();
   const runtime = useReaderRuntime();
-  const queryKey = readerQueryKeys.rankings(
-    session.user.id,
-    rankingVariantKey(kind, options),
+  const resolvedDate = kind === 'product_hunt' ? options?.date ?? productHuntToday() : undefined;
+  const resolvedOptions = useMemo(
+    () => kind === 'product_hunt' ? { ...options, date: resolvedDate } : options,
+    [kind, options, resolvedDate],
+  );
+  const rankingOptions = rankingQueryOptions(
+    session,
+    kind,
+    resolvedOptions,
+    runtime?.identity.server_id,
+    runtime,
     targetLocale,
     translationEnabled,
     engineFingerprint,
-    runtime?.identity.server_id,
   );
+  const queryKey = rankingOptions.queryKey;
   const query = useQuery({
-    ...rankingQueryOptions(
-      session,
-      kind,
-      options,
-      runtime?.identity.server_id,
-      runtime,
-      targetLocale,
-      translationEnabled,
-      engineFingerprint,
-    ),
+    ...rankingOptions,
     enabled: active && (kind !== 'reddit' || Boolean(options?.subreddit)),
   });
   const queuedSourcesRef = useRef(new Map<string, string>());
@@ -272,23 +280,14 @@ export function useRanking(
     setRefreshing(true);
     try {
       return await queryClient.fetchQuery({
-        ...rankingQueryOptions(
-          session,
-          kind,
-          options,
-          runtime?.identity.server_id,
-          runtime,
-          targetLocale,
-          translationEnabled,
-          engineFingerprint,
-        ),
+        ...rankingOptions,
         staleTime: 0,
-        queryFn: () => getRanking(session, kind, options, true, runtime ?? undefined),
+        queryFn: () => getRanking(session, kind, resolvedOptions, true, runtime ?? undefined),
       });
     } finally {
       if (context && isRuntimeContextCurrent(context)) setRefreshing(false);
     }
-  }, [engineFingerprint, kind, options, queryClient, runtime, session, targetLocale, translationEnabled]);
+  }, [kind, queryClient, rankingOptions, resolvedOptions, runtime, session]);
   const retryBodyTranslation = useCallback((item: Ranking['items'][number]) => {
     const segments = (item.body_segments ?? [])
       .filter((segment) => segment.text.trim() && segment.translation_status !== 'succeeded')

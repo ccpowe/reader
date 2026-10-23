@@ -6,12 +6,16 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import secrets
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import date as calendar_date
+from datetime import datetime
 from time import monotonic
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo
 
 from app.ingestion.source_identity import canonical_reddit_identity
 
@@ -38,6 +42,9 @@ _ITEM_FIELDS = (
     "video_url",
     "video_thumbnail_url",
 )
+_PRODUCT_HUNT_ITEM_FIELDS = ("product_id", "website_url")
+_PRODUCT_HUNT_METADATA_FIELDS = ("date", "timezone", "order", "truncated")
+_PRODUCT_HUNT_TIMEZONE = ZoneInfo("America/Los_Angeles")
 
 
 class ReaderClient(Protocol):
@@ -62,6 +69,7 @@ class _Snapshot:
     title: str
     subtitle: str
     fetched_at: str
+    metadata: dict[str, Any]
     items: tuple[dict[str, Any], ...]
     expires_at: float
     size: int
@@ -87,16 +95,57 @@ class RankingPages:
         self._secret = secrets.token_bytes(32)
 
     async def list_ranking_snapshot(
-        self, client: ReaderClient, kind: str, cursor: str | None = None
+        self,
+        client: ReaderClient,
+        kind: str,
+        cursor: str | None = None,
+        date: str | None = None,
+        period: str | None = None,
     ) -> dict[str, Any]:
         """Freeze up to 100 originals and serve ten at a time without refreshing.
 
         A cursor never shifts to a newer board. Invalid cursors raise ValueError;
         expired or evicted snapshots raise RankingCursorExpired.
         """
-        if kind not in {"hacker_news", "github", "techtwitter"}:
-            raise ValueError("Ranking kind must be hacker_news, github, or techtwitter.")
-        return await self._page(client, (kind,), cursor)
+        if kind not in {"hacker_news", "github", "techtwitter", "product_hunt"}:
+            raise ValueError(
+                "Ranking kind must be hacker_news, github, techtwitter, or product_hunt."
+            )
+        if kind != "product_hunt" and date is not None:
+            raise ValueError("date is only supported for product_hunt rankings.")
+        if kind != "github" and period is not None:
+            raise ValueError("period is only supported for github rankings.")
+        if kind == "github":
+            if period is not None and (
+                not isinstance(period, str) or period not in {"daily", "weekly", "monthly"}
+            ):
+                raise ValueError("GitHub period must be daily, weekly, or monthly.")
+            return await self._page(client, (kind, period or "weekly"), cursor)
+        if kind != "product_hunt":
+            return await self._page(client, (kind,), cursor)
+        today = datetime.now(_PRODUCT_HUNT_TIMEZONE).date()
+        if date is not None:
+            if not isinstance(date, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", date):
+                raise ValueError("date must be YYYY-MM-DD.")
+            try:
+                selected = calendar_date.fromisoformat(date)
+            except ValueError:
+                raise ValueError("date must be YYYY-MM-DD.") from None
+            if selected > today:
+                raise ValueError(
+                    "Product Hunt date cannot be in the future in America/Los_Angeles."
+                )
+        elif cursor is not None:
+            snapshot_id, _ = self._decode(cursor)
+            existing = self._snapshots.get(snapshot_id)
+            date = (
+                existing.board[1]
+                if existing is not None and existing.kind == kind
+                else today.isoformat()
+            )
+        else:
+            date = today.isoformat()
+        return await self._page(client, (kind, date), cursor)
 
     async def list_reddit_ranking_snapshot(
         self,
@@ -135,6 +184,10 @@ class RankingPages:
             params.update(subreddit=board[1], sort=board[2])
             if board[2] == "top":
                 params["time_filter"] = board[3]
+        elif board[0] == "product_hunt":
+            params["date"] = board[1]
+        elif board[0] == "github":
+            params["period"] = board[1]
         path = f"/v1/rankings/{board[0]}"
         if cursor is None:
             payload = await client.request("GET", path, params=params)
@@ -145,18 +198,42 @@ class RankingPages:
                 for item in payload["items"]
             ):
                 raise ValueError("Invalid ranking response.")
+            fields = _ITEM_FIELDS + (
+                _PRODUCT_HUNT_ITEM_FIELDS if board[0] == "product_hunt" else ()
+            )
             items = tuple(
                 {
                     field: deepcopy(item[field])
-                    for field in _ITEM_FIELDS
-                    if field in item and item[field] is not None
+                    for field in fields
+                    if field in item
+                    and (
+                        item[field] is not None
+                        or (board[0] == "product_hunt" and field in _PRODUCT_HUNT_ITEM_FIELDS)
+                    )
                 }
                 | ({"discussion_url": item["url"]} if board[0] == "reddit" else {})
                 for item in payload["items"]
             )
             if len(items) > 100:
                 raise ValueError("Ranking response exceeds the requested limit.")
+            metadata: dict[str, Any] = {}
+            if board[0] == "product_hunt":
+                if payload.get("date") != board[1] or any(
+                    field not in payload for field in _PRODUCT_HUNT_METADATA_FIELDS
+                ):
+                    raise ValueError("Invalid Product Hunt ranking response date or metadata.")
+                metadata = {
+                    field: deepcopy(payload[field]) for field in _PRODUCT_HUNT_METADATA_FIELDS
+                }
+            elif board[0] == "github" and "period" in payload:
+                if payload["period"] != board[1]:
+                    raise ValueError("Invalid GitHub ranking response period.")
+                metadata["period"] = deepcopy(payload["period"])
             size = len(json.dumps(items, ensure_ascii=False, separators=(",", ":")).encode())
+            if metadata:
+                size += len(
+                    json.dumps(metadata, ensure_ascii=False, separators=(",", ":")).encode()
+                )
             if size > self._max_cached_bytes:
                 raise ValueError("Ranking snapshot exceeds the local cache size limit.")
             snapshot = _Snapshot(
@@ -165,6 +242,7 @@ class RankingPages:
                 title=payload["title"],
                 subtitle=payload["subtitle"],
                 fetched_at=payload["fetched_at"],
+                metadata=metadata,
                 items=items,
                 expires_at=monotonic() + self._ttl,
                 size=size,
@@ -196,6 +274,7 @@ class RankingPages:
             "fetched_at": snapshot.fetched_at,
             "items": list(deepcopy(snapshot.items[offset:end])),
             "next_cursor": self._encode(snapshot_id, end) if end < len(snapshot.items) else None,
+            **deepcopy(snapshot.metadata),
         }
 
     def _store(self, snapshot_id: str, snapshot: _Snapshot) -> None:

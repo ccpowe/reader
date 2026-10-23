@@ -1,8 +1,11 @@
 import asyncio
-from datetime import UTC, datetime
+import json
+from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 
 import httpx
 import pytest
+from pydantic import SecretStr
 
 from app.services import rankings
 
@@ -217,3 +220,193 @@ async def test_techtwitter_rejects_failed_http_and_skips_invalid_post_urls(monke
         (2, "valid", "Right"),
         (3, "https://x.com/a/status/3", None),
     ]
+
+
+def test_product_hunt_day_bounds_observe_los_angeles_dst() -> None:
+    spring_start, spring_end = rankings.product_hunt_bounds(date(2026, 3, 8))
+    fall_start, fall_end = rankings.product_hunt_bounds(date(2026, 11, 1))
+    assert spring_start == datetime(2026, 3, 8, 8, tzinfo=UTC)
+    assert spring_end == datetime(2026, 3, 9, 7, tzinfo=UTC)
+    assert spring_end - spring_start == timedelta(hours=23)
+    assert fall_start == datetime(2026, 11, 1, 7, tzinfo=UTC)
+    assert fall_end == datetime(2026, 11, 2, 8, tzinfo=UTC)
+    assert fall_end - fall_start == timedelta(hours=25)
+
+
+@pytest.mark.asyncio
+async def test_product_hunt_featured_ranking_paginates_and_preserves_api_order(monkeypatch) -> None:
+    real_client = httpx.AsyncClient
+    queries: list[dict] = []
+    monkeypatch.setattr(
+        rankings,
+        "get_settings",
+        lambda: SimpleNamespace(product_hunt_token=SecretStr("secret-not-in-results")),
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == rankings.PRODUCT_HUNT_API_URL
+        assert request.method == "POST"
+        assert request.headers["Authorization"] == "Bearer secret-not-in-results"
+        query = json.loads(request.content)
+        assert "featured: true" in query["query"]
+        assert "order: RANKING" in query["query"]
+        queries.append(query["variables"])
+        first = len(queries) == 1
+        start = 1 if first else 51
+        edges = [
+            {
+                "node": {
+                    "id": str(index),
+                    "name": f"Launch {index}",
+                    "tagline": f"Tagline {index}",
+                    "url": f"https://www.producthunt.com/posts/launch-{index}",
+                    "website": f"https://example.com/{index}",
+                    "votesCount": index * 2,
+                    "commentsCount": index,
+                    "createdAt": "2026-10-20T18:00:00Z",
+                    "thumbnail": {"url": f"https://cdn.example/{index}.png"},
+                }
+            }
+            for index in range(start, start + 50)
+        ]
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "posts": {
+                        "edges": edges,
+                        "pageInfo": {"hasNextPage": True, "endCursor": "cursor-50"},
+                    }
+                }
+            },
+        )
+
+    monkeypatch.setattr(
+        rankings.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    items, truncated = await rankings.fetch_product_hunt_daily(date(2026, 10, 20))
+    assert len(items) == 100 and truncated
+    assert [(item.rank, item.product_id) for item in items] == [
+        (index, str(index)) for index in range(1, 101)
+    ]
+    assert items[0].description == "Tagline 1"
+    assert items[0].website_url == "https://example.com/1"
+    assert items[0].image_urls == ("https://cdn.example/1.png",)
+    assert items[0].score == 2 and items[0].comments == 1
+    assert queries[0]["after"] is None and queries[1]["after"] == "cursor-50"
+    assert queries[0]["postedAfter"] == "2026-10-20T07:00:00+00:00"
+    assert queries[0]["postedBefore"] == "2026-10-21T07:00:00+00:00"
+    assert "secret-not-in-results" not in repr(items)
+
+
+@pytest.mark.asyncio
+async def test_product_hunt_empty_is_not_graphql_or_http_failure(monkeypatch) -> None:
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        rankings,
+        "get_settings",
+        lambda: SimpleNamespace(product_hunt_token=SecretStr("secret")),
+    )
+    payload = {
+        "data": {"posts": {"edges": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}}
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    monkeypatch.setattr(
+        rankings.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    assert await rankings.fetch_product_hunt_daily(date(2026, 10, 20)) == ([], False)
+    payload["errors"] = [{"message": "upstream secret"}]
+    with pytest.raises(rankings.ProductHuntError, match="returned errors"):
+        await rankings.fetch_product_hunt_daily(date(2026, 10, 20))
+    assert "upstream secret" not in str(
+        rankings.ProductHuntError("Product Hunt API returned errors.")
+    )
+    payload.pop("errors")
+    payload["data"] = None
+    with pytest.raises(rankings.ProductHuntError, match="missing"):
+        await rankings.fetch_product_hunt_daily(date(2026, 10, 20))
+
+
+@pytest.mark.asyncio
+async def test_product_hunt_redirect_is_not_followed_with_bearer_token(monkeypatch) -> None:
+    real_client = httpx.AsyncClient
+    requests = []
+    monkeypatch.setattr(
+        rankings,
+        "get_settings",
+        lambda: SimpleNamespace(product_hunt_token=SecretStr("secret")),
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(302, headers={"Location": "https://example.org/steal"})
+
+    monkeypatch.setattr(
+        rankings.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        await rankings.fetch_product_hunt_daily(date(2026, 10, 20))
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("period", "label"),
+    [("daily", "today"), ("weekly", "this week"), ("monthly", "this month")],
+)
+async def test_github_period_changes_upstream_url_and_star_label(
+    monkeypatch, period, label
+) -> None:
+    real_client = httpx.AsyncClient
+    requested = []
+    html = f"""
+    <article class="Box-row">
+      <h2><a href="/owner/repo">owner / repo</a></h2>
+      <span>1,234 stars {label}</span>
+    </article>
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url)
+        return httpx.Response(200, text=html)
+
+    monkeypatch.setattr(
+        rankings.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    items = await rankings.fetch_github_trending(period=period)
+    assert str(requested[0]) == f"https://github.com/trending?since={period}"
+    assert items[0].stars_this_period == 1234
+
+
+@pytest.mark.asyncio
+async def test_product_hunt_rate_limit_is_not_cached_as_an_empty_day(monkeypatch) -> None:
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        rankings,
+        "get_settings",
+        lambda: SimpleNamespace(product_hunt_token=SecretStr("secret")),
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, headers={"Retry-After": "60"}, json={"errors": ["limit"]})
+
+    monkeypatch.setattr(
+        rankings.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    with pytest.raises(httpx.HTTPStatusError) as raised:
+        await rankings.fetch_product_hunt_daily(date(2026, 10, 20))
+    assert raised.value.response.status_code == 429
+    assert raised.value.response.headers["Retry-After"] == "60"

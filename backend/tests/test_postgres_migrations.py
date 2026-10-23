@@ -1377,14 +1377,23 @@ async def _assert_ranking_worker_contract(
     )
     try:
         async with build_session_factory(engine)() as session:
-            handled = await ranking_snapshots.sync_due_ranking_snapshots(session)
+            await ranking_snapshots.sync_due_ranking_snapshots(session)
     finally:
         await engine.dispose()
 
-    assert handled == 2
-    refresh.assert_awaited_once()
-    refreshed_request = refresh.await_args.args[1]
-    assert refreshed_request.cache_key == "ranking:v2:hacker_news"
+    refreshed_requests = [call.args[1] for call in refresh.await_args_list]
+    assert any(request.cache_key == "ranking:v2:hacker_news" for request in refreshed_requests)
+    assert all(request.kind != "reddit" for request in refreshed_requests)
+    assert {
+        record["cache_key"]
+        for record in await connection.fetch(
+            "SELECT cache_key FROM ranking_snapshots WHERE kind = 'github'"
+        )
+    } >= {
+        "ranking:v2:github",
+        "ranking:v2:github:daily",
+        "ranking:v2:github:monthly",
+    }
     assert (
         await connection.fetchval(
             """

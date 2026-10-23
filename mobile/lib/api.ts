@@ -3,6 +3,7 @@ import { isServerTokenInvalid, notifyServerTokenInvalid } from './connection/tok
 import { bindLocalizedErrorMessage, localizedMessage, resolveMessage, type LocalizedMessage } from '../i18n/message';
 import { TranslationRequestError, translationRequestFailure } from '../domain/translationRequestErrors';
 import { recordTranslationDiagnostic } from '../domain/translationDiagnostics';
+import { productHuntToday } from '../domain/productHuntDate';
 import type { Session } from './readerAuth';
 
 import { ConnectionError, redactConnectionText } from './connection/errors';
@@ -97,7 +98,7 @@ export type TitleTranslation = Omit<ApiTitleTranslation, 'translation_status'> &
 };
 
 export type FeedItem = Omit<ApiFeedItem, 'translation_status'> & {
-  ranking_kind?: RankingKind | null;
+  ranking_kind?: SaveRankingRequest['kind'] | null;
   ranking_item?: RankingItem | null;
   translation_status: TranslationStatus;
 };
@@ -112,6 +113,7 @@ export type Article = Omit<ApiArticle, 'translation_status'> & {
   translation_status: TranslationStatus;
 };
 export type RankingKind = ApiRanking['kind'];
+export type GithubRankingPeriod = NonNullable<ApiRanking['period']>;
 export type RedditRankingSort = 'hot' | 'rising' | 'top';
 
 export type RankingBodySegment = {
@@ -123,6 +125,7 @@ export type RankingBodySegment = {
 
 export type RankingItem = Omit<ApiRankingItem, 'description_translation_status' | 'title_translation_status' | 'body_segments'> & {
   ranking_context?: Omit<SaveRankingRequest, 'url'>;
+  ranking_kind?: RankingKind;
   saved_content_id?: string;
   saved_state?: boolean;
   title_translation_status: TranslationStatus;
@@ -453,7 +456,7 @@ function withProxiedSourceAvatars<T extends { avatar_url?: string | null; source
 export async function getRanking(
   session: Session,
   kind: RankingKind,
-  options?: { subreddit?: string; sort?: RedditRankingSort; timeFilter?: 'day' | 'week' | 'month' | 'year' },
+  options?: { subreddit?: string; sort?: RedditRankingSort; timeFilter?: 'day' | 'week' | 'month' | 'year'; period?: GithubRankingPeriod; date?: string },
   force = false,
   runtimeOverride?: ActiveReaderRuntime,
 ): Promise<Ranking> {
@@ -464,6 +467,8 @@ export async function getRanking(
     params.set('sort', options?.sort ?? 'hot');
     params.set('time_filter', options?.timeFilter ?? 'week');
   }
+  if (kind === 'github') params.set('period', options?.period ?? 'weekly');
+  if (kind === 'product_hunt') params.set('date', options?.date ?? productHuntToday());
   if (force) params.set('refresh', 'true');
   const query = params.size ? `?${params.toString()}` : '';
   const { response, payload } = await fetchJsonWithTimeout(`${runtimeApiUrl(runtime, `/v1/rankings/${kind}`)}${query}`, {

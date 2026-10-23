@@ -117,6 +117,8 @@ Install optional dependencies with `uv sync --extra mcp` and launch `uv run --ex
 
 The six tools, host configuration, time/pagination semantics and provider limitations are documented in the [Reader MCP guide](../README.md#通过-mcp-交给-ai-阅读). Business endpoints and generated types remain part of the normal OpenAPI contract. The bridge does not automatically load `backend/.env`.
 
+Product Hunt daily featured launches are optional: set `APP_PRODUCT_HUNT_TOKEN` privately on API and Worker, then restart both. Docker deployments use `.docker/inputs/product-hunt-token`, sealed and mounted through the normal `docker-init.sh up` flow. The authenticated `/v1/rankings/product_hunt` endpoint accepts `date=YYYY-MM-DD` (default: today in `America/Los_Angeles`); the App and existing MCP ranking tool accept historical dates. Queries revalidate against the official API after the shared refresh cooldown (default 60 seconds), and past dates never reuse a capture made before that day ended. The worker refreshes only today's date every 30 minutes. API `RANKING` order and scores reflect fetch time, not guaranteed historical closing results. See the [MCP guide](../README.md#通过-mcp-交给-ai-阅读) for limits and API terms.
+
 ## Layout
 
 - `app/api`: HTTP routes and request/response schemas.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from math import isfinite
 from time import perf_counter
@@ -22,9 +22,11 @@ from app.domain.enums import ContentKind, MediaType, SourceStatus, SyncPhase
 from app.ingestion.candidate_queue import upsert_candidates
 from app.ingestion.models import DiscoveredContent, DiscoveredMedia
 from app.services.rankings import (
+    PRODUCT_HUNT_TIMEZONE,
     RankingItem,
     fetch_github_trending,
     fetch_hacker_news,
+    fetch_product_hunt_daily,
     fetch_reddit_ranking,
     fetch_techtwitter_trending,
 )
@@ -81,9 +83,10 @@ ON CONFLICT (cache_key) DO NOTHING
 SNAPSHOT_ITEM_LIMIT = 100
 SNAPSHOT_SCHEMA_VERSION = "v2"
 
-RankingKind = Literal["hacker_news", "reddit", "github", "techtwitter"]
+RankingKind = Literal["hacker_news", "reddit", "github", "techtwitter", "product_hunt"]
 RedditSort = Literal["hot", "rising", "top"]
 RedditTimeFilter = Literal["day", "week", "month", "year"]
+GitHubPeriod = Literal["daily", "weekly", "monthly"]
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,14 @@ class RankingRequest:
     subreddit: str = "MachineLearning"
     sort: RedditSort = "hot"
     time_filter: RedditTimeFilter = "week"
+    day: date | None = None
+    period: GitHubPeriod = "weekly"
+
+    @property
+    def product_hunt_day(self) -> date:
+        if self.kind != "product_hunt" or self.day is None:
+            raise ValueError("Product Hunt ranking requires a calendar date.")
+        return self.day
 
     @property
     def cache_key(self) -> str:
@@ -101,17 +112,31 @@ class RankingRequest:
                 f"ranking:{SNAPSHOT_SCHEMA_VERSION}:reddit:"
                 f"{self.subreddit.lower()}:{self.sort}:{window}"
             )
-        if self.kind in {"hacker_news", "github", "techtwitter"}:
+        if self.kind == "product_hunt":
+            return (
+                f"ranking:{SNAPSHOT_SCHEMA_VERSION}:product_hunt:"
+                f"{self.product_hunt_day.isoformat()}"
+            )
+        if self.kind == "github":
+            suffix = "" if self.period == "weekly" else f":{self.period}"
+            return f"ranking:{SNAPSHOT_SCHEMA_VERSION}:github{suffix}"
+        if self.kind in {"hacker_news", "techtwitter"}:
             return f"ranking:{SNAPSHOT_SCHEMA_VERSION}:{self.kind}"
         raise ValueError(f"unsupported ranking kind: {self.kind}")
 
     @property
     def parameters(self) -> dict[str, str]:
-        return {
-            "subreddit": self.subreddit,
-            "sort": self.sort,
-            "time_filter": self.time_filter,
-        }
+        if self.kind == "github":
+            return {"period": self.period}
+        return (
+            {"date": self.product_hunt_day.isoformat()}
+            if self.kind == "product_hunt"
+            else {
+                "subreddit": self.subreddit,
+                "sort": self.sort,
+                "time_filter": self.time_filter,
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -121,6 +146,7 @@ class RankingData:
     subtitle: str
     items: list[RankingItem]
     fetched_at: datetime
+    truncated: bool = False
 
 
 class RankingRefreshRateLimited(RuntimeError):
@@ -155,6 +181,8 @@ def refresh_interval(request: RankingRequest) -> timedelta:
         return timedelta(minutes=30)
     if request.kind == "techtwitter":
         return timedelta(minutes=15)
+    if request.kind == "product_hunt":
+        return timedelta(minutes=30)
     if request.kind != "reddit":
         raise ValueError(f"unsupported ranking kind: {request.kind}")
     if request.sort == "hot":
@@ -216,6 +244,18 @@ async def sync_due_ranking_snapshots(
 
     await lock_shared_lifecycle(session)
     await reconcile_reddit_snapshots(session)
+    for period in ("daily", "weekly", "monthly"):
+        # Weekly keeps its existing key; new period boards start without navigation.
+        await _ensure_snapshot_row(session, RankingRequest(kind="github", period=period), now)
+    product_hunt_token = getattr(settings, "product_hunt_token", None)
+    if product_hunt_token is not None and product_hunt_token.get_secret_value():
+        # Seed the LA current day on every worker cycle, including after midnight
+        # when nobody has opened the ranking endpoint.
+        await _ensure_snapshot_row(
+            session,
+            RankingRequest(kind="product_hunt", day=now.astimezone(PRODUCT_HUNT_TIMEZONE).date()),
+            now,
+        )
     active_reddit_subscription = _active_reddit_subscription_predicate()
     core_reddit_snapshot = _core_reddit_snapshot_predicate()
     await session.execute(
@@ -250,8 +290,16 @@ async def sync_due_ranking_snapshots(
                 RankingSnapshot.cache_key.like(f"ranking:{SNAPSHOT_SCHEMA_VERSION}:%"),
                 RankingSnapshot.next_refresh_at <= now,
                 or_(
-                    RankingSnapshot.kind != "reddit",
+                    RankingSnapshot.kind.in_(("hacker_news", "github", "techtwitter")),
                     and_(
+                        RankingSnapshot.kind == "product_hunt",
+                        RankingSnapshot.parameters["date"].astext
+                        == now.astimezone(PRODUCT_HUNT_TIMEZONE).date().isoformat(),
+                        product_hunt_token is not None
+                        and bool(product_hunt_token.get_secret_value()),
+                    ),
+                    and_(
+                        RankingSnapshot.kind == "reddit",
                         active_reddit_subscription,
                         or_(
                             core_reddit_snapshot,
@@ -507,8 +555,13 @@ async def fetch_live_ranking(
         return RankingData(
             kind=request.kind,
             title="GitHub Trending",
-            subtitle="Repositories · this week",
-            items=await fetch_github_trending(limit),
+            subtitle="Repositories · "
+            + {
+                "daily": "today",
+                "weekly": "this week",
+                "monthly": "this month",
+            }[request.period],
+            items=await fetch_github_trending(limit, period=request.period),
             fetched_at=datetime.now(UTC),
         )
     if request.kind == "techtwitter":
@@ -518,6 +571,20 @@ async def fetch_live_ranking(
             subtitle="TechTwitter · Trending",
             items=await fetch_techtwitter_trending(limit),
             fetched_at=datetime.now(UTC),
+        )
+    if request.kind == "product_hunt":
+        items, truncated = await fetch_product_hunt_daily(request.product_hunt_day, limit)
+        return RankingData(
+            kind="product_hunt",
+            title="Product Hunt",
+            subtitle=(
+                f"Featured launches · {request.product_hunt_day.isoformat()} (Los Angeles) · "
+                "API RANKING and scores observed at fetched_at, not historical closing ranks; "
+                "may differ from the website leaderboard"
+            ),
+            items=items,
+            fetched_at=datetime.now(UTC),
+            truncated=truncated,
         )
     raise ValueError(f"unsupported ranking kind: {request.kind}")
 
@@ -546,6 +613,8 @@ def ranking_item_from_payload(raw: dict[str, object]) -> RankingItem:
         bookmark_count=raw.get("bookmark_count"),
         video_url=raw.get("video_url"),
         video_thumbnail_url=raw.get("video_thumbnail_url"),
+        product_id=raw.get("product_id"),
+        website_url=raw.get("website_url"),
     )
 
 
@@ -566,6 +635,7 @@ def _data_from_snapshot(snapshot: RankingSnapshot) -> RankingData:
         subtitle=str(snapshot.payload.get("subtitle") or ""),
         items=items,
         fetched_at=snapshot.fetched_at,
+        truncated=bool(snapshot.payload.get("truncated", False)),
     )
 
 
@@ -574,6 +644,7 @@ def _payload_from_data(data: RankingData) -> dict[str, object]:
         "title": data.title,
         "subtitle": data.subtitle,
         "items": [ranking_item_payload(item) for item in data.items],
+        "truncated": data.truncated,
     }
 
 
@@ -581,8 +652,18 @@ def _request_from_snapshot(snapshot: RankingSnapshot) -> RankingRequest:
     parameters = snapshot.parameters
     if not isinstance(parameters, dict):
         raise TypeError("snapshot parameters must be an object")
-    if snapshot.kind not in {"hacker_news", "reddit", "github", "techtwitter"}:
+    if snapshot.kind not in {"hacker_news", "reddit", "github", "techtwitter", "product_hunt"}:
         raise ValueError(f"unsupported ranking kind: {snapshot.kind}")
+    if snapshot.kind == "product_hunt":
+        raw_day = parameters.get("date")
+        if not isinstance(raw_day, str) or len(raw_day) != 10:
+            raise ValueError("product_hunt snapshot date must be YYYY-MM-DD")
+        return RankingRequest(kind="product_hunt", day=date.fromisoformat(raw_day))
+    if snapshot.kind == "github":
+        period = parameters.get("period", "weekly")
+        if period not in {"daily", "weekly", "monthly"}:
+            raise ValueError(f"unsupported GitHub period: {period}")
+        return RankingRequest(kind="github", period=period)
     if snapshot.kind != "reddit":
         return RankingRequest(kind=snapshot.kind)  # type: ignore[arg-type]
 
@@ -647,7 +728,7 @@ def _snapshot_item_limit(request: RankingRequest) -> int:
         return 25
     if request.kind == "techtwitter":
         return 50
-    if request.kind in {"hacker_news", "reddit"}:
+    if request.kind in {"hacker_news", "reddit", "product_hunt"}:
         return SNAPSHOT_ITEM_LIMIT
     raise ValueError(f"unsupported ranking kind: {request.kind}")
 
@@ -887,6 +968,7 @@ async def _publish_snapshot(
         subtitle=data.subtitle,
         items=data.items,
         fetched_at=now,
+        truncated=data.truncated,
     )
 
 

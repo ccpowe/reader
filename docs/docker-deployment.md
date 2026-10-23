@@ -102,6 +102,7 @@ cp .env.docker.example .env.docker
 | `deepseek-api-key` | 使用 DeepSeek 翻译或规则 Agent 时 | API、Worker |
 | `openrouter-api-key` | 使用 OpenRouter 翻译或规则 Agent 时 | API、Worker |
 | `youtube-data-api-key` | 需要 YouTube Data API 完整数据时，可选 | Worker |
+| `product-hunt-token` | 启用 Product Hunt 每日热门发布 API／MCP 查询时，可选 | API、Worker |
 | `scweet-cookies.json` | 启用 X 时必需 | Scweet |
 
 用服务器本地编辑器写入实际值，不要让值出现在命令历史或部署日志中。未使用的 key 文件保持为空。

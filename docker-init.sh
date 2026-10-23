@@ -166,6 +166,7 @@ initialize() {
   ensure_input deepseek-api-key
   ensure_input openrouter-api-key
   ensure_input youtube-data-api-key
+  ensure_input product-hunt-token
   ensure_input scweet-cookies.json
   ensure_generated_secret database-password
   ensure_generated_secret server-access-token
@@ -175,6 +176,7 @@ initialize() {
   seal_input deepseek-api-key
   seal_input openrouter-api-key
   seal_input youtube-data-api-key
+  seal_input product-hunt-token
   seal_input scweet-cookies.json
   write_base_env
   if ! test -f "$X_STATE"; then printf '0\n' | atomic_text "$X_STATE" 0600; fi
