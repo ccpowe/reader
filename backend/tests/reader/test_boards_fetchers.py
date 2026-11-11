@@ -155,27 +155,42 @@ async def test_github_trending(upstream) -> None:
 
 
 @pytest.mark.asyncio
-async def test_techtwitter_keeps_order_and_skips_bad_urls(upstream) -> None:
+async def test_techtwitter_reads_the_news_format(upstream) -> None:
+    # Shape of the live API on 2026-11-11.
     tweets = [
         {
-            "id": 1,
-            "tweet_url": "https://x.com/a/status/1",
-            "tweet_text": "Long body",
-            "seo_title": "Title",
-            "like_count": 3,
-            "retweet_count": 1,
-            "image_url": "https://i/1.png",
-            "image_grid_urls": ["https://i/1.png", "https://i/2.png"],
+            "id": "17eea431",
+            "x_url": "https://x.com/i/status/2120206365759094857",
+            "canonical_url": "https://www.techtwitter.com/tweet/17eea431",
+            "headline": "Claude Adds Whiteboards, Sheets and Data Tools",
+            "summary": "Claude is rolling out Claude Whiteboards, Sheets and Data.",
+            "topics": ["artificial intelligence", "productivity", 3, " "],
+            "quality_score": 8,
+            "posted_at": "2026-11-10T17:26:03+00:00",
         },
-        {"id": 2, "tweet_url": "javascript:alert(1)", "tweet_text": "bad"},
-        {"id": 3, "tweet_url": "https://x.com/b/status/3", "tweet_text": "Only body"},
+        {"id": "bad", "x_url": "javascript:alert(1)", "headline": "Bad link"},
+        {"id": "untitled", "x_url": "https://x.com/i/status/2"},
+        {
+            "id": "fallback",
+            "canonical_url": "https://www.techtwitter.com/tweet/fallback",
+            "headline": "Only the TechTwitter page",
+            "quality_score": 99,
+        },
     ]
-    upstream(lambda request: httpx.Response(200, json={"tweets": tweets}))
+    upstream(lambda request: httpx.Response(200, json={"tweets": tweets, "total": 4}))
     items = await fetchers.fetch_techtwitter(50)
 
-    assert [(item.rank, item.title) for item in items] == [(1, "Title"), (2, "Only body")]
-    assert items[0].image_urls == ["https://i/1.png", "https://i/2.png"]
-    assert items[0].body_text == "Long body" and items[0].reposts == 1
+    assert [(item.rank, item.title) for item in items] == [
+        (1, "Claude Adds Whiteboards, Sheets and Data Tools"),
+        (2, "Only the TechTwitter page"),
+    ]
+    first, second = items
+    assert first.url == "https://x.com/i/status/2120206365759094857"
+    assert first.tags == ["artificial intelligence", "productivity"]
+    assert first.quality_score == 8 and first.description.startswith("Claude is rolling")
+    assert first.published_at.isoformat() == "2026-11-10T17:26:03+00:00"
+    assert second.url == "https://www.techtwitter.com/tweet/fallback"
+    assert second.quality_score is None  # out of the 0–10 range
 
 
 _REDDIT_RSS = """<?xml version="1.0"?>

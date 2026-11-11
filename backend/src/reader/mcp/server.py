@@ -250,6 +250,8 @@ def create_server() -> MCPServer:
                             "stars": item.stars,
                             "stars_this_period": item.stars_this_period,
                             "language": item.language,
+                            "tags": item.tags,
+                            "quality_score": item.quality_score,
                         }
                     )
                     for item in view.items[:BOARD_ITEMS]

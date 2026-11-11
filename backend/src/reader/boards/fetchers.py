@@ -50,6 +50,9 @@ class BoardItem(BaseModel):
     video_thumbnail_url: str | None = None
     website_url: str | None = None
     language: str | None = None
+    # Topic labels and an editorial 0–10 rating, when the board provides them (TechTwitter).
+    tags: list[str] = []
+    quality_score: int | None = None
     score: int | None = None
     comments: int | None = None
     stars: int | None = None
@@ -204,7 +207,13 @@ async def fetch_github_trending(period: str, limit: int) -> list[BoardItem]:
 
 
 async def fetch_techtwitter(limit: int) -> list[BoardItem]:
-    """TechTwitter's trending order, one public API request."""
+    """TechTwitter's trending order: tech news picked from X, one public API request.
+
+    Since 2026-11 each entry is a headline with an editorial summary, topic tags and a
+    quality score, linking to the original post; there is no post text, author or
+    engagement any more. The API also sits behind a Vercel bot check that answers
+    server requests with a challenge (techtwitter_challenge_required).
+    """
     with upstream_errors("techtwitter"):
         async with _client() as client:
             response = await _get(
@@ -220,14 +229,12 @@ async def fetch_techtwitter(limit: int) -> list[BoardItem]:
     for raw in payload["tweets"]:
         if not isinstance(raw, dict):
             continue
-        url = _http_url(raw.get("tweet_url"))
-        body = raw.get("tweet_text") if isinstance(raw.get("tweet_text"), str) else None
-        title = _text(raw.get("seo_title")) or (body or "")[:160]
-        if url is None or not title.strip():
+        url = _http_url(raw.get("x_url")) or _http_url(raw.get("canonical_url"))
+        title = _text(raw.get("headline"))
+        if url is None or title is None:
             continue
-        images = [raw.get("image_url")]
-        if isinstance(raw.get("image_grid_urls"), list):
-            images += raw["image_grid_urls"]
+        topics = raw.get("topics") if isinstance(raw.get("topics"), list) else []
+        quality = _count(raw.get("quality_score"))
         items.append(
             BoardItem(
                 rank=len(items) + 1,
@@ -235,17 +242,11 @@ async def fetch_techtwitter(limit: int) -> list[BoardItem]:
                 url=url,
                 source_label="TechTwitter",
                 description=_text(raw.get("summary")),
-                body_text=body,
-                author=_text(raw.get("author_name")),
-                author_handle=_text(raw.get("author_handle")),
-                score=_count(raw.get("like_count")),
-                comments=_count(raw.get("comment_count")),
-                reposts=_count(raw.get("retweet_count")),
-                bookmarks=_count(raw.get("bookmark_count")),
-                image_urls=list(dict.fromkeys(u for value in images if (u := _http_url(value)))),
-                video_url=_http_url(raw.get("video_url")),
-                video_thumbnail_url=_http_url(raw.get("video_thumbnail_url")),
-                published_at=_datetime(raw.get("timestamp")),
+                tags=[
+                    topic.strip() for topic in topics if isinstance(topic, str) and topic.strip()
+                ][:8],
+                quality_score=quality if quality is not None and quality <= 10 else None,
+                published_at=_datetime(raw.get("posted_at")),
             )
         )
         if len(items) >= limit:
