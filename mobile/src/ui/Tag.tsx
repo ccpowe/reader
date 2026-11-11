@@ -53,7 +53,9 @@ export function AttentionCount({ value }: { value: number }) {
 /** qp-badge: micro label on a sunken background, e.g. "共 7 条". */
 export function Badge({ children }: { children: ReactNode }) {
   return (
-    <View className="self-start rounded-sm bg-sunken px-1">
+    // No self-alignment here: the row it sits in decides (a self-start badge rode above the
+    // centered time on feed cards).
+    <View className="h-5 justify-center rounded-sm bg-sunken px-1">
       <Text level="micro" tone="secondary">
         {children}
       </Text>
