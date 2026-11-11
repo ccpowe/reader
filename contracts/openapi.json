@@ -3091,7 +3091,7 @@
             }
           },
           {
-            "description": "Only this group.",
+            "description": "Only this group; \"\" for subscriptions without a group.",
             "in": "query",
             "name": "group",
             "required": false,
@@ -3105,7 +3105,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Only this group.",
+              "description": "Only this group; \"\" for subscriptions without a group.",
               "title": "Group"
             }
           },
@@ -3304,6 +3304,7 @@
             }
           },
           {
+            "description": "Only this group; \"\" for subscriptions without a group.",
             "in": "query",
             "name": "group",
             "required": false,
@@ -3317,6 +3318,7 @@
                   "type": "null"
                 }
               ],
+              "description": "Only this group; \"\" for subscriptions without a group.",
               "title": "Group"
             }
           },
@@ -4406,7 +4408,7 @@
     },
     "/sources/{source_id}/icon": {
       "get": {
-        "description": "The icon of a source you follow, relayed so the app never contacts its host.",
+        "description": "The icon of a source followed on this server, relayed so the app never contacts its host.\n\nPublic (no server token, no user): the app loads it with <Image>, which sends no headers.\nIcons are public site images, and source ids are random.",
         "operationId": "source_icon_sources__source_id__icon_get",
         "parameters": [
           {
@@ -4427,16 +4429,6 @@
             },
             "description": "Successful Response"
           },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Error codes: `invalid_server_token`, `not_authenticated`"
-          },
           "404": {
             "content": {
               "application/json": {
@@ -4456,16 +4448,6 @@
               }
             },
             "description": "Error codes: `invalid_request`"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Error codes: `too_many_attempts`"
           },
           "502": {
             "content": {
@@ -4488,12 +4470,6 @@
             "description": "Error codes: `database_unavailable`"
           }
         },
-        "security": [
-          {
-            "HTTPBearer": [],
-            "ReaderServerToken": []
-          }
-        ],
         "summary": "Source Icon",
         "tags": [
           "subscriptions"

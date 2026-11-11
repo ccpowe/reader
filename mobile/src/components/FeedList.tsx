@@ -1,0 +1,166 @@
+/**
+ * A feed list with every state it can be in (react-guidelines §4.11): first load (skeleton after
+ * --delay-loading), failed with nothing to show (message + retry), failed refresh (old items kept,
+ * message above), empty, pull to refresh, and loading older items at the end.
+ * Presentational: the route passes data and callbacks.
+ */
+import { useRef, useState, type ReactElement } from 'react';
+import { ActivityIndicator, FlatList, RefreshControl, View, type FlatListProps } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { useCSSVariable } from 'uniwind';
+
+import { anchorStep, type ListPosition } from '@/lib/list-memory';
+import { Button, EmptyState, Message, Skeleton, Text } from '@/ui';
+import { delayLoading, duration } from '@/ui/theme';
+
+import { FeedCard, type FeedCardItem } from './FeedCard';
+
+export type FeedListState =
+  | { kind: 'loading' }
+  | { kind: 'failed'; message: string }
+  | {
+      kind: 'ready';
+      items: FeedCardItem[];
+      refreshFailed?: string | null;
+      hasMore: boolean;
+      loadingMore: boolean;
+      moreFailed?: string | null;
+      /** any fetch in flight (a refresh): loading more waits, so it cannot cancel the refresh */
+      busy?: boolean;
+    };
+
+const viewability = { itemVisiblePercentThreshold: 10 };
+type ViewableInfo = Parameters<NonNullable<FlatListProps<FeedCardItem>['onViewableItemsChanged']>>[0];
+
+const appearLate = {
+  animationName: { from: { opacity: 0 }, to: { opacity: 1 } },
+  animationDuration: `${duration.fast}ms`,
+  animationDelay: `${delayLoading}ms`,
+  animationFillMode: 'both',
+} as const;
+
+export function FeedList({
+  state,
+  refreshing = false,
+  empty,
+  onRefresh,
+  onRetry,
+  onEndReached,
+  onOpen,
+  onToggleSave,
+  position,
+  onPosition,
+}: {
+  state: FeedListState;
+  /** where the reader left this list last time; restored once, by offset and then by item */
+  position?: ListPosition | null;
+  onPosition?: (position: ListPosition) => void;
+  refreshing?: boolean;
+  empty: ReactElement;
+  onRefresh?: () => void;
+  onRetry?: () => void;
+  onEndReached?: () => void;
+  onOpen?: (id: string) => void;
+  onToggleSave?: (item: FeedCardItem) => void;
+}) {
+  const spinner = useCSSVariable('--color-icon-neutral') as string | undefined;
+  const list = useRef<FlatList<FeedCardItem>>(null);
+  // Scroll bookkeeping is UI lifecycle, not business state (react-guidelines §5), so it lives in
+  // refs, written only in event handlers.
+  const viewport = useRef(0);
+  const offset = useRef(position?.offset ?? 0);
+  const anchor = useRef<string | null>(position?.anchorId ?? null);
+  const restoring = useRef<'offset' | 'anchor' | 'done'>(position && position.offset > 0 ? 'offset' : 'done');
+  const ids = useRef<string[]>([]);
+  // FlatList needs one stable function for the life of the list.
+  const [onViewable] = useState(() => ({ viewableItems }: ViewableInfo) => {
+    const visible = viewableItems.filter((t) => t.isViewable && t.item).map((t) => t.item.id);
+    if (restoring.current === 'anchor') {
+      const step = anchorStep(anchor.current, visible, ids.current);
+      if (step.kind === 'scroll') {
+        list.current?.scrollToIndex({ index: step.index, animated: false, viewPosition: 0 });
+        return;
+      }
+      restoring.current = 'done';
+    }
+    // The top item is reported with the next scroll event (remember below).
+    if (restoring.current === 'done' && visible.length > 0) anchor.current = visible[0];
+  });
+  function remember(y: number) {
+    if (restoring.current !== 'done') return; // our own restore scrolls are not the reader's
+    offset.current = y;
+    onPosition?.({ offset: y, anchorId: anchor.current });
+  }
+
+  if (state.kind === 'loading') {
+    return (
+      <Animated.View className="gap-8 px-6 py-6" style={appearLate}>
+        {[0, 1, 2, 3].map((index) => (
+          <Skeleton key={index} lines={3} />
+        ))}
+      </Animated.View>
+    );
+  }
+  if (state.kind === 'failed') {
+    return <EmptyState action={<Button onPress={onRetry} title="重试" />} description={state.message} title="没能加载" />;
+  }
+  return (
+    <FlatList
+      ListEmptyComponent={empty}
+      ListFooterComponent={
+        state.moreFailed ? (
+          <View className="items-center gap-2 px-6 py-6">
+            <Text level="desc" tone="secondary">
+              {state.moreFailed}
+            </Text>
+            <Button onPress={onEndReached} title="重试" variant="ghost" />
+          </View>
+        ) : state.loadingMore ? (
+          <View className="items-center py-6">
+            <ActivityIndicator color={spinner} />
+          </View>
+        ) : undefined
+      }
+      ListHeaderComponent={
+        state.refreshFailed ? (
+          <View className="px-6 pt-4">
+            <Message action={<Button onPress={onRetry} title="重试" variant="ghost" />} kind="danger">
+              {state.refreshFailed}
+            </Message>
+          </View>
+        ) : undefined
+      }
+      data={state.items}
+      keyExtractor={(item) => item.id}
+      // Restore once the list can scroll that far (content ≥ offset + its own height); then check
+      // the item that was on top and, if items above changed, scroll to that item instead.
+      onContentSizeChange={(_, height) => {
+        ids.current = state.items.map((item) => item.id);
+        if (restoring.current !== 'offset' || viewport.current === 0 || height < offset.current + viewport.current) return;
+        restoring.current = 'anchor';
+        list.current?.scrollToOffset({ offset: offset.current, animated: false });
+      }}
+      onScrollBeginDrag={() => {
+        restoring.current = 'done'; // the reader took over
+      }}
+      onScrollToIndexFailed={(info) => {
+        list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+      }}
+      onViewableItemsChanged={onViewable}
+      viewabilityConfig={viewability}
+      onLayout={(event) => {
+        viewport.current = event.nativeEvent.layout.height;
+      }}
+      onEndReached={state.hasMore && !state.loadingMore && !state.moreFailed && !state.busy ? onEndReached : undefined}
+      onEndReachedThreshold={0.6}
+      // Throttled while scrolling, and exact when a drag or fling ends.
+      onMomentumScrollEnd={(event) => remember(event.nativeEvent.contentOffset.y)}
+      onScroll={(event) => remember(event.nativeEvent.contentOffset.y)}
+      onScrollEndDrag={(event) => remember(event.nativeEvent.contentOffset.y)}
+      ref={list}
+      scrollEventThrottle={200}
+      refreshControl={<RefreshControl colors={spinner ? [spinner] : undefined} onRefresh={onRefresh} refreshing={refreshing} />}
+      renderItem={({ item }) => <FeedCard item={item} onOpen={onOpen} onToggleSave={onToggleSave} />}
+    />
+  );
+}

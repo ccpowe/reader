@@ -16,7 +16,8 @@ from reader.core.settings import Settings
 
 SERVER_TOKEN_HEADER = "X-Reader-Server-Token"
 
-# Probes, the OpenAPI document and avatar images (loaded by <Image> without headers).
+# Probes, the OpenAPI document, and images the app loads with <Image>, which sends no headers:
+# avatars and relayed source icons (/sources/{id}/icon). Both are addressed by random ids.
 PUBLIC_PATHS = frozenset({"/health", "/ready", "/worker-ready", "/openapi.json", "/docs"})
 PUBLIC_PREFIXES = ("/avatars/", "/docs/")
 
@@ -33,6 +34,8 @@ async def document_server_token(_token: str | None = Security(server_token)) -> 
 
 
 def is_public(path: str) -> bool:
+    if path.startswith("/sources/") and path.endswith("/icon") and path.count("/") == 3:
+        return True
     return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
 
 

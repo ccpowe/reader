@@ -1,18 +1,14 @@
 /**
  * 今天 (PRODUCT §3.1), old app layout at P25 values: READER header with the date, folder tabs with
- * the channel filter on the right (count badge = subscriptions picked), then the feed, newest
- * first by when Reader saw it (P8). Presentational: data and callbacks come from the route.
+ * the channel filter on the right (badge = new items on 全部), or — when one subscription is shown
+ * alone — a bar naming it with a way back. The feed itself is the `children` (one list, or the
+ * folder pager). Presentational: data and callbacks come from the route.
  */
 import { IconAdjustmentsHorizontal, IconX } from '@tabler/icons-react-native';
-import { FlatList, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { View } from 'react-native';
 
-import { FeedCard, type FeedCardItem } from '@/components/FeedCard';
-import { Button, EmptyState, IconButton, Message, PageHeader, Skeleton, SolidCount, Tabs, Text } from '@/ui';
-
-export type TodayState =
-  | { kind: 'loading' }
-  | { kind: 'no-subscriptions' }
-  | { kind: 'ready'; items: FeedCardItem[]; loadFailed?: boolean };
+import { IconButton, Message, PageHeader, SolidCount, Tabs, Text } from '@/ui';
 
 export function TodayView({
   date,
@@ -20,36 +16,34 @@ export function TodayView({
   folders,
   folder,
   channel,
-  channelCount,
-  state,
+  newCount,
   banner,
+  children,
   onSelectFolder,
   onOpenChannels,
   onClearChannel,
-  onAddSubscription,
-  onRetry,
 }: {
   /** e.g. "11 月 11 日 · 星期三" */
   date: string;
-  user: { name: string; avatarUrl?: string | null };
-  folders: string[];
+  user?: { name: string; avatarUrl?: string | null };
+  /** tabs after 全部: key and label */
+  folders: { key: string; label: string }[];
+  /** null = 全部 */
   folder: string | null;
   /** the one subscription being shown, if any */
   channel?: string | null;
-  /** how many subscriptions the channel picker has ticked for 全部 */
-  channelCount?: number;
-  state: TodayState;
-  /** view-level problem (disconnected, signed out), one at a time */
+  /** new items across the subscriptions on 全部 */
+  newCount?: number;
+  /** view-level problem (no network), one at a time */
   banner?: string | null;
+  children: ReactNode;
   onSelectFolder?: (folder: string | null) => void;
   onOpenChannels?: () => void;
   onClearChannel?: () => void;
-  onAddSubscription?: () => void;
-  onRetry?: () => void;
 }) {
   const filter = (
     <IconButton
-      badge={channelCount ? <SolidCount value={channelCount} /> : null}
+      badge={newCount ? <SolidCount value={newCount} /> : null}
       icon={IconAdjustmentsHorizontal}
       label="选择频道"
       onPress={onOpenChannels}
@@ -74,40 +68,18 @@ export function TodayView({
         <Tabs
           bordered
           onSelect={(key) => onSelectFolder?.(key)}
-          options={[{ key: null, label: '全部' }, ...folders.map((name) => ({ key: name, label: name }))]}
+          options={[{ key: null, label: '全部' }, ...folders]}
           selected={folder}
           trailing={filter}
         />
       )}
-      {state.kind === 'loading' ? (
-        <View className="gap-8 px-6 py-6">
-          {[0, 1, 2, 3].map((index) => (
-            <Skeleton key={index} lines={3} />
-          ))}
-        </View>
-      ) : state.kind === 'no-subscriptions' ? (
-        <EmptyState
-          action={<Button large onPress={onAddSubscription} title="添加订阅" variant="primary" />}
-          description="添加 RSS、网站、YouTube、X 或 Reddit，新内容会出现在这里。"
-          title="还没有订阅"
-        />
-      ) : (
-        <FlatList
-          ListEmptyComponent={<EmptyState description="订阅有新内容时会出现在这里。" title="还没有新内容" />}
-          ListHeaderComponent={
-            state.loadFailed ? (
-              <View className="px-6 pt-4">
-                <Message action={<Button onPress={onRetry} title="重试" variant="ghost" />} kind="danger">
-                  加载失败，显示的是之前的内容。
-                </Message>
-              </View>
-            ) : undefined
-          }
-          data={state.items}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <FeedCard item={item} />}
-        />
-      )}
+      <View className="flex-1">{children}</View>
     </View>
   );
+}
+
+/** The date line in the header: "11 月 11 日 · 星期三". */
+export function todayLabel(now: Date): string {
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  return `${now.getMonth() + 1} 月 ${now.getDate()} 日 · 星期${weekdays[now.getDay()]}`;
 }

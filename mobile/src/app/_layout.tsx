@@ -27,6 +27,7 @@ function Routes() {
       </Stack.Protected>
       <Stack.Protected guard={state.status === 'signed-in'}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="article/[id]" />
       </Stack.Protected>
     </Stack>
   );

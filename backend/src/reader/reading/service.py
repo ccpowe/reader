@@ -138,7 +138,10 @@ def _scope_conditions(user_id: UUID, scope: FeedScope) -> list[ColumnElement]:
         conditions.append(Subscription.id == scope.subscription_id)
     else:
         conditions.append(Subscription.is_enabled.is_(True))
-        if scope.group is not None:
+        if scope.group == "":
+            # "" asks for the subscriptions without a group (stored group names are never empty).
+            conditions.append(Subscription.group_name.is_(None))
+        elif scope.group is not None:
             conditions.append(Subscription.group_name == scope.group)
         elif not scope.everything:
             conditions.append(Subscription.include_in_home.is_(True))

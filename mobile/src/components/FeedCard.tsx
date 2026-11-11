@@ -16,6 +16,7 @@ import {
   IconRss,
   IconWorld,
 } from '@tabler/icons-react-native';
+import { memo } from 'react';
 import { Image, Pressable, View } from 'react-native';
 
 import { Avatar, Badge, Icon, IconButton, Text } from '@/ui';
@@ -166,13 +167,25 @@ function Article({ item }: { item: FeedCardItem }) {
   );
 }
 
-export function FeedCard({ item, onOpen, onToggleSave }: { item: FeedCardItem; onOpen?: () => void; onToggleSave?: () => void }) {
+/**
+ * Callbacks receive the item, so a list can pass the same two functions to every card and an
+ * unchanged card does not re-render (memo).
+ */
+export const FeedCard = memo(function FeedCard({
+  item,
+  onOpen,
+  onToggleSave,
+}: {
+  item: FeedCardItem;
+  onOpen?: (id: string) => void;
+  onToggleSave?: (item: FeedCardItem) => void;
+}) {
   return (
-    <Pressable accessibilityRole="button" className="active:bg-pressed" onPress={onOpen}>
+    <Pressable accessibilityRole="button" className="active:bg-pressed" onPress={() => onOpen?.(item.id)}>
       <View className="mx-6 border-b border-subtle pb-3 pt-6">
         {item.x ? <XPost item={item} /> : <Article item={item} />}
-        <BottomRow item={item} onToggleSave={onToggleSave} />
+        <BottomRow item={item} onToggleSave={() => onToggleSave?.(item)} />
       </View>
     </Pressable>
   );
-}
+});

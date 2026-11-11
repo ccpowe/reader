@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from reader.accounts.auth import CurrentUser, current_user
 from reader.core.db import get_session
-from reader.core.errors import AppError, error_responses
+from reader.core.errors import DATABASE_UNAVAILABLE, AppError, error_responses
 from reader.core.server_access import document_server_token
 from reader.core.settings import Settings, get_settings
 from reader.models import Source
@@ -23,9 +23,8 @@ from reader.subscriptions.service import SubscriptionType, SubscriptionView
 router = APIRouter(
     prefix="/subscriptions", tags=["subscriptions"], dependencies=[Depends(document_server_token)]
 )
-sources_router = APIRouter(
-    prefix="/sources", tags=["subscriptions"], dependencies=[Depends(document_server_token)]
-)
+# Public: see source_icon (the middleware lets /sources/{id}/icon through without a token).
+sources_router = APIRouter(prefix="/sources", tags=["subscriptions"])
 
 
 def _trim(value: str | None) -> str | None:
@@ -216,17 +215,25 @@ async def mark_viewed(
     response_class=Response,
     responses={
         200: {"content": {"image/*": {}}},
-        **error_responses((404, "icon_not_found"), (502, "icon_unavailable")),
+        **error_responses(
+            (404, "icon_not_found"),
+            (502, "icon_unavailable"),
+            DATABASE_UNAVAILABLE,
+            access="public",
+        ),
     },
 )
 async def source_icon(
     source_id: UUID,
     request: Request,
-    user: CurrentUser = Depends(current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    """The icon of a source you follow, relayed so the app never contacts its host."""
-    url = await service.followed_source_icon(db, user.id, source_id)
+    """The icon of a source followed on this server, relayed so the app never contacts its host.
+
+    Public (no server token, no user): the app loads it with <Image>, which sends no headers.
+    Icons are public site images, and source ids are random.
+    """
+    url = await service.followed_source_icon(db, source_id)
     if url is None:
         raise AppError(404, "icon_not_found", "This source has no icon.")
     # Authorization is done; release the database connection before the upstream fetch.

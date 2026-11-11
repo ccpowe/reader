@@ -8,7 +8,9 @@ import { ArticleView } from '@/screens/ArticleView';
 import { ConnectView, SignInView } from '@/screens/AuthViews';
 import { BoardItemView } from '@/screens/BoardItemView';
 import { BoardOptions, BoardsView } from '@/screens/BoardsView';
+import { FeedList, type FeedListState } from '@/components/FeedList';
 import { ChannelPicker } from '@/screens/ChannelPicker';
+import { EmptyState } from '@/ui';
 import { MeView } from '@/screens/MeView';
 import { SavedView } from '@/screens/SavedView';
 import { AddSubscriptionForm, SubscriptionsView } from '@/screens/SubscriptionsView';
@@ -25,57 +27,40 @@ const story = (name: string, render: () => React.ReactElement): Story => ({ name
 
 // --- 今天 -----------------------------------------------------------------------
 
-export const Today = story('今天 · 正常', () => (
+const todayFolders = folders.map((name) => ({ key: name, label: name }));
+const ready = (items: typeof feed, extra: Partial<Extract<FeedListState, { kind: 'ready' }>> = {}): FeedListState => ({
+  kind: 'ready',
+  items,
+  hasMore: true,
+  loadingMore: false,
+  ...extra,
+});
+const emptyFeed = <EmptyState description="订阅有新内容时会出现在这里。" title="还没有内容" />;
+const today = (props: Partial<React.ComponentProps<typeof TodayView>>, list: FeedListState) => (
   <TabFrame tab="today">
-    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder={null} folders={folders} state={{ kind: 'ready', items: feed }} />
+    <TodayView date="11 月 11 日 · 星期三" folder={null} folders={todayFolders} newCount={1520} user={user} {...props}>
+      <FeedList empty={emptyFeed} state={list} />
+    </TodayView>
   </TabFrame>
-));
-export const TodayFolder = story('今天 · 选了文件夹', () => (
-  <TabFrame tab="today">
-    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder="AI" folders={folders} state={{ kind: 'ready', items: feed.slice(0, 4) }} />
-  </TabFrame>
-));
-export const TodayChannel = story('今天 · 只看一个订阅', () => (
-  <TabFrame tab="today">
-    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} channel="Simon Willison" folder={null} folders={folders} state={{ kind: 'ready', items: [feed[0], feed[3]] }} />
-  </TabFrame>
-));
-export const TodayLoading = story('今天 · 加载中', () => (
-  <TabFrame tab="today">
-    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder={null} folders={folders} state={{ kind: 'loading' }} />
-  </TabFrame>
-));
-export const TodayFailed = story('今天 · 加载失败（保留旧内容）', () => (
-  <TabFrame tab="today">
-    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder={null} folders={folders} state={{ kind: 'ready', items: feed, loadFailed: true }} />
-  </TabFrame>
-));
-export const TodayNoSubscriptions = story('今天 · 还没有订阅', () => (
-  <TabFrame tab="today">
-    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder={null} folders={[]} state={{ kind: 'no-subscriptions' }} />
-  </TabFrame>
-));
-export const TodayEmpty = story('今天 · 没有新内容', () => (
-  <TabFrame tab="today">
-    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder="编程" folders={folders} state={{ kind: 'ready', items: [] }} />
-  </TabFrame>
-));
-export const TodayBanner = story('今天 · 连接断开横幅', () => (
-  <TabFrame tab="today">
-    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} banner="连不上服务器，显示的是之前的内容。" folder={null} folders={folders} state={{ kind: 'ready', items: feed }} />
-  </TabFrame>
-));
+);
+const channelRows = subscriptions.map((group) => ({
+  key: group.name,
+  label: group.name,
+  rows: group.items.map((item) => ({ id: item.id, name: item.name, kind: item.kind, address: item.address, newCount: item.newCount, includeInHome: item.id !== 's3' })),
+}));
+
+export const Today = story('今天 · 正常', () => today({}, ready(feed)));
+export const TodayFolder = story('今天 · 选了文件夹', () => today({ folder: 'AI' }, ready(feed.slice(0, 4))));
+export const TodayChannel = story('今天 · 只看一个订阅', () => today({ channel: 'Simon Willison' }, ready([feed[0], feed[3]])));
+export const TodayLoading = story('今天 · 加载中', () => today({}, { kind: 'loading' }));
+export const TodayFailed = story('今天 · 刷新失败（保留旧内容）', () => today({}, ready(feed, { refreshFailed: '刷新没有成功，显示的是之前的内容。' })));
+export const TodayLoadFailed = story('今天 · 加载失败（没有内容）', () => today({}, { kind: 'failed', message: '连不上服务器。检查网络后再试。' }));
+export const TodayMore = story('今天 · 加载更早的内容', () => today({}, ready(feed.slice(0, 2), { loadingMore: true })));
+export const TodayEmpty = story('今天 · 没有新内容', () => today({ folder: '编程' }, ready([], { hasMore: false })));
+export const TodayBanner = story('今天 · 没有网络横幅', () => today({ banner: '没有网络，显示的是之前的内容。' }, ready(feed)));
 export const TodayChannelPicker = story('今天 · 频道选择弹层', () => (
-  <WithSheet
-    page={
-      <TabFrame tab="today">
-        <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder={null} folders={folders} state={{ kind: 'ready', items: feed }} />
-      </TabFrame>
-    }
-    subtitle="勾选的频道显示在全部中"
-    title="选择频道"
-  >
-    <ChannelPicker folders={subscriptions} hidden={['s3']} />
+  <WithSheet page={today({}, ready(feed))} subtitle="勾选的频道显示在全部中" title="选择频道">
+    <ChannelPicker groups={channelRows} />
   </WithSheet>
 ));
 

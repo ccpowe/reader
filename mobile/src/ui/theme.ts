@@ -24,6 +24,8 @@ export const duration = {
   fast: 100, // --duration-fast
   base: 200, // --duration-base
   ambient: 700, // --duration-ambient
+  shimmer: 1000, // --duration-shimmer
+  toast: 5000, // --duration-toast
 } as const;
 
 export const delayLoading = 300; // --delay-loading: shorter work shows no loading state

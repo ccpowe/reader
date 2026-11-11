@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -250,10 +250,11 @@ async def _owned(db: AsyncSession, user_id: UUID, subscription_id: UUID) -> Subs
     return subscription
 
 
-async def followed_source_icon(db: AsyncSession, user_id: UUID, source_id: UUID) -> str | None:
-    """The icon URL of a source this user follows, or None."""
+async def followed_source_icon(db: AsyncSession, source_id: UUID) -> str | None:
+    """The icon URL of a source someone on this server follows, or None."""
     return await db.scalar(
-        select(Source.icon_url)
-        .join(Subscription, Subscription.source_id == Source.id)
-        .where(Source.id == source_id, Subscription.user_id == user_id)
+        select(Source.icon_url).where(
+            Source.id == source_id,
+            exists().where(Subscription.source_id == Source.id),
+        )
     )

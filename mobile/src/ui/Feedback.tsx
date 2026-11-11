@@ -16,7 +16,7 @@ import { useShadow } from './useShadow';
  */
 const pulse = {
   animationName: { from: { opacity: 1 }, to: { opacity: 0.5 } },
-  animationDuration: '500ms',
+  animationDuration: `${duration.shimmer / 2}ms`, // there and back is one --duration-shimmer
   animationIterationCount: 'infinite',
   animationDirection: 'alternate',
 } as const;

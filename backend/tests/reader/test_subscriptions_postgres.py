@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select, update
@@ -246,11 +247,18 @@ async def test_icon_is_relayed_for_followed_sources(monkeypatch) -> None:
             f"/sources/{sub['source_id']}/icon",
             headers={**auth, "If-None-Match": icon.headers["etag"]},
         )
+        # <Image> sends no headers: the icon needs neither a user nor the server token.
+        without_user = await client.get(
+            f"/sources/{sub['source_id']}/icon", headers={"X-Reader-Server-Token": ""}
+        )
+        unknown = await client.get(f"/sources/{uuid4()}/icon")
 
     assert _code(no_icon) == (404, "icon_not_found")
     assert listed["icon_url"] == f"http://reader.test/sources/{sub['source_id']}/icon"
     assert icon.status_code == 200 and icon.headers["content-type"] == "image/png"
     assert cached.status_code == 304
+    assert without_user.status_code == 200
+    assert _code(unknown) == (404, "icon_not_found")
 
 
 @pytest.mark.asyncio

@@ -1522,7 +1522,7 @@ export type GetFeedFeedGetData = {
         /**
          * Group
          *
-         * Only this group.
+         * Only this group; "" for subscriptions without a group.
          */
         group?: string | null;
         /**
@@ -1607,6 +1607,8 @@ export type GetFeedSummaryFeedSummaryGetData = {
         until?: string | null;
         /**
          * Group
+         *
+         * Only this group; "" for subscriptions without a group.
          */
         group?: string | null;
         /**
@@ -2168,10 +2170,6 @@ export type SourceIconSourcesSourceIdIconGetData = {
 
 export type SourceIconSourcesSourceIdIconGetErrors = {
     /**
-     * Error codes: `invalid_server_token`, `not_authenticated`
-     */
-    401: ErrorResponse;
-    /**
      * Error codes: `icon_not_found`
      */
     404: ErrorResponse;
@@ -2179,10 +2177,6 @@ export type SourceIconSourcesSourceIdIconGetErrors = {
      * Error codes: `invalid_request`
      */
     422: ErrorResponse;
-    /**
-     * Error codes: `too_many_attempts`
-     */
-    429: ErrorResponse;
     /**
      * Error codes: `icon_unavailable`
      */

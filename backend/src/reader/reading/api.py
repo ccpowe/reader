@@ -185,7 +185,11 @@ def _after(cursor: str | None) -> tuple[datetime, UUID] | None:
 async def get_feed(
     request: Request,
     subscription: UUID | None = Query(default=None, description="Only this subscription."),
-    group: str | None = Query(default=None, max_length=120, description="Only this group."),
+    group: str | None = Query(
+        default=None,
+        max_length=120,
+        description='Only this group; "" for subscriptions without a group.',
+    ),
     scope: Scope = Query(default="home", description=_SCOPE_HELP),
     since: AwareDatetime | None = Query(
         default=None, description="Updates seen from this time; leaves out first-scan items."
@@ -239,7 +243,11 @@ async def get_feed(
 async def get_feed_summary(
     since: AwareDatetime = Query(description="Count updates seen from this time."),
     until: AwareDatetime | None = Query(default=None, description="Up to this time; default now."),
-    group: str | None = Query(default=None, max_length=120),
+    group: str | None = Query(
+        default=None,
+        max_length=120,
+        description='Only this group; "" for subscriptions without a group.',
+    ),
     scope: Scope = Query(default="home", description=_SCOPE_HELP),
     user: CurrentUser = Depends(current_user),
     db: AsyncSession = Depends(get_session),

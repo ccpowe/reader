@@ -69,6 +69,25 @@ def _code(response) -> tuple[int, str]:
 
 
 @pytest.mark.asyncio
+async def test_empty_group_means_without_a_group(monkeypatch) -> None:
+    async with api_client(postgres_dsn(), monkeypatch) as client:
+        auth, me = await _sign_up(client)
+        grouped = await _follow(client, me, group_name="News")
+        loose = await _follow(client, me)
+        await _add(
+            client,
+            _article(grouped.source_id, 1, sequence=1),
+            _article(loose.source_id, 2, sequence=1),
+        )
+        ungrouped = await client.get("/feed", params={"group": ""}, headers=auth)
+        window = {"since": (T0 - timedelta(days=1)).isoformat()}
+        summary = await client.get("/feed/summary", params={**window, "group": ""}, headers=auth)
+
+    assert _titles(ungrouped) == ["Item 2"]
+    assert [s["subscription_id"] for s in summary.json()["subscriptions"]] == [str(loose.id)]
+
+
+@pytest.mark.asyncio
 async def test_feed_scopes_and_pages(monkeypatch) -> None:
     async with api_client(postgres_dsn(), monkeypatch) as client:
         auth, me = await _sign_up(client)
