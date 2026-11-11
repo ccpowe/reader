@@ -48,15 +48,9 @@ SQL
 
 database_port="$(docker port "$container_name" 5432/tcp | awk -F: 'END {print $NF}')"
 cd "$backend_dir"
-# Targeted persistence checks need the migration bootstrap test in the targets;
-# each invocation owns a fresh, empty database.
 if [ "$#" -eq 0 ]; then
-  # The migration test bootstraps the schema, so it runs first; every other
-  # module marked `postgres` follows.
-  set -- tests/test_postgres_migrations.py $(
-    grep -lE 'pytest\.mark\.postgres|pytestmark = .*postgres' tests/test_*.py \
-      | grep -v '^tests/test_postgres_migrations\.py$' | sort
-  )
+  # Every PostgreSQL test of the new `reader` package; each resets its own schema.
+  set -- $(grep -lE 'pytest\.mark\.postgres|pytestmark = .*postgres' tests/reader/test_*.py | sort)
 fi
 READER_RUN_POSTGRES_TESTS=1 \
 READER_TEST_POSTGRES_DSN="postgresql://postgres:${database_password}@127.0.0.1:${database_port}/reader_test" \

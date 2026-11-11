@@ -61,7 +61,7 @@ exclude = ["migrations"]
 select = ["E", "F", "I", "UP"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/app"]
+packages = ["src/app", "src/reader"]
 
 [build-system]
 requires = ["hatchling>=1.26.0"]

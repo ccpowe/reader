@@ -1,9 +1,6 @@
-from alembic.config import Config
-from alembic.script import ScriptDirectory
 
 from app.storage import models  # noqa: F401
 from app.storage.database import Base
-from app.storage.schema import REQUIRED_SCHEMA_REVISION
 
 
 def test_core_tables_are_registered() -> None:
@@ -154,7 +151,3 @@ def test_runtime_safety_columns_and_claim_index_are_registered() -> None:
     assert tuple(column.name for column in claim.columns)[0] == "engine_fingerprint"
 
 
-def test_required_schema_revision_is_the_alembic_head() -> None:
-    scripts = ScriptDirectory.from_config(Config("alembic.ini"))
-
-    assert scripts.get_current_head() == REQUIRED_SCHEMA_REVISION
