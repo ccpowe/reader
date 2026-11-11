@@ -43,7 +43,7 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 | 模块职责、数据归属、依赖约束或关键运行流程 | [ARCHITECTURE.md](docs/ARCHITECTURE.md)，随后核对相关代码                               |
 | 系统、运行单元、重要组件及其关系      | [architecture/workspace.dsl](architecture/workspace.dsl)，包含 C1–C3 视图；C4 直接查看源码 |
 | 前后端接口                 | [contracts/openapi.json](contracts/openapi.json) 查看协议；修改入口为后端路由及请求／响应模型        |
-| 设计、编写与审查代码的原则      | [软件设计规范](docs/engineering/software-design-guidelines.md)（通用与后端）；前端另读 [React 开发规范](docs/engineering/react-guidelines.md)（尚待按 Reader 改写） |
+| 设计、编写与审查代码的原则      | [软件设计规范](docs/engineering/software-design-guidelines.md)（通用与后端）；前端另读 [React 开发规范](docs/engineering/react-guidelines.md) |
 | 界面设计（产品文档、布局、风格）   | [设计流程包](docs/design/kit/README.md) 与 [风格库](docs/design/styles/README.md)                                      |
 
 
