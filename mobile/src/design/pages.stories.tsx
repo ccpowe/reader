@@ -237,9 +237,22 @@ export const BoardItemTechTwitter = story('榜单条目 · TechTwitter', () => (
 
 // --- 连接与登录 -----------------------------------------------------------------
 
-export const Connect = story('连接 · 输入地址', () => <ConnectView />);
-export const ConnectConfirm = story('连接 · 确认服务器', () => <ConnectView address="https://reader.example.com" identity={{ name: 'home', id: 'srv-3f9a' }} />);
-export const ConnectFailed = story('连接 · 连不上', () => <ConnectView address="https://reader.example" error="连不上这个地址。检查地址是否正确，以及服务器是否在运行。" />);
-export const SignIn = story('登录', () => <SignInView />);
-export const SignInWrong = story('登录 · 密码错误', () => <SignInView error="邮箱或密码不对。" />);
-export const SignInLimited = story('登录 · 尝试过多', () => <SignInView retryAfter="约 1 分钟" />);
+const connectBase = { address: '', token: '', status: 'editing' as const };
+const signInBase = { mode: 'sign-in' as const, email: 'me@example.com', password: '', displayName: '', submitting: false, serverLabel: 'reader.example.com' };
+
+export const Connect = story('连接 · 输入地址', () => <ConnectView {...connectBase} />);
+export const ConnectChecking = story('连接 · 连接中', () => <ConnectView {...connectBase} address="reader.example.com" status="checking" token="secret" />);
+export const ConnectConfirm = story('连接 · 确认服务器', () => (
+  <ConnectView {...connectBase} address="reader.example.com" server={{ serverId: 'home', base: 'https://reader.example.com', apiBaseUrl: 'https://reader.example.com' }} status="confirming" token="secret" />
+));
+export const ConnectFailed = story('连接 · 连不上', () => (
+  <ConnectView {...connectBase} address="https://reader.example" addressError="连不上这个地址。检查地址是否正确、服务器是否在运行，以及手机能否访问它。" token="secret" />
+));
+export const ConnectTokenRejected = story('连接 · 口令已更换', () => (
+  <ConnectView {...connectBase} address="https://reader.example.com" notice="服务器口令已更换，请输入新的口令。" />
+));
+export const SignIn = story('登录', () => <SignInView {...signInBase} />);
+export const SignInWrong = story('登录 · 密码错误', () => <SignInView {...signInBase} passwordError="邮箱或密码不对。" />);
+export const SignInLimited = story('登录 · 尝试过多', () => <SignInView {...signInBase} formError="操作太频繁，约 42 秒后再试。" password="secret" />);
+export const SignInExpired = story('登录 · 登录已过期', () => <SignInView {...signInBase} expired />);
+export const Register = story('注册', () => <SignInView {...signInBase} mode="register" />);

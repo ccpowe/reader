@@ -8,6 +8,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { connectAppLifecycle, queryClient, session, useSession } from '@/lib/app-session';
@@ -39,9 +40,11 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView className="flex-1 bg-canvas">
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <Routes />
-        </QueryClientProvider>
+        <KeyboardProvider>
+          <QueryClientProvider client={queryClient}>
+            <Routes />
+          </QueryClientProvider>
+        </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

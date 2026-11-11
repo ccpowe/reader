@@ -170,3 +170,23 @@ test('a refresh that finishes after the user signed in again does not hand out t
   await assert.rejects(pending);
   assert.ok(!seen.includes('/feed Bearer a7'), seen.join('\n'));
 });
+
+test('one sign-in at a time; an abandoned sign-in does not sign anyone in', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const { impl, calls } = server_({
+    '/auth/login': async () => {
+      await gate;
+      return json(200, tokens(1));
+    },
+  });
+  const store = createSessionStore({ storage: memoryStorage({ server, account: null }).storage, fetch: impl });
+  await store.restore();
+  const first = store.signIn('me@x', 'pw');
+  assert.equal(await store.signIn('me@x', 'pw'), 'busy');
+  store.forgetServer(); // the user changes server while the sign-in is in flight
+  release();
+  assert.equal(await first, 'ignored');
+  assert.equal(store.getSnapshot().status, 'no-server');
+  assert.equal(calls.filter((c) => c === '/auth/login').length, 1);
+});

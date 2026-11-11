@@ -132,6 +132,24 @@ export function createSessionStore(options: {
     return watched;
   }
 
+  let attempt: object | null = null;
+
+  async function authenticate(path: '/auth/login' | '/auth/register', body: object): Promise<'done' | 'busy' | 'ignored'> {
+    const server = serverOf(state);
+    if (state.status !== 'signed-out' || !server) return 'ignored';
+    if (attempt) return 'busy';
+    const mine = {};
+    attempt = mine;
+    try {
+      const response = await apiFor(server).request<TokensResponse>(path, { method: 'POST', body, authenticated: false });
+      if (attempt !== mine) return 'ignored'; // abandoned meanwhile
+      dispatch({ type: 'signed-in', server, ...tokensOf(response) });
+      return 'done';
+    } finally {
+      if (attempt === mine) attempt = null;
+    }
+  }
+
   return {
     getSnapshot: () => state,
     subscribe(listener: () => void) {
@@ -162,30 +180,22 @@ export function createSessionStore(options: {
       return apiFor(server);
     },
 
-    async signIn(email: string, password: string) {
-      const server = serverOf(state);
-      if (state.status !== 'signed-out' || !server) return;
-      const response = await apiFor(server).request<TokensResponse>('/auth/login', {
-        method: 'POST',
-        body: { email, password },
-        authenticated: false,
-      });
-      dispatch({ type: 'signed-in', server, ...tokensOf(response) });
+    /**
+     * Sign in, or register and sign in. One attempt at a time: while one is in flight another
+     * returns 'busy' without a request. Signing out or changing server abandons the attempt, so
+     * its late success does not sign anyone in.
+     */
+    signIn(email: string, password: string) {
+      return authenticate('/auth/login', { email, password });
     },
 
-    async register(email: string, password: string, displayName: string | null) {
-      const server = serverOf(state);
-      if (state.status !== 'signed-out' || !server) return;
-      const response = await apiFor(server).request<TokensResponse>('/auth/register', {
-        method: 'POST',
-        body: { email, password, display_name: displayName },
-        authenticated: false,
-      });
-      dispatch({ type: 'signed-in', server, ...tokensOf(response) });
+    register(email: string, password: string, displayName: string | null) {
+      return authenticate('/auth/register', { email, password, display_name: displayName });
     },
 
     /** Signs out here at once; telling the server is best effort. */
     signOut() {
+      attempt = null;
       if (state.status !== 'signed-in') return;
       const { server, tokens } = state;
       dispatch({ type: 'signed-out', reason: 'user' });
@@ -196,6 +206,7 @@ export function createSessionStore(options: {
 
     /** Change server: the current one (and its account) is forgotten on this device. */
     forgetServer() {
+      attempt = null;
       if (state.status === 'signed-in') this.signOut();
       dispatch({ type: 'forget-server' });
     },

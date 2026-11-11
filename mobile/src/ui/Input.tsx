@@ -25,6 +25,9 @@ export function Input({
           error ? 'border-danger' : 'border-strong focus:border-accent',
         )}
         placeholderTextColor={placeholder}
+        // The visible label is a sibling Text; screen readers get it, and the error or hint, here.
+        accessibilityHint={error ?? hint}
+        accessibilityLabel={label}
         {...props}
       />
       {error ? (
