@@ -2,32 +2,157 @@
 @import "uniwind";
 
 /*
- * Layout exploration (design step 4): neutral grays only, light and dark. The quietpaper tokens
- * (mobile/design/style/tokens.css) replace these in step 5. Uniwind follows the system theme.
+ * Reader theme = quietpaper v0.7 (mobile/design/style/tokens.css), translated for React Native.
+ * Values are copied from tokens.css; the source tag of each value is there. Class names are the
+ * token names without the role prefix: --color-text-primary → text-primary, --color-bg → bg-canvas.
+ *
+ *   tokens.css                    class                       note
+ *   --color-bg                    bg-canvas
+ *   --color-bg-sidebar            bg-sidebar                  page chrome (tab bar, sheets' header)
+ *   --color-bg-sunken             bg-sunken                   avatars, badges, skeleton bars
+ *   --color-surface-raised        bg-raised                   menus, sheets, toasts
+ *   --color-surface-tint          bg-tint                     callouts, text inputs
+ *   --color-text-*                text-primary / -secondary / -tertiary / -disabled / -on-accent / -link
+ *   --color-icon-*                icon-neutral / icon-strong / icon-danger   (read with useCSSVariable)
+ *   --color-border-*              border-subtle / -strong / -control
+ *   --color-state-*               bg-hover / bg-pressed / bg-selected        (touch: pressed replaces hover)
+ *   --color-accent*               accent / accent-pressed / accent-soft / accent-soft-text
+ *   --color-success|warning|danger (+ -text, -bg)
+ *   --color-tag-gray-*            tag-gray-bg / tag-gray-text
+ *
+ * Spacing: quietpaper's scale (2 4 6 8 12 16 24 32 48) is Tailwind's 4px grid, so the default
+ * spacing utilities are used: 0.5 1 1.5 2 3 4 6 8 12. Only these steps are allowed.
+ *
+ * Dark: quietpaper has light only. The dark values below are a DRAFT derived by role, to be
+ * calibrated in design step 6 (DECISIONS P20).
  */
+
+@theme {
+  /* Type scale (size / line height); weights 400 500 600 700 only. */
+  --text-display: 40px;   --text-display--line-height: 48px;
+  --text-title: 32px;     --text-title--line-height: 38px;
+  --text-h1: 30px;        --text-h1--line-height: 39px;
+  --text-h2: 24px;        --text-h2--line-height: 31px;
+  --text-h3: 20px;        --text-h3--line-height: 26px;
+  --text-section: 16px;   --text-section--line-height: 24px;
+  --text-body: 16px;      --text-body--line-height: 24px;
+  --text-ui: 14px;        --text-ui--line-height: 20px;
+  --text-desc: 13px;      --text-desc--line-height: 18px;
+  --text-caption: 12px;   --text-caption--line-height: 16px;
+  --text-micro: 11px;     --text-micro--line-height: 14px;
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --radius-3xl: 20px;
+}
+
 @layer theme {
   :root {
     @variant light {
-      --color-background: #ffffff;
-      --color-foreground: #1f1f1f;
-      --color-muted: #f2f2f2;
-      --color-muted-foreground: #6b6b6b;
-      --color-subtle-foreground: #9a9a9a;
-      --color-border: #e5e5e5;
-      --color-pressed: rgba(0, 0, 0, 0.06);
-      --color-warning: #8a5a00;
-      --color-danger: #b42318;
+      --color-canvas: #ffffff;
+      --color-sidebar: #f9f8f7;
+      --color-sunken: #f0efed;
+      --color-raised: #ffffff;
+      --color-tint: rgba(66, 35, 3, 0.03);
+      --color-overlay: rgba(15, 15, 15, 0.6);
+
+      --color-primary: #2c2c2b;
+      --color-secondary: #7d7a75;
+      --color-tertiary: #a19e99;
+      --color-disabled: #bcbab6;
+      --color-on-accent: #ffffff;
+      --color-link: #1f76cc;
+
+      --color-icon-neutral: #73726e;
+      --color-icon-strong: #383836;
+      --color-icon-disabled: #bcbab6;
+      --color-icon-danger: #cd3c3a;
+
+      --color-subtle: rgba(42, 28, 0, 0.07);
+      --color-strong: rgba(28, 19, 1, 0.11);
+      --color-control: rgba(27, 21, 0, 0.19);
+
+      --color-hover: rgba(33, 27, 23, 0.05);
+      --color-pressed: rgba(33, 27, 23, 0.1);
+      --color-selected: rgba(33, 27, 23, 0.05);
+
+      --color-accent: #2783de;
+      --color-accent-pressed: #1f76cc;
+      --color-accent-soft: rgba(0, 124, 215, 0.094);
+      --color-accent-soft-pressed: rgba(0, 124, 215, 0.141);
+      --color-accent-soft-text: #105fad;
+
+      --color-success: #448361;
+      --color-success-text: #2a533c;
+      --color-success-bg: #e8f1ec;
+      --color-warning: #c0650b;
+      --color-warning-text: #8d4e17;
+      --color-warning-bg: #fbebde;
+      --color-danger: #cd3c3a;
+      --color-danger-text: #6d3531;
+      --color-danger-bg: #fce9e7;
+      --color-danger-button: #cd3c3a;
+
+      --color-tag-gray-bg: #e6e5e3;
+      --color-tag-gray-text: #494846;
+      --color-dot-gray: #8e8b86;
+      --color-dot-green: #46a171;
     }
+
+    /* DRAFT, not calibrated (P20, design step 6). */
     @variant dark {
-      --color-background: #181818;
-      --color-foreground: #ececec;
-      --color-muted: #262626;
-      --color-muted-foreground: #a3a3a3;
-      --color-subtle-foreground: #737373;
-      --color-border: #2e2e2e;
-      --color-pressed: rgba(255, 255, 255, 0.08);
-      --color-warning: #e0b050;
-      --color-danger: #f97066;
+      --color-canvas: #191919;
+      --color-sidebar: #202020;
+      --color-sunken: #2c2c2b;
+      --color-raised: #252525;
+      --color-tint: rgba(255, 255, 255, 0.03);
+      --color-overlay: rgba(0, 0, 0, 0.6);
+
+      --color-primary: #e6e5e3;
+      --color-secondary: #9b9994;
+      --color-tertiary: #6f6d69;
+      --color-disabled: #504f4c;
+      --color-on-accent: #ffffff;
+      --color-link: #5aa2e8;
+
+      --color-icon-neutral: #9b9994;
+      --color-icon-strong: #dcdbd8;
+      --color-icon-disabled: #504f4c;
+      --color-icon-danger: #e5605d;
+
+      --color-subtle: rgba(255, 255, 255, 0.07);
+      --color-strong: rgba(255, 255, 255, 0.12);
+      --color-control: rgba(255, 255, 255, 0.22);
+
+      --color-hover: rgba(255, 255, 255, 0.055);
+      --color-pressed: rgba(255, 255, 255, 0.1);
+      --color-selected: rgba(255, 255, 255, 0.055);
+
+      --color-accent: #2783de;
+      --color-accent-pressed: #3a90e6;
+      --color-accent-soft: rgba(39, 131, 222, 0.18);
+      --color-accent-soft-pressed: rgba(39, 131, 222, 0.26);
+      --color-accent-soft-text: #8cc0f2;
+
+      --color-success: #5ea47e;
+      --color-success-text: #9fd1b4;
+      --color-success-bg: rgba(68, 131, 97, 0.2);
+      --color-warning: #d98a3d;
+      --color-warning-text: #f0c08f;
+      --color-warning-bg: rgba(192, 101, 11, 0.2);
+      --color-danger: #e5605d;
+      --color-danger-text: #f2aba8;
+      --color-danger-bg: rgba(205, 60, 58, 0.2);
+      --color-danger-button: #cd3c3a;
+
+      --color-tag-gray-bg: #373735;
+      --color-tag-gray-text: #d3d2ce;
+      --color-dot-gray: #8e8b86;
+      --color-dot-green: #5ea47e;
     }
   }
 }
