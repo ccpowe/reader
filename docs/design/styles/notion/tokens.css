@@ -1,0 +1,388 @@
+/* =====================================================================
+   tokens.css — notion 风格包 v0.2（Notion 网页版产品界面，浅色）
+   所有数值的唯一出处。组件只通过 var() 使用这里的值。
+   来源标签（每个值一个）：
+     [测量]     采集里读到的值（getComputedStyle / 根 CSS 变量 / 动画记录）            — D1
+     [估计]     从截图读出或像素取色
+     [推导]     由测量值计算（合成、算术）或由同一配方套用
+     [选定 Dn]  DECISIONS.md 第 n 条拍板的取值（D2 = 采集缺口按估计执行，待延续验证；
+                analysis 对该缺口写 can't tell 时，取先前应用的一致做法）
+   基底：Chromium 156，1440×900，DPR 1，浅色，2026-11-07 采集                        [选定 D1]
+   待核：细线 computed 0.667px 更像 DPR 1.5 下的读数（见 --border-hairline-width），复核采集记录前不改值。
+   命名按角色。注释里的 "root --c-xxx" 只是出处，不要在产品里使用 Notion 的原变量名。
+   深色模式：D2 列为缺口，但 analysis 写 can't tell，没有可执行的估计；补采前本文件不提供。
+   ===================================================================== */
+
+:root {
+  /* ------------------------------------------------------------------
+     1. COLOR — surfaces
+     ------------------------------------------------------------------ */
+  --color-bg-page:            #ffffff;                 /* [测量] main frame / editor / dialogs (root --c-bacPri) */
+  --color-bg-sidebar:         #f9f8f7;                 /* [测量] nav.notion-sidebar-container rgb(249,248,247) (root --c-bacSec) */
+  --color-bg-settings-nav:    #f9f8f7;                 /* [估计] pixel-sampled V4 left column = (249,248,247) */
+  --color-bg-callout:         #f9f8f7;                 /* [测量] callout block 704×65 bg rgb(249,248,247) */
+  --color-bg-popover:         #ffffff;                 /* [测量] menus / slash menu / preview card (root --c-popBac) */
+  --color-bg-search-panel:    rgba(255,255,255,0.9);   /* [测量] search dialog bg (root --ca-popWaxPapBac #ffffffe6) */
+  --color-bg-input:           rgba(66,35,3,0.03);      /* [测量] settings text input / settings search bg (root --ca-bacSecTra) */
+  --color-bg-chip:            rgba(42,28,0,0.07);      /* [测量] kbd hint "Ctrl+K", "Current Page" badge (root --ca-borSecTra) */
+  --color-bg-inline-code:     rgba(33,27,23,0.05);     /* [测量] inline code span bg in DB description (notion-enable-hover, monospace) */
+  --color-bg-overlay-modal:   rgba(15,15,15,0.6);      /* [测量] .notion-modal-underlay behind Settings (root --ca-modUndBac) */
+  --color-bg-overlay-search:  transparent;             /* [测量] search has no dark underlay (no underlay bg recorded in V5) */
+
+  /* Interactive fills — ONE neutral tint is reused for hover AND selected */
+  --color-fill-hover:         rgba(33,27,23,0.05);     /* [测量] hover bg on sidebar rows, menu items, header cells, options (root --ca-bacIntTra #211b170d) */
+  --color-fill-selected:      var(--color-fill-hover); /* [测量] 实测与 hover 同值：selected sidebar Home tab / settings nav tab / search option / people tab */
+  --color-fill-selected-hover:rgba(33,27,23,0.0765);   /* [测量] hover on an already-selected tab (settings nav, People tabs) */
+  --color-fill-hover-solid-on-sidebar: #eeeceb;        /* [推导] 0.05 tint composited on --color-bg-sidebar; pixel-checked V1 (238,236,235) */
+  --color-fill-hover-solid-on-page:    #f4f3f3;        /* [推导] 0.05 tint on white (root --c-bacInt); pixel-checked V2 view tab */
+  --color-fill-pressed:       rgba(55,53,47,0.16);     /* [测量] root --ca-butPreBac #37352f29 (pressed state not captured live) */
+  --color-fill-accent-soft:   rgba(0,124,215,0.094);   /* [测量] secondary (blue-tint) button bg "Copy link" (root --ca-bluBacSecTra) */
+  --color-fill-accent-soft-hover: rgba(0,124,215,0.141); /* [测量] hover diff on "Copy link" */
+  --color-fill-row-selected:  rgba(35,131,226,0.024);  /* [测量] DB row opened in side peek (notion-selectable-halo) */
+  --color-fill-block-selected:rgba(35,131,226,0.14);   /* [测量] selectable halo when a block/row is selected */
+
+  /* ------------------------------------------------------------------
+     2. COLOR — text (warm grey ramp; never pure black)
+     ------------------------------------------------------------------ */
+  --color-text-primary:       #2c2c2b;                 /* [测量] rgb(44,44,43) body, titles, menu items (root --c-texPri) */
+  --color-text-strong-muted:  #5f5e59;                 /* [测量] rgb(95,94,89) sidebar rows, settings nav labels, search result titles (root --c-texAccPri) */
+  --color-text-secondary:     #7d7a75;                 /* [测量] rgb(125,122,117) DB header, descriptions, menu group labels (root --c-texSec) */
+  --color-text-tertiary:      #a19e99;                 /* [测量] rgb(161,158,153) placeholders, section labels, shortcuts, timestamps (root --c-texTer) */
+  --color-text-sidebar-muted: #91918e;                 /* [测量] rgb(145,145,142) "No upcoming events" (root --c-sidSecCol) */
+  --color-text-disabled:      #bcbab6;                 /* [测量] root --c-texDis */
+  --color-text-on-accent:     #f3f9fd;                 /* [测量] rgb(243,249,253) text on primary blue button (root --c-bluTexInvPri) */
+  --color-text-link:          #2783de;                 /* [测量] rgb(39,131,222) "Learn more", "Upgrade plan" (root --c-bluTexAccPri) */
+  --color-text-danger:        #e56458;                 /* [估计] pixel-sampled "Delete workspace" text = (229,100,88) = root --c-redTexAccPri */
+  --color-text-kbd:           #8e8b86;                 /* [测量] rgb(142,139,134) "Ctrl+K" hint, badge text (root --c-icoSec) */
+  --color-text-placeholder:   var(--color-text-tertiary); /* [测量] 实测 = tertiary */
+
+  /* ------------------------------------------------------------------
+     3. COLOR — icons
+     ------------------------------------------------------------------ */
+  --color-icon-primary:       #383836;                 /* [测量] root --c-icoPri */
+  --color-icon-sidebar:       #55534e;                 /* [测量] rgb(85,83,78) sidebar top tab icons (mask bg) */
+  --color-icon-secondary:     #8e8b86;                 /* [测量] rgb(142,139,134) DB header property icons, avatar letters (root --c-icoSec) */
+  --color-icon-tertiary:      #ada9a3;                 /* [测量] root --c-icoTer */
+  --color-icon-accent:        #2783de;                 /* [测量] search panel top-right icon buttons, Upgrade icon */
+
+  /* ------------------------------------------------------------------
+     4. COLOR — lines
+     ------------------------------------------------------------------ */
+  --color-border-hairline:    rgba(42,28,0,0.07);      /* [测量] DB cell grid (198×), section dividers, menu separators, popover ring (root --ca-borSecTra) */
+  --color-border-control:     rgba(28,19,1,0.11);      /* [测量] sidebar search box, dropdown buttons, input ring (root --ca-borPriTra) */
+  --color-border-checkbox:    rgba(27,21,0,0.19);      /* [测量] DB row checkbox outline (root --ca-borStrTra) */
+  --color-border-sidebar-edge:#f0efed;                 /* [测量] sidebar right edge inset shadow rgb(240,239,237) (root --c-borSec) */
+  --color-border-solid:       #e6e5e3;                 /* [测量] rgb(230,229,227) slash-menu footer separator, preview card border, member table rules (root --c-borPri) */
+  --color-frozen-divider:     rgba(81,73,60,0.32);     /* [测量] DB frozen title-column divider 2px */
+
+  /* ------------------------------------------------------------------
+     5. COLOR — accent (single hue: blue)
+     ------------------------------------------------------------------ */
+  --color-accent:             #2783de;                 /* [测量] primary button bg, switch on, links, row-open ring (root --c-bluBacAccPri) */
+  --color-accent-hover:       #1f76cc;                 /* [测量] primary button hover = color(srgb .1224 .4636 .8011) */
+  --color-accent-pressed:     #006bc7;                 /* [测量] root --c-bluButPreBac (pressed not captured live) */
+  --color-accent-selection:   #2383e2;                 /* [测量] DB row drag-handle 4×28 / focus ring (root --c-palUiBlu600) */
+  --color-focus-ring-inner:   #f8f8f7;                 /* [测量] focus ring gap color */
+
+  /* ------------------------------------------------------------------
+     6. COLOR — danger / semantic
+     ------------------------------------------------------------------ */
+  --color-danger-bg:          #fce9e7;                 /* [估计] pixel-sampled "Delete workspace" bg = root --c-redBacSec */
+  --color-danger-ring:        #cd3c3a;                 /* [测量] root --c-inpRedFocRin color (input error ring) */
+  --color-notification-dot:   #2783de;                 /* [测量] 8×8 dot on help icon, sidebar footer */
+
+  /* ------------------------------------------------------------------
+     7. COLOR — tag / status palette (DB select & status pills)
+     Each = translucent bg + dark same-hue text (+ solid dot for status)
+     ------------------------------------------------------------------ */
+  --color-tag-gray-bg:        rgba(28,19,1,0.11);      /* [测量] "Not started" pill bg */
+  --color-tag-gray-text:      #494846;                 /* [测量] rgb(73,72,70) (root --c-graTexPri) */
+  --color-tag-gray-dot:       #8e8b86;                 /* [测量] root --c-graBacAccPri */
+  --color-tag-blue-bg:        rgba(0,118,217,0.204);   /* [测量] "In progress" pill bg (root --ca-bluBacTerTra) */
+  --color-tag-blue-text:      #264a72;                 /* [测量] rgb(38,74,114) (root --c-bluTexPri) */
+  --color-tag-blue-dot:       #2783de;                 /* [测量] root --c-bluBacAccPri */
+  --color-tag-green-bg:       rgba(0,96,38,0.157);     /* [测量] "Done" pill bg (root --ca-greBacTerTra) */
+  --color-tag-green-text:     #2a533c;                 /* [测量] rgb(42,83,60) */
+  --color-tag-green-dot:      #46a171;                 /* [测量] rgb(70,161,113) */
+  --color-tag-orange-bg:      rgba(196,88,0,0.204);    /* [测量] select tag "Demo" bg (root --ca-oraBacTerTra) */
+  --color-tag-orange-text:    #6a4222;                 /* [测量] rgb(106,66,34) */
+  --color-tag-red-bg:         rgba(206,24,0,0.165);    /* [测量] root --ca-redBacTerTra (not rendered in capture) */
+  --color-tag-red-text:       #6d3531;                 /* [测量] root --c-redTexPri */
+  --color-tag-yellow-bg:      rgba(209,156,0,0.282);   /* [测量] root --ca-yelBacTerTra (not rendered) */
+  --color-tag-yellow-text:    #655121;                 /* [测量] root --c-yelTexPri */
+  --color-tag-purple-bg:      rgba(92,0,163,0.141);    /* [测量] root --ca-purBacTerTra (not rendered) */
+  --color-tag-purple-text:    #553b69;                 /* [测量] root --c-purTexPri */
+  --color-tag-pink-bg:        rgba(183,0,78,0.153);    /* [测量] root --ca-pinBacTerTra (not rendered) */
+  --color-tag-pink-text:      #68354e;                 /* [测量] root --c-pinTexPri */
+  --color-tag-brown-bg:       rgba(127,51,0,0.157);    /* [测量] root --ca-broBacTerTra (not rendered) */
+  --color-tag-brown-text:     #584437;                 /* [测量] root --c-broTexPri */
+  --color-tag-teal-bg:        rgba(0,149,183,0.208);   /* [测量] root --ca-teaBacTerTra (not rendered) */
+  --color-tag-teal-text:      #18505b;                 /* [测量] root --c-teaTexPri */
+  --color-badge-new-bg:       rgba(0,124,215,0.094);   /* [测量] "New" badge in slash menu */
+  --color-badge-new-text:     #2783de;                 /* [测量] */
+
+  /* Toggle switch */
+  --color-switch-on:          #2783de;                 /* [测量] switch track on */
+  --color-switch-off:         rgba(135,131,120,0.3);   /* [测量] switch track off (root --ca-swiButTeaBg) */
+  --color-switch-knob:        #ffffff;                 /* [估计] */
+
+  /* Page outline (right-edge mini TOC bars) */
+  --color-toc-bar:            rgba(28,19,1,0.11);      /* [测量] 16×2 / 12×2 bars */
+  --color-toc-bar-active:     #32302c;                 /* [测量] rgb(50,48,44) */
+
+  /* ------------------------------------------------------------------
+     8. TYPOGRAPHY
+     ------------------------------------------------------------------ */
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol"; /* [测量] */
+  --font-mono: SFMono-Regular, Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace;   /* [测量] inline code */
+
+  --font-weight-regular:  400;   /* [测量] */
+  --font-weight-medium:   500;   /* [测量] UI labels, buttons, row titles */
+  --font-weight-semibold: 600;   /* [测量] H1–H3, settings page title */
+  --font-weight-bold:     700;   /* [测量] page title only */
+
+  /* Editor (document) scale */
+  --text-page-title-size: 40px;   --text-page-title-line: 48px;    /* [测量] 700, full page without cover */
+  --text-page-title-db-size: 32px;--text-page-title-db-line: 38.4px; /* [测量] 700, database page & side-peek title */
+  --text-h1-size: 30px;           --text-h1-line: 39px;            /* [测量] 600 */
+  --text-h2-size: 24px;           --text-h2-line: 31.2px;          /* [测量] 600 */
+  --text-h3-size: 20px;           --text-h3-line: 26px;            /* [测量] 600 */
+  --text-body-size: 16px;         --text-body-line: 24px;          /* [测量] 400 paragraphs, list items, callout */
+  --text-page-link-size: 16px;    --text-page-link-line: 20.8px;   /* [测量] 500 child-page link */
+
+  /* UI scale */
+  --text-ui-size: 14px;                                            /* [测量] dominant UI size */
+  --text-ui-line-tight: 16.8px;   /* [测量] buttons, breadcrumb, dropdowns (line-height 1.2) */
+  --text-ui-line: 20px;           /* [测量] DB cells, settings labels, search titles */
+  --text-ui-line-loose: 21px;     /* [测量] sidebar rows, DB header, primary button (1.5) */
+  --text-settings-title-size: 26px;  --text-settings-title-line: 32px;  /* [测量] 600 */
+  --text-settings-section-size: 16px;--text-settings-section-line: 24px;/* [测量] 500 */
+  --text-description-size: 13px;  --text-description-line: 18px;   /* [测量] settings row description, comment header */
+  --text-small-size: 12px;        --text-small-line: 16px;         /* [测量] sidebar section labels (500), meta lines */
+  --text-small-line-alt: 16.8px;  /* [测量] menu shortcuts, search meta */
+  --text-group-label-line: 14.4px;/* [测量] 12px/500 menu group labels "Suggested", "Page", "Today" */
+  --text-micro-size: 11px;        --text-micro-line: 14.3px;       /* [测量] 500 kbd hint, badges */
+  --text-inline-code-size: 0.85em;/* [推导] 11.9px measured on 14px text */
+
+  /* ------------------------------------------------------------------
+     9. SPACING (4-px base; half-steps 1/2/5/6/7/7.5/10 are measured exceptions)
+     ------------------------------------------------------------------ */
+  --space-1:  1px;   /* [测量] gap between sidebar rows */
+  --space-2:  2px;   /* [测量] block padding, icon-btn group gap */
+  --space-4:  4px;   /* [测量] popover section padding, tight gaps */
+  --space-6:  6px;   /* [测量] icon-label gap, block side padding, settings nav gap */
+  --space-8:  8px;   /* [测量] row horizontal padding, cell padding */
+  --space-10: 10px;  /* [测量] */
+  --space-12: 12px;  /* [测量] sidebar horizontal padding, callout padding, search input padding */
+  --space-16: 16px;  /* [测量] settings section header → first row */
+  --space-20: 20px;  /* [测量] */
+  --space-24: 24px;  /* [测量] settings rows gap */
+  --space-44: 44px;  /* [测量] gap between settings sections */
+  --space-80: 80px;  /* [测量] page controls top padding above title (no cover) */
+  --space-96: 96px;  /* [测量] database full-width horizontal page padding */
+
+  /* Block rhythm (editor) — space above a block = padding-top of its wrapper */
+  --block-space-h1:   30px;  /* [测量] heading-1 wrapper padding-top */
+  --block-space-h2:   26px;  /* [测量] */
+  --block-space-h3:   22px;  /* [测量] */
+  --block-space-text: 6px;   /* [测量] paragraph wrapper padding 6px */
+  --block-space-list: 1px;   /* [测量] consecutive list items 6/1 & 1/6 */
+  --block-inner-pad:  2px;   /* [测量] contenteditable padding 2px */
+
+  /* ------------------------------------------------------------------
+     10. LAYOUT
+     ------------------------------------------------------------------ */
+  --layout-sidebar-width:        270px;  /* [测量] */
+  --layout-topbar-height:        44px;   /* [测量] */
+  --layout-page-width:           720px;  /* [测量] centered text column (708 + 2×6) */
+  --layout-page-text-width:      708px;  /* [测量] */
+  --layout-settings-dialog-w:    1296px; /* [测量] = viewport − 2×72 */
+  --layout-settings-dialog-h:    800px;  /* [测量] = viewport − 2×50 */
+  --layout-settings-nav-width:   240px;  /* [测量] */
+  --layout-settings-content-w:   800px;  /* [测量] */
+  --layout-search-w:             1006px; /* [测量] */
+  --layout-search-h:             700px;  /* [测量] */
+  --layout-search-top:           81px;   /* [测量] */
+  --layout-search-list-w:        600px;  /* [测量] result listbox */
+  --layout-search-preview-w:     376px;  /* [测量] */
+  --layout-side-peek-width:      960px;  /* [测量] = 2/3 of 1440 */
+  --layout-peek-content-w:       793px;  /* [测量] */
+  --layout-peek-prop-label-w:    160px;  /* [估计] 564→732 */
+  --layout-menu-width:           265px;  /* [测量] page "···" menu */
+  --layout-slash-menu-width:     324px;  /* [测量] */
+
+  /* ------------------------------------------------------------------
+     11. CONTROL SIZES
+     ------------------------------------------------------------------ */
+  --size-sidebar-row:     30px;  /* [测量] page tree row (treeitem 30) */
+  --size-sidebar-search:  32px;  /* [测量] */
+  --size-sidebar-tab:     32px;  /* [测量] Home tab */
+  --size-menu-item:       28px;  /* [测量] context menu item */
+  --size-option-item:     32px;  /* [测量] slash-menu option */
+  --size-search-result-1: 37px;  /* [估计] single-line result pitch (V5-empty y 226/263/300) */
+  --size-search-result-2: 55px;  /* [测量] two-line result */
+  --size-settings-nav:    28px;  /* [测量] */
+  --size-button:          28px;  /* [测量] primary / secondary / dropdown */
+  --size-button-small:    24px;  /* [测量] topbar breadcrumb buttons, filter chips */
+  --size-icon-button:     28px;  /* [测量] topbar & sidebar icon buttons */
+  --size-icon-button-sm:  22px;  /* [测量] dialog close, inline row buttons */
+  --size-db-header:       36px;  /* [测量] */
+  --size-db-row:          37px;  /* [测量] 36 + hairline */
+  --size-pill:            20px;  /* [测量] status / select pill */
+  --size-input:           34px;  /* [测量] settings text field */
+  --size-switch-w:        30px;  /* [测量] */
+  --size-switch-h:        18px;  /* [测量] */
+  --size-switch-knob:     14px;  /* [测量] */
+  --size-peek-prop-row:   34px;  /* [测量] */
+  --size-avatar-sm:       20px;  /* [测量] DB person cell (sidebar workspace icon = --size-avatar-workspace) */
+  --size-avatar-md:       28px;  /* [测量] member table */
+  --size-floating-btn:    40px;  /* [测量] bottom-right floating help/AI button */
+
+  --icon-xs: 12px;  /* [测量] chevrons */
+  --icon-sm: 16px;  /* [测量] DB header, menu shortcuts, ellipsis */
+  --icon-md: 18px;  /* [测量] page icons in tree / cells */
+  --icon-lg: 20px;  /* [测量] menu items, sidebar top bar, settings nav */
+  --icon-xl: 22px;  /* [测量] sidebar "New page / New chat / Library", search magnifier */
+  --icon-stroke-width: 1.25; /* [估计] 线性图标描边（20 网格下读图），inline SVG 的 stroke-width / Lucide 的 strokeWidth */
+  --border-hairline-width: 0.667px; /* [测量] computed 0.666667px。待核：DPR 1 下 Chromium 通常报告 1px，这个读数更像 DPR 1.5 */
+
+  /* ------------------------------------------------------------------
+     12. RADIUS
+     ------------------------------------------------------------------ */
+  --radius-xs:   3px;    /* [测量] checkbox */
+  --radius-icon: 3.5px;  /* [测量] page icons */
+  --radius-sm:   4px;    /* [测量] kbd hint, badges, select tag */
+  --radius-md:   6px;    /* [测量] (58×) buttons, rows, menu items, icon buttons */
+  --radius-lg:   8px;    /* [测量] sidebar search box, sidebar Home tab, settings tab icons */
+  --radius-popover: 10px;/* [测量] menus, slash menu, callout */
+  --radius-pill: 10px;   /* [测量] status pill (20px tall → full pill) */
+  --radius-card: 12px;   /* [测量] settings dialog, search result row, search preview card, peek top */
+  --radius-search: 20px; /* [测量] search dialog */
+  --radius-chip: 32px;   /* [测量] search filter chips */
+  --radius-view-tab: 20px; /* [测量] DB "Table" view tab */
+  --radius-full: 9999px; /* [测量] switch track (30×18), round icon buttons, avatars */
+
+  /* ------------------------------------------------------------------
+     13. SHADOW (every elevated surface carries a 1px hairline ring)
+     ------------------------------------------------------------------ */
+  --shadow-sidebar-edge: inset -1px 0 0 0 #f0efed;                                                        /* [测量] */
+  --shadow-ring:         0 0 0 1px rgba(42,28,0,0.07);                                                    /* [测量] */
+  --shadow-sm:  0 2px 4px 0 rgba(0,0,0,0.04), 0 0 0 1px rgba(42,28,0,0.07);                               /* [测量] sidebar promo card (root --c-shaOutSm) */
+  --shadow-md:  0 8px 12px 0 rgba(25,25,25,0.027), 0 2px 6px 0 rgba(25,25,25,0.027), 0 0 0 1px rgba(42,28,0,0.07); /* [测量] side peek, hover quick-action, view-tab bar (root --c-shaOutMd) */
+  --shadow-lg:  0 20px 24px 0 rgba(25,25,25,0.05), 0 5px 8px 0 rgba(25,25,25,0.027), 0 0 0 1px rgba(42,28,0,0.07); /* [测量] menus, slash menu, preview card (root --c-shaOutLg) */
+  --shadow-xl:  0 24px 48px 0 rgba(25,25,25,0.24), 0 4px 12px 0 rgba(25,25,25,0.14), 0 0 0 1px rgba(42,28,0,0.07); /* [测量] settings dialog, search dialog (root --c-shaOutScr) */
+  --shadow-db-header: -3px 0 0 0 #ffffff, inset 0 -1px 0 0 rgba(42,28,0,0.07);                           /* [测量] */
+  --shadow-input-ring: 0 0 0 1px rgba(28,19,1,0.11);                                                      /* [测量] settings text field */
+  --shadow-input-ring-inset: inset 0 0 0 1px rgba(28,19,1,0.11);                                          /* [测量] settings search field */
+  --shadow-split-divider: inset 1px 0 0 0 rgba(28,19,1,0.11);                                             /* [测量] split-button chevron half */
+  --shadow-row-open: inset 0 0 0 1.5px #2783de;                                                           /* [测量] DB row currently in side peek */
+  --shadow-avatar: 0 2px 4px 0 rgba(15,15,15,0.1);                                                        /* [测量] */
+  --shadow-table-rule: inset 0 1px 0 0 #e6e5e3, inset 0 -1px 0 0 #e6e5e3;                                 /* [测量] member table header */
+
+  /* Focus */
+  --focus-ring:        0 0 0 2px #f8f8f7, 0 0 0 4px #2383e2, 0 0 0 6px rgba(255,255,255,0.25);  /* [测量] 50/64 focus records (root --c-butBluFocRin) */
+  --focus-ring-input:  inset 0 0 0 1px #2383e2, 0 0 0 1px #2383e2;                               /* [测量] root --c-inpBluFocRin; seen on settings search (V-settings-preferences) */
+  --focus-ring-input-error: inset 0 0 0 1px #cd3c3a, 0 0 0 1px #cd3c3a;                          /* [测量] root --c-inpRedFocRin */
+
+  /* ------------------------------------------------------------------
+     14. MOTION
+     ------------------------------------------------------------------ */
+  --duration-instant: 20ms;   /* [测量] row/menu-item/option hover bg (129 elements) */
+  --duration-fast:    50ms;   /* [测量] tooltip in/out */
+  --duration-quick:   100ms;  /* [测量] icon-button hover bg, peek chrome fades */
+  --duration-short:   150ms;  /* [测量] header-cell icon opacity, hover-revealed row actions (row bg itself = --duration-instant) */
+  --duration-base:    200ms;  /* [测量] dialogs, popovers, sidebar width, chevron rotate, switch */
+  --duration-spring:  250ms;  /* [测量] floating button scale */
+  --duration-slow:    700ms;  /* [测量] topbar fade when typing / search open */
+  --duration-spin:    1200ms; /* [测量] loading spinner */
+  --duration-shimmer: 1000ms; /* [测量] skeleton shimmer */
+
+  --ease-standard: ease;                               /* [测量] dialogs, popovers */
+  --ease-out:      ease-out;                           /* [测量] chevron, switch, tooltip, opacity */
+  --ease-in:       ease-in;                            /* [测量] list hover bg */
+  --ease-in-out:   ease-in-out;                        /* [测量] icon button hover bg */
+  --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);  /* [测量] floating button scale only */
+
+  --scale-dialog-from:  0.97;  /* [测量] settings dialog enter/exit */
+  --scale-popover-from: 0.96;  /* [测量] menus, slash menu, tooltip */
+  --scale-floating-hover: 1.1; /* [测量] */
+
+  /* ------------------------------------------------------------------
+     15. Z-INDEX
+     ------------------------------------------------------------------ */
+  --z-db-sticky:   86;   /* [测量] view bar */
+  --z-db-header:   87;   /* [测量] */
+  --z-topbar:      100;  /* [测量] */
+  --z-sidebar:     111;  /* [测量] */
+  --z-overlay:     999;  /* [测量] overlay root */
+
+  /* ------------------------------------------------------------------
+     16. v0.1 新增：组件用到、草稿只在文字里写了的数值
+     ------------------------------------------------------------------ */
+  /* 颜色 */
+  --color-skeleton:           rgba(55,53,47,0.06);     /* [测量] People 表加载格 60×12 骨架条 */
+  --color-fill-hover-floating:#efefee;                 /* [测量] 右下角浮动按钮 hover 底色 */
+  --color-bg-code-block:      #f7f6f3;                 /* [选定 D2] 代码块没渲染，取根变量 --cd-codBloBac */
+  --color-quote-bar:          var(--color-text-primary); /* [选定 D2] 引用没采到，analysis 写 can't tell；取先前应用的做法：正文色竖条 */
+
+  /* 透明度 */
+  --opacity-disabled: 0.4;   /* [测量] Members "Export" 禁用按钮整体 0.4 */
+  --opacity-dim:      0.5;   /* [测量] 侧栏只有图标的两个 tab */
+
+  /* 尺寸 */
+  --space-5:  5px;           /* [测量] 面包屑图标与文字间距、侧栏行纵向 padding 4–5 */
+  --space-7:  7px;           /* [测量] Side Peek 属性行纵向 padding */
+  --pad-cell-y:       7.5px; /* [测量] DB 文本单元格纵向 padding */
+  --pad-pill-start:   7px;   /* [测量] 状态 pill 左 padding */
+  --pad-pill-end:     9px;   /* [测量] 状态 pill / 筛选 chip 右 padding */
+  --pad-chip-start:   5px;   /* [测量] 搜索筛选 chip 左 padding */
+  --pad-inline-code-y: 0.17em; /* [推导] 2.38px ÷ 14px */
+  --pad-inline-code-x: 0.34em; /* [推导] 4.76px ÷ 14px */
+  --size-dot:          8px;  /* [测量] 状态 pill 圆点、通知点 */
+  --size-dot-ring:     2px;  /* [测量] 通知点外圈（侧栏底色） */
+  --size-checkbox:     16px; /* [测量] DB 行勾选框 */
+  --size-round-button: 32px; /* [测量] 搜索面板右上角圆形按钮 */
+  --size-split-toggle: 24px; /* [测量] 分体按钮右侧箭头段宽度 */
+  --size-view-bar:     40px; /* [测量] DB 视图栏 */
+  --size-sidebar-footer: 44px; /* [测量] */
+  --size-search-footer:  41px; /* [测量] */
+  --size-member-header:  32px; /* [测量] People 成员表表头 */
+  --size-member-row:     42px; /* [估计] People 成员表行高 ≈42 */
+  --size-icon-box:       22px; /* [测量] 侧栏行图标盒 */
+  --size-avatar-workspace: 22px; /* [测量] 侧栏工作区头像（圆角方块） */
+  --size-avatar-comment: 24px; /* [估计] Side Peek 评论输入行头像 */
+  --size-indent:         24px; /* [测量] DB 子项缩进 / 列表标记列 */
+  --size-bullet:         6px;  /* [估计] 列表圆点（先前应用的做法） */
+  --size-drag-handle-w:  4px;  /* [测量] 在 Side Peek 中打开的行左侧把手 4×28 */
+  --size-drag-handle-h:  28px; /* [测量] */
+  --size-toc-bar-h:      2px;  /* [测量] 页面大纲条 */
+  --size-toc-bar-1:      16px; /* [测量] H1 */
+  --size-toc-bar-2:      12px; /* [测量] H2 */
+  --size-toc-bar-3:      8px;  /* [测量] H3 */
+  --size-row-open-ring:  1.5px;/* [测量] 打开行的内圈 */
+  --size-skeleton-w:     60px; /* [测量] */
+  --size-skeleton-h:     12px; /* [测量] */
+  --size-help-icon:      14px; /* [估计] 帮助 "?" 12–14px，取上限 */
+  --size-quote-bar:      3px;  /* [选定 D2] 引用竖条宽（先前应用的做法） */
+  --size-progress-bar:   2px;  /* [估计] 搜索输入时的进度微光条高度 */
+  --size-scrim-inset-x:  72px; /* [测量] 设置弹窗左右留边 */
+  --size-scrim-inset-y:  50px; /* [测量] 设置弹窗上下留边 */
+
+  /* 文字 */
+  --text-quick-action-size: 12px; --text-quick-action-line: 18px; /* [测量] 行内 "OPEN" 快捷动作 */
+  --text-input-size: 15px;        --text-input-line: 26px;         /* [测量] 设置页文本输入框 15/26/400 */
+  --letter-spacing-quick-action: 0.5px;                            /* [测量] 全局唯一非 normal 字距 */
+  --text-promo-title-size: 12px;  --text-promo-title-line: 16px;   /* [测量] 侧栏推广卡标题 600 */
+
+  /* 动效 */
+  --scale-tooltip-from: 0.96;  /* [测量] tooltip 进出 */
+  --rotate-collapsed:  -90deg; /* [测量] 折叠箭头 −90° ↔ 0° */
+  --duration-tooltip:  var(--duration-fast);  /* [测量] 50ms */
+  --duration-peek:     var(--duration-base);  /* [选定 D2] Side Peek 进场未采到，按 200ms ease 估计 */
+
+  /* ------------------------------------------------------------------
+     17. v0.2 新增
+     ------------------------------------------------------------------ */
+  --layout-dialog-confirm-w: 420px;          /* [选定 D2] 确认弹窗未采到；沿用 v0.1 样板页确认弹窗的宽度 */
+  --space-popover-offset:    var(--space-4); /* [推导] 菜单与触发器的间距没采到；取 popover 分区内边距同一刻度，待补采 */
+}

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>校准</title>
+<!--
+  校准页模板。用法（给协调者）：
+  1. 复制到 <项目>/calibration/roundN.html
+  2. 改下面的 <link>：引入当前风格包的 tokens.css、组件 CSS，以及 project/ 下的文件（路径相对于本文件）
+  3. 改 <script> 里的 QUESTIONS：每题 4～6 个方案。规则：
+     - 用真实的界面片段（几行代码、一段侧边栏、一张卡片），用风格包的类来画，不要孤立的色块
+     - 每个方案只改要比较的那一处：用 vars 覆盖 CSS 变量，或用 css 写只作用于本方案的规则（选择器前缀 .v-<题号>-<字母>）
+     - 第一个方案放现状作对照；方案覆盖两端（最克制 ↔ 最醒目）
+     - concept 写设计概念，让用户积累词汇
+  4. 用本地服务打开（不要 file://，有些浏览器会拦样式），把 URL 给用户
+  5. 用户点「复制结果」，把文字贴回来；结果写进 calibration/results-roundN.md 和 DECISIONS
+-->
+<link rel="stylesheet" href="../style/tokens.css">
+<link rel="stylesheet" href="../style/COMPONENTS.css">
+<style>
+  body { margin: 0; background: var(--color-bg-sidebar, #f7f7f5); color: var(--color-text-primary, #2c2c2b); font-family: var(--font-sans, system-ui, sans-serif); }
+  .cal-wrap { max-width: 1400px; margin: 0 auto; padding: 24px 16px 96px; }
+  .cal-wrap h1 { font-size: 20px; margin: 0 0 4px; }
+  .cal-lead, .cal-qd { margin: 0; color: var(--color-text-secondary, #7d7a75); }
+  .cal-q { font-size: 17px; margin: 32px 0 2px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--cal-min, 320px), 1fr)); gap: 14px; margin-top: 12px; }
+  .cal-card { background: var(--color-bg, #fff); border: 1px solid var(--color-border-subtle, #e9e9e7); border-radius: 10px; overflow: hidden; }
+  .cal-head { padding: 10px 12px; border-bottom: 1px solid var(--color-border-subtle, #e9e9e7); }
+  .cal-head b { font-size: 14px; }
+  .cal-head p { margin: 3px 0 0; font-size: 12.5px; color: var(--color-text-secondary, #7d7a75); }
+  .cal-rank { float: right; font-size: 12px; color: var(--color-text-secondary, #7d7a75); }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; background: var(--color-bg, #fff); border-top: 1px solid var(--color-border-subtle, #e9e9e7); }
+  footer div { max-width: 1400px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 10px; }
+  footer input { flex: 1; height: 32px; border: 1px solid #d6d5cf; border-radius: 6px; padding: 0 8px; font: inherit; }
+  footer button { height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: #2783de; color: #fff; font: inherit; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="cal-wrap" id="app"></div>
+<footer><div><input id="note" placeholder="一句话感受（可选）"><button id="copy">复制结果</button></div></footer>
+<script>
+const TITLE = '校准第 N 轮 · <主题>';
+const QUESTIONS = [
+  {
+    title: '第一题：<要定的事>',
+    desc: '<这张图里有什么、看哪里>',
+    minWidth: 320,                       // 卡片最小宽度（px），片段宽就调大
+    body: `<div>在这里放共用的界面片段，用风格包的类</div>`,
+    variants: [
+      { name: '现状', concept: '<对照>', vars: '', css: '' },
+      { name: '<方案名>', concept: '"<设计概念>"：<一句话说明>', vars: '--某个变量: var(--另一个变量);', css: '' },
+      // css 例：'.v-1-C .some-class { background: var(--color-...); }'
+    ],
+  },
+];
+
+const L = 'ABCDEFGH';
+const app = document.getElementById('app');
+app.innerHTML = `<h1>${TITLE}</h1><p class="cal-lead">全部用当前风格渲染，每个方案只改了这一处。每题给最喜欢的 3 个标 1、2、3，再标一个最不喜欢的，写一句感受。</p>` +
+  QUESTIONS.map((q, qi) => `<h2 class="cal-q">${q.title}</h2><p class="cal-qd">${q.desc || ''}</p>
+  <div class="cal-grid" style="--cal-min:${q.minWidth || 320}px">${q.variants.map((v, i) => `
+    <div class="cal-card v-${qi + 1}-${L[i]}" style="${v.vars || ''}">${v.css ? `<style>${v.css}</style>` : ''}
+      <div class="cal-head"><span class="cal-rank">排名 <select data-q="${qi + 1}" data-v="${L[i]}"><option value="">-</option><option>1</option><option>2</option><option>3</option><option value="✗">最不喜欢</option></select></span>
+        <b>${L[i]} · ${v.name}</b><p>${v.concept || ''}</p></div>
+      <div class="cal-body">${v.body || q.body}</div></div>`).join('')}</div>`).join('');
+document.getElementById('copy').onclick = async () => {
+  const lines = QUESTIONS.map((q, qi) => {
+    const r = [...document.querySelectorAll(`select[data-q="${qi + 1}"]`)].filter(s => s.value).map(s => `${s.dataset.v}=${s.value}`).join('  ');
+    return `${q.title}：${r || '-'}`;
+  });
+  const t = lines.join('\n') + '\n感受：' + document.getElementById('note').value;
+  try { await navigator.clipboard.writeText(t); document.getElementById('copy').textContent = '已复制'; } catch { prompt('复制下面的文字', t); }
+};
+</script>
+</body>
+</html>

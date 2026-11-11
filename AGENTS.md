@@ -25,7 +25,7 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 | `backend/`                      | Python / FastAPI 后端，API 与 Worker 分别运行；详细导航和命令见 [后端约定](backend/AGENTS.md) |
 | `contracts/`                    | 系统边界协议，当前包含生成的 Reader API `openapi.json`                                 |
 | `architecture/`                 | C4 DSL 源文件；`html/` 为不提交的本地预览产物                                           |
-| `docs/`                         | 部署说明、系统架构及 README 所需素材                                                   |
+| `docs/`                         | 部署说明、系统架构、开发规范（`engineering/`）、界面设计流程与风格库（`design/`）及 README 所需素材 |
 | `services/`                     | 核心进程的 systemd／Caddy 模板及可选 Scweet 服务                                      |
 | `compose.yaml`、`docker-init.sh` | 完整 Docker 部署拓扑与受限的初始化、升级、停止和状态入口                                         |
 | `.github/workflows/`            | CI 配置，目前包含网页翻译运行时检查                                                      |
@@ -43,6 +43,8 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 | 模块职责、数据归属、依赖约束或关键运行流程 | [ARCHITECTURE.md](docs/ARCHITECTURE.md)，随后核对相关代码                               |
 | 系统、运行单元、重要组件及其关系      | [architecture/workspace.dsl](architecture/workspace.dsl)，包含 C1–C3 视图；C4 直接查看源码 |
 | 前后端接口                 | [contracts/openapi.json](contracts/openapi.json) 查看协议；修改入口为后端路由及请求／响应模型        |
+| 设计、编写与审查代码的原则      | [软件设计规范](docs/engineering/software-design-guidelines.md)（通用与后端）；前端另读 [React 开发规范](docs/engineering/react-guidelines.md)（尚待按 Reader 改写） |
+| 界面设计（产品文档、布局、风格）   | [设计流程包](docs/design/kit/README.md) 与 [风格库](docs/design/styles/README.md)                                      |
 
 
 历史文档是检索线索。文档与代码不一致时，区分当前实现、已确认的目标和未知项，判断是文档过期、实现偏离还是目标变化；不要把旧方案当作当前约束，也不要通过修改文档把实现缺陷变成预期行为。

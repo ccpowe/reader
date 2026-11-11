@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quietpaper v0.7 · 通用组件样板</title>
+<!-- D8 代码字体 JetBrains Mono（产品里用 @fontsource 打包；样板页走 CDN） -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/400-italic.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/700.css">
+<!-- D15 公式用 KaTeX 自带字体 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<!-- 引入顺序：tokens → 通用组件。本页只展示风格包自己的类；产品组件在各项目的 components.html 里 -->
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="quietpaper.css">
+<style>
+  /* 只给样板页排版用（demo-*），不是组件；组件外观全部来自上面两个文件 */
+  body { margin: 0; }
+  .demo-page { display: flex; min-height: 100vh; }
+  .demo-toc { position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow: auto; flex: none; padding: var(--space-xl) 0; }
+  .demo-toc a { display: block; padding: var(--space-2xs) var(--space-xl); color: var(--color-text-secondary); text-decoration: none; }
+  .demo-toc a:hover { color: var(--color-text-primary); }
+  .demo-main { flex: 1; min-width: 0; padding: var(--space-3xl) var(--space-4xl) var(--space-4xl); max-width: 1200px; }
+  .demo-main > section { margin-top: var(--space-4xl); }
+  .demo-main > section > h2 { margin: 0 0 var(--space-md); font-size: var(--font-h2-size); line-height: var(--font-h2-line); font-weight: var(--font-h2-weight); }
+  .demo-lead { color: var(--color-text-secondary); margin: 0 0 var(--space-xl); }
+  .demo-group { padding: var(--space-xl) 0; border-top: var(--border-width) solid var(--color-border-subtle); }
+  .demo-cls { margin-bottom: var(--space-lg); color: var(--color-text-secondary); }
+  .demo-cls code { font-family: var(--font-mono); font-size: var(--font-mono-size); color: var(--color-text-primary); background: var(--color-bg-code); padding: 0 var(--space-xs); border-radius: var(--radius-xs); }
+  .demo-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-xl); }
+  .demo-cell { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-sm); }
+  .demo-cell > figcaption { color: var(--color-text-tertiary); font-size: var(--font-caption-size); line-height: var(--font-caption-line); font-family: var(--font-mono); }
+  .demo-box { width: 280px; }
+  .demo-wide { width: 100%; }
+  .demo-sidebar-bg { background: var(--color-bg-sidebar); padding: var(--space-md) 0; width: 280px; }
+  .demo-stage { position: relative; transform: translateZ(0); overflow: hidden; height: 360px; width: 100%; background: var(--color-bg-sidebar); border-radius: var(--radius-md); }
+  .demo-stage--tall { height: 420px; }
+  .demo-col { display: flex; flex-direction: column; gap: var(--space-md); }
+  .demo-note { color: var(--color-text-secondary); font-size: var(--font-desc-size); line-height: var(--font-desc-line); margin: var(--space-md) 0 0; }
+  .demo-prose-col { max-width: var(--layout-content-width); padding-left: var(--space-3xl); }
+  .demo-h { margin: var(--space-4xl) 0 0; font-size: var(--font-title-size); line-height: var(--font-title-line); font-weight: var(--font-title-weight); }
+</style>
+</head>
+<body>
+
+<!-- Tabler outline 图标（D6）：路径来自 Tabler Icons，线宽由 .qp-icon 统一设为 --icon-stroke-width -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5l0 14"/><path d="M5 12l14 0"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5l10 -10"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6l6 -6"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="M9 6l6 6l-6 6"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><path d="M5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M19 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></symbol>
+  <symbol id="i-file-text" viewBox="0 0 24 24"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/><path d="M9 9l1 0"/><path d="M9 13l6 0"/><path d="M9 17l6 0"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm0 -12a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm-7 12a6 6 0 0 1 6 -6a6 6 0 0 1 -6 -6a6 6 0 0 1 -6 6a6 6 0 0 1 6 6z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/><path d="M12 16h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/></symbol>
+  <symbol id="i-circle-check" viewBox="0 0 24 24"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M9 12l2 2l4 -4"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/></symbol>
+  <symbol id="i-message" viewBox="0 0 24 24"><path d="M8 9h8"/><path d="M8 13h6"/><path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12z"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><path d="M8 9l3 3l-3 3"/><path d="M13 15l3 0"/><path d="M3 4m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M10 14l11 -11"/><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12z"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M4 11h16"/></symbol>
+  <symbol id="i-align-left" viewBox="0 0 24 24"><path d="M4 6l16 0"/><path d="M4 12l10 0"/><path d="M4 18l14 0"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><path d="M9 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M9 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M9 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M15 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M15 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M15 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M12 8l0 4l2 2"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M6 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M18 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M8.7 10.7l6.6 -3.4"/><path d="M8.7 13.3l6.6 3.4"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/><path d="M13.5 6.5l4 4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 4m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/><path d="M4 13h3l3 3h4l3 -3h3"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3l8 4.5l0 9l-8 4.5l-8 -4.5l0 -9l8 -4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12l0 9"/><path d="M12 12l-8 -4.5"/></symbol>
+  <symbol id="i-chevrons-right" viewBox="0 0 24 24"><path d="M7 7l5 5l-5 5"/><path d="M13 7l5 5l-5 5"/></symbol>
+  <symbol id="i-arrow-up-right" viewBox="0 0 24 24"><path d="M17 7l-10 10"/><path d="M8 7l9 0l0 9"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24"><path d="M7 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M7 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M7 8l0 8"/><path d="M9 18h6a2 2 0 0 0 2 -2v-5"/><path d="M14 14l3 -3l3 3"/></symbol>
+</svg>
+
+<div class="demo-page">
+<nav class="demo-toc qp-sidebar" aria-label="目录">
+  <div class="qp-sidebar__group" style="margin-top:0"><div class="qp-sidebar__heading qp-sidebar__heading--strong">Quietpaper v0.7 · quietpaper.css</div>
+  <a href="#icons">图标 / 语言徽标 / spinner</a><a href="#buttons">按钮</a><a href="#inputs">输入框 / 下拉 / 键帽</a>
+  <a href="#toggles">勾选框 / 开关</a><a href="#rows">列表行 / 树行 / 搜索结果</a><a href="#nav">侧边栏 / 顶栏 / 面包屑</a>
+  <a href="#tags">标签 / 徽标 / 状态点</a><a href="#avatars">头像 / 作者行</a><a href="#callout">callout / 预览卡</a>
+  <a href="#popover">菜单 / popover / tooltip</a><a href="#modal">弹窗 / 命令面板 / 侧板</a><a href="#toast">toast / inline message</a>
+  <a href="#empty">空状态 / 骨架屏</a><a href="#table">表格</a><a href="#tabs">标签页</a><a href="#content">内容块</a><a href="#comments">评论锚点 / 线程</a><a href="#compose">组合示例</a></div>
+</nav>
+
+<main class="demo-main">
+  <h1 class="qp-display">Quietpaper v0.7 组件样板</h1>
+  <p class="demo-lead">外观以这里的 CSS 类为准，不要自己重写组件样式。每组旁边写类名和一句用法；hover / pressed / focus 用强制类 <code class="qp-code">is-hover</code> <code class="qp-code">is-pressed</code> <code class="qp-code">is-focus</code> 并排展示（只在样板页用），真实状态类是 <code class="qp-code">is-selected</code> <code class="qp-code">is-current</code> <code class="qp-code">is-open</code> <code class="qp-code">is-on</code> <code class="qp-code">is-error</code> <code class="qp-code">is-working</code>。本页只有通用类；产品专属组件见各项目自己的样板页。</p>
+
+<!-- ======================================================================= -->
+<section id="icons">
+  <h2>图标 / 语言徽标 / spinner</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-icon</code> <code>--xs</code> <code>--md</code> — 只用 Tabler outline；默认 16px、全灰（D6 / D9 / D10）。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><svg class="qp-icon qp-icon--xs"><use href="#i-chevron-right"/></svg><figcaption>--xs chevron</figcaption></figure>
+      <figure class="demo-cell"><svg class="qp-icon"><use href="#i-search"/></svg><figcaption>默认 sm</figcaption></figure>
+      <figure class="demo-cell"><svg class="qp-icon qp-icon--md"><use href="#i-file-text"/></svg><figcaption>--md 页面标题旁</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-icon--strong</code> <code>--disabled</code> <code>--danger</code> <code>--ai</code> — strong 给 hover / 激活；danger 只给删除；ai 只给"AI 正在工作"。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><svg class="qp-icon"><use href="#i-folder"/></svg><figcaption>neutral</figcaption></figure>
+      <figure class="demo-cell"><svg class="qp-icon qp-icon--strong"><use href="#i-folder"/></svg><figcaption>--strong</figcaption></figure>
+      <figure class="demo-cell"><svg class="qp-icon qp-icon--disabled"><use href="#i-folder"/></svg><figcaption>--disabled</figcaption></figure>
+      <figure class="demo-cell"><svg class="qp-icon qp-icon--danger"><use href="#i-trash"/></svg><figcaption>--danger 删除</figcaption></figure>
+      <figure class="demo-cell"><svg class="qp-icon qp-icon--ai"><use href="#i-sparkles"/></svg><figcaption>--ai 生成中</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-iconbox</code> + <code>qp-lang qp-lang--{ts,js,py,md,json,other}</code> — 代码等非文档文件的标识；缩写 2 个字母，最多 3 个。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><span class="qp-iconbox"><span class="qp-lang qp-lang--ts">TS</span></span><figcaption>ts</figcaption></figure>
+      <figure class="demo-cell"><span class="qp-iconbox"><span class="qp-lang qp-lang--js">JS</span></span><figcaption>js</figcaption></figure>
+      <figure class="demo-cell"><span class="qp-iconbox"><span class="qp-lang qp-lang--py">PY</span></span><figcaption>py</figcaption></figure>
+      <figure class="demo-cell"><span class="qp-iconbox"><span class="qp-lang qp-lang--md">MD</span></span><figcaption>md</figcaption></figure>
+      <figure class="demo-cell"><span class="qp-iconbox"><span class="qp-lang qp-lang--json">JSN</span></span><figcaption>json</figcaption></figure>
+      <figure class="demo-cell"><span class="qp-iconbox"><span class="qp-lang qp-lang--other">SQL</span></span><figcaption>other</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-icon qp-spinner</code>（加在 Tabler loader-2 上）— 唯一的加载指示；reduced-motion 下也保留旋转。</div>
+    <div class="demo-row"><svg class="qp-icon qp-spinner"><use href="#i-loader"/></svg></div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="buttons">
+  <h2>按钮</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-btn</code>（= secondary）— 表单内的普通操作、列表行里的非当前操作。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><button class="qp-btn"><svg class="qp-icon"><use href="#i-copy"/></svg>Copy link</button><figcaption>rest</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn is-hover"><svg class="qp-icon"><use href="#i-copy"/></svg>Copy link</button><figcaption>hover</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn is-pressed"><svg class="qp-icon"><use href="#i-copy"/></svg>Copy link</button><figcaption>active</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn is-focus"><svg class="qp-icon"><use href="#i-copy"/></svg>Copy link</button><figcaption>focus-visible</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn" disabled><svg class="qp-icon"><use href="#i-copy"/></svg>Copy link</button><figcaption>disabled</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn"><svg class="qp-icon qp-spinner"><use href="#i-loader"/></svg>Copy link</button><figcaption>loading：spinner 替换前置图标</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-btn qp-btn--primary</code> — 每个视图最多 1 个；列表里逐行相同的操作只有一行用 primary（默认当前项）。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><button class="qp-btn qp-btn--primary"><svg class="qp-icon"><use href="#i-check"/></svg>Publish</button><figcaption>rest</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--primary is-hover"><svg class="qp-icon"><use href="#i-check"/></svg>Publish</button><figcaption>hover / active</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--primary is-focus"><svg class="qp-icon"><use href="#i-check"/></svg>Publish</button><figcaption>focus-visible</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--primary" disabled><svg class="qp-icon"><use href="#i-check"/></svg>Publish</button><figcaption>disabled（底改 sunken）</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--primary"><svg class="qp-icon qp-spinner"><use href="#i-loader"/></svg>Publish</button><figcaption>loading</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-btn-split</code> > <code>qp-btn--primary</code> × 2 — 主操作 + 下拉；中间留 --border-width 的缝；整组算视图里的 1 个 primary。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><span class="qp-btn-split"><button class="qp-btn qp-btn--primary">New</button><button class="qp-btn qp-btn--primary" aria-label="更多"><svg class="qp-icon qp-icon--xs"><use href="#i-chevron-down"/></svg></button></span><figcaption>rest</figcaption></figure>
+      <figure class="demo-cell"><span class="qp-btn-split"><button class="qp-btn qp-btn--primary">New</button><button class="qp-btn qp-btn--primary is-hover" aria-label="更多"><svg class="qp-icon qp-icon--xs"><use href="#i-chevron-down"/></svg></button></span><figcaption>下拉部分 hover</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-btn qp-btn--soft</code> — 主操作旁的次级强调；每个视图最多 1 个，不在列表里逐行重复。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><button class="qp-btn qp-btn--soft">Add members</button><figcaption>rest</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--soft is-hover">Add members</button><figcaption>hover / active</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--soft is-focus">Add members</button><figcaption>focus-visible</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--soft" disabled>Add members</button><figcaption>disabled</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-btn qp-btn--ghost</code> — 工具栏、横栏、行内操作、"+ 动词"入口；开关类按钮打开时加 <code>is-on</code>。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><button class="qp-btn qp-btn--ghost"><svg class="qp-icon"><use href="#i-history"/></svg>历史</button><figcaption>rest</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--ghost is-hover"><svg class="qp-icon"><use href="#i-history"/></svg>历史</button><figcaption>hover</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--ghost is-pressed"><svg class="qp-icon"><use href="#i-history"/></svg>历史</button><figcaption>active</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--ghost is-focus"><svg class="qp-icon"><use href="#i-history"/></svg>历史</button><figcaption>focus-visible</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--ghost" disabled><svg class="qp-icon"><use href="#i-history"/></svg>历史</button><figcaption>disabled</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--ghost is-on" aria-pressed="true"><svg class="qp-icon"><use href="#i-align-left"/></svg>显示行号</button><figcaption>is-on</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--ghost is-on is-hover" aria-pressed="true"><svg class="qp-icon"><use href="#i-align-left"/></svg>显示行号</button><figcaption>is-on + hover</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-btn qp-btn--danger</code> — 只在不可逆 / 批量操作的确认弹窗里，只用于破坏性操作。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><button class="qp-btn qp-btn--danger">Delete workspace</button><figcaption>rest</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--danger is-hover">Delete workspace</button><figcaption>hover</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--danger is-focus">Delete workspace</button><figcaption>focus-visible</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-btn qp-btn--ghost qp-btn--inline</code> — 嵌在列表行里的小文字按钮（行类时长）。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><button class="qp-btn qp-btn--ghost qp-btn--inline">查看详情</button><figcaption>rest</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-btn qp-btn--ghost qp-btn--inline is-hover">查看详情</button><figcaption>hover</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-icon-btn</code> / <code>qp-icon-btn--xs</code> — 独立图标按钮 / 嵌在行里的图标按钮；有 tooltip 写明含义。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><button class="qp-icon-btn" aria-label="新建"><svg class="qp-icon"><use href="#i-plus"/></svg></button><figcaption>rest</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-icon-btn is-hover" aria-label="新建"><svg class="qp-icon"><use href="#i-plus"/></svg></button><figcaption>hover</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-icon-btn is-pressed" aria-label="新建"><svg class="qp-icon"><use href="#i-plus"/></svg></button><figcaption>active</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-icon-btn is-focus" aria-label="新建"><svg class="qp-icon"><use href="#i-plus"/></svg></button><figcaption>focus-visible</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-icon-btn" disabled aria-label="新建"><svg class="qp-icon"><use href="#i-plus"/></svg></button><figcaption>disabled</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-icon-btn is-on" aria-label="显示评论栏"><svg class="qp-icon"><use href="#i-message"/></svg></button><figcaption>is-on</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-icon-btn qp-icon-btn--xs" aria-label="更多"><svg class="qp-icon"><use href="#i-dots"/></svg></button><figcaption>--xs rest</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-icon-btn qp-icon-btn--xs is-hover" aria-label="更多"><svg class="qp-icon"><use href="#i-dots"/></svg></button><figcaption>--xs hover</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-icon-btn qp-icon-btn--xs" aria-label="删除"><svg class="qp-icon qp-icon--danger"><use href="#i-trash"/></svg></button><figcaption>删除图标永远红</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="inputs">
+  <h2>输入框 / 下拉 / 搜索框 / 键帽</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-input</code>（input / textarea）+ <code>qp-label</code> <code>qp-desc</code> <code>qp-field-error</code> — 失焦时校验；出错加 <code>is-error</code> 或 <code>aria-invalid</code>，错误文字放字段下方。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><input class="qp-input" placeholder="Workspace name"><figcaption>rest / placeholder</figcaption></figure>
+      <figure class="demo-cell"><input class="qp-input" value="Acme notes"><figcaption>filled</figcaption></figure>
+      <figure class="demo-cell"><input class="qp-input is-focus" value="Acme notes"><figcaption>focus</figcaption></figure>
+      <figure class="demo-cell"><input class="qp-input is-error" value="acme/notes" aria-invalid="true"><span class="qp-field-error">名称不能包含 "/"，请换一个。</span><figcaption>error</figcaption></figure>
+      <figure class="demo-cell"><input class="qp-input" value="Acme notes" disabled><figcaption>disabled</figcaption></figure>
+    </div>
+    <div class="demo-row" style="margin-top: var(--space-xl)">
+      <figure class="demo-cell demo-box"><span class="qp-label">Workspace name</span><span class="qp-desc">你会在侧边栏顶部和分享链接里看到这个名称。</span><textarea class="qp-input demo-wide" rows="3" placeholder="多行输入"></textarea><figcaption>textarea + 标签 + 说明</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-select</code> + <code>__value</code> <code>__chevron</code> — 下拉触发器 = secondary 按钮外观；选项菜单用 <code>qp-popover qp-menu</code>。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><button class="qp-select"><span class="qp-select__value">视图：全部页面</span><svg class="qp-icon qp-select__chevron"><use href="#i-chevron-down"/></svg></button><figcaption>rest</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-select is-hover"><span class="qp-select__value">视图：全部页面</span><svg class="qp-icon qp-select__chevron"><use href="#i-chevron-down"/></svg></button><figcaption>hover</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-select is-pressed"><span class="qp-select__value">视图：全部页面</span><svg class="qp-icon qp-select__chevron"><use href="#i-chevron-down"/></svg></button><figcaption>active</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-select is-focus"><span class="qp-select__value">视图：全部页面</span><svg class="qp-icon qp-select__chevron"><use href="#i-chevron-down"/></svg></button><figcaption>focus-visible</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-select" disabled><span class="qp-select__value">视图：全部页面</span><svg class="qp-icon qp-icon--disabled qp-select__chevron"><use href="#i-chevron-down"/></svg></button><figcaption>disabled</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-search</code> + <code>qp-kbd</code> — 导航内搜索框，右侧键帽显示快捷键；键帽文字是 secondary（不能用 tertiary）。</div>
+    <div class="demo-row">
+      <figure class="demo-cell demo-box"><div class="qp-search demo-wide"><svg class="qp-icon"><use href="#i-search"/></svg><span>搜索文件和内容</span><kbd class="qp-kbd">⌘K</kbd></div><figcaption>qp-search</figcaption></figure>
+      <figure class="demo-cell"><span><kbd class="qp-kbd">⌘K</kbd><kbd class="qp-kbd">Esc</kbd><kbd class="qp-kbd">/</kbd></span><figcaption>qp-kbd</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="toggles">
+  <h2>勾选框 / 开关</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>input[type=checkbox].qp-checkbox</code> — 多选；填充用 accent。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><input type="checkbox" class="qp-checkbox" aria-label="未选"><figcaption>unchecked</figcaption></figure>
+      <figure class="demo-cell"><input type="checkbox" class="qp-checkbox" checked aria-label="已选"><figcaption>checked</figcaption></figure>
+      <figure class="demo-cell"><input type="checkbox" class="qp-checkbox is-focus" aria-label="焦点"><figcaption>focus-visible</figcaption></figure>
+    </div>
+    <p class="demo-note">没有 disabled / indeterminate 样式：参考数据和规范里都没有，不编。</p>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>button.qp-switch[role=switch][aria-checked]</code> > <code>qp-switch__knob</code> — 立即生效的设置；旁边不放"保存"。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><button class="qp-switch" role="switch" aria-checked="false" aria-label="关" onclick="this.setAttribute('aria-checked', this.getAttribute('aria-checked') !== 'true')"><span class="qp-switch__knob"></span></button><figcaption>off（可点）</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-switch" role="switch" aria-checked="true" aria-label="开" onclick="this.setAttribute('aria-checked', this.getAttribute('aria-checked') !== 'true')"><span class="qp-switch__knob"></span></button><figcaption>on（可点）</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-switch is-focus" role="switch" aria-checked="true" aria-label="焦点"><span class="qp-switch__knob"></span></button><figcaption>focus-visible</figcaption></figure>
+    </div>
+    <p class="demo-note">没有 disabled / hover 样式：规范没有给出，不编。</p>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="rows">
+  <h2>列表行 / 树行 / 搜索结果</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-row qp-row--nav</code> + <code>__label</code> <code>__trail</code> <code>__hover</code> — 导航树 / 侧边栏入口；选中只改背景和文字灰阶，字重不变（D4）。</div>
+    <div class="demo-row">
+      <div class="demo-sidebar-bg">
+        <div class="qp-tree">
+          <div class="qp-row qp-row--nav"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><span class="qp-row__label">rest</span></div>
+          <div class="qp-row qp-row--nav is-hover"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><span class="qp-row__label">hover（出现行内操作）</span><span class="qp-row__trail qp-row__hover"><button class="qp-icon-btn qp-icon-btn--xs" aria-label="新建"><svg class="qp-icon"><use href="#i-plus"/></svg></button><button class="qp-icon-btn qp-icon-btn--xs" aria-label="更多"><svg class="qp-icon"><use href="#i-dots"/></svg></button></span></div>
+          <div class="qp-row qp-row--nav is-pressed"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><span class="qp-row__label">active</span></div>
+          <div class="qp-row qp-row--nav is-current"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><span class="qp-row__label">is-current（键盘当前项）</span></div>
+          <div class="qp-row qp-row--nav is-selected"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><span class="qp-row__label">is-selected</span></div>
+          <div class="qp-row qp-row--nav is-selected is-hover"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><span class="qp-row__label">is-selected + hover</span></div>
+          <div class="qp-row qp-row--nav is-focus" tabindex="0"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><span class="qp-row__label">focus-visible</span></div>
+          <div class="qp-row qp-row--nav" aria-disabled="true"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><span class="qp-row__label">aria-disabled</span></div>
+          <div class="qp-row qp-row--nav"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-search"/></svg></span><span class="qp-row__label">搜索</span><kbd class="qp-kbd">⌘K</kbd></div>
+        </div>
+      </div>
+      <div class="demo-col">
+        <div class="demo-cls"><code>qp-tree</code> > <code>qp-row qp-row--nav qp-tree-row</code>（<code>style="--qp-depth:N"</code>）+ <code>qp-chevron[.is-open]</code> — 每层缩进 --layout-tree-indent。默认（<code>[模式]</code>）：平时显示对象图标；hover 时图标原位换成 chevron，右侧出现 <code>+</code> <code>···</code>。产品可以覆盖成常驻 chevron。</div>
+        <div class="demo-sidebar-bg">
+          <div class="qp-tree">
+            <div class="qp-row qp-row--nav qp-tree-row is-hover" style="--qp-depth:0"><span class="qp-iconbox"><svg class="qp-icon qp-chevron is-open"><use href="#i-chevron-down"/></svg></span><span class="qp-row__label">notes（hover：图标换成 chevron）</span><span class="qp-row__trail qp-row__hover"><button class="qp-icon-btn qp-icon-btn--xs" aria-label="新建"><svg class="qp-icon"><use href="#i-plus"/></svg></button><button class="qp-icon-btn qp-icon-btn--xs" aria-label="更多"><svg class="qp-icon"><use href="#i-dots"/></svg></button></span></div>
+            <div class="qp-row qp-row--nav qp-tree-row" style="--qp-depth:1"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-folder"/></svg></span><span class="qp-row__label">archive（折叠，静止）</span></div>
+            <div class="qp-row qp-row--nav qp-tree-row is-selected" style="--qp-depth:1"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><span class="qp-row__label">reading-list.md</span></div>
+            <div class="qp-row qp-row--nav qp-tree-row" style="--qp-depth:1"><span class="qp-iconbox"><span class="qp-lang qp-lang--py">PY</span></span><span class="qp-row__label">export.py</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-row qp-row--menu</code> / <code>qp-row--command</code> + <code>__hint</code>（<code>--strong</code>）— 菜单项 / 插入菜单与命令列表；快捷键提示 caption + tertiary 右对齐；要读的状态文字加 <code>__hint--strong</code>（secondary）。</div>
+    <div class="demo-row">
+      <div class="qp-popover qp-menu" style="animation:none">
+        <div class="qp-row qp-row--menu"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-copy"/></svg></span><span class="qp-row__label">Copy link</span><span class="qp-row__hint">⌘L</span></div>
+        <div class="qp-row qp-row--menu is-current"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-pencil"/></svg></span><span class="qp-row__label">Rename（is-current）</span><span class="qp-row__hint">⌘⇧R</span></div>
+        <div class="qp-row qp-row--menu"><span class="qp-iconbox"><svg class="qp-icon qp-icon--danger"><use href="#i-trash"/></svg></span><span class="qp-row__label">Delete</span></div>
+        <div class="qp-row qp-row--menu"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-history"/></svg></span><span class="qp-row__label">Sync</span><span class="qp-row__hint qp-row__hint--strong">已暂停 · 昨天</span></div>
+      </div>
+      <div class="qp-popover qp-menu" style="animation:none">
+        <div class="qp-row qp-row--command"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-plus"/></svg></span><span class="qp-row__label">新建页面</span><span class="qp-row__hint">⌘N</span></div>
+        <div class="qp-row qp-row--command is-current"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-history"/></svg></span><span class="qp-row__label">查看历史</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-result</code> + <code>__body</code> <code>__title</code> <code>__meta</code> — 搜索结果；标题行 + 元信息行（"·" 分隔）。</div>
+    <div class="demo-row">
+      <div class="demo-col" style="width:420px">
+        <div class="qp-result"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><div class="qp-result__body"><span class="qp-result__title">reading-list.md</span><span class="qp-result__meta">notes / archive · Edited 6m ago</span></div></div>
+        <div class="qp-result is-current"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><div class="qp-result__body"><span class="qp-result__title">is-current / hover</span><span class="qp-result__meta">notes · 昨天</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="nav">
+  <h2>侧边栏 / 顶栏 / 面包屑</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-sidebar</code> + <code>__group</code> <code>__heading</code>（<code>--strong</code>）— 导航区降一级：sidebar 底、文字 secondary；分组之间 --space-2xl。分组标题默认 tertiary；标题是认出下面各项所必需的信息时加 <code>--strong</code>（secondary）。（本页左侧目录就是它）</div>
+    <div class="demo-sidebar-bg">
+      <div class="qp-sidebar__heading">Favorites（一般分组标题）</div>
+      <div class="qp-row qp-row--nav"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><span class="qp-row__label">reading-list.md</span></div>
+      <div class="qp-sidebar__heading qp-sidebar__heading--strong">notes / archive（必须读的分组标题）</div>
+      <div class="qp-row qp-row--nav"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><span class="qp-row__label">2024.md</span></div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls">工作区切换（组合，不另建类）= <code>qp-row qp-row--nav</code> + <code>qp-iconbox</code> + <code>__label</code> + 末尾 <code>qp-icon--xs</code> chevron — 侧边栏顶部或底部，点开是 <code>qp-popover qp-menu</code>。</div>
+    <div class="demo-sidebar-bg">
+      <div class="qp-row qp-row--nav"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-box"/></svg></span><span class="qp-row__label">Acme notes</span><svg class="qp-icon qp-icon--xs"><use href="#i-chevron-down"/></svg></div>
+      <div class="qp-row qp-row--nav is-hover"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-box"/></svg></span><span class="qp-row__label">hover</span><svg class="qp-icon qp-icon--xs"><use href="#i-chevron-down"/></svg></div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-topbar</code> + <code>qp-breadcrumb</code>（<code>__item</code> <code>__item--current</code> <code>__sep</code>）+ <code>qp-topbar__meta</code> — 顶栏按钮一律 ghost。</div>
+    <div class="qp-topbar" style="border-bottom: var(--border-width) solid var(--color-border-subtle)">
+      <nav class="qp-breadcrumb" style="flex:1">
+        <span class="qp-breadcrumb__item">notes</span><span class="qp-breadcrumb__sep"><svg class="qp-icon qp-icon--xs"><use href="#i-chevron-right"/></svg></span>
+        <span class="qp-breadcrumb__item">archive</span><span class="qp-breadcrumb__sep"><svg class="qp-icon qp-icon--xs"><use href="#i-chevron-right"/></svg></span>
+        <span class="qp-breadcrumb__item qp-breadcrumb__item--current">reading-list.md</span>
+      </nav>
+      <span class="qp-topbar__meta">Edited 6m ago</span>
+      <button class="qp-btn qp-btn--ghost">Share</button>
+      <button class="qp-icon-btn" aria-label="更多"><svg class="qp-icon"><use href="#i-dots"/></svg></button>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="tags">
+  <h2>标签 / 徽标 / 状态点 / 计数</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-tag qp-tag--{gray,brown,orange,yellow,green,blue,teal,purple,pink,red}</code> — Select 标签；不是按钮。</div>
+    <div class="demo-row">
+      <span class="qp-tag qp-tag--gray">gray</span><span class="qp-tag qp-tag--brown">brown</span><span class="qp-tag qp-tag--orange">orange</span><span class="qp-tag qp-tag--yellow">yellow</span><span class="qp-tag qp-tag--green">green</span>
+      <span class="qp-tag qp-tag--blue">blue</span><span class="qp-tag qp-tag--teal">teal</span><span class="qp-tag qp-tag--purple">purple</span><span class="qp-tag qp-tag--pink">pink</span><span class="qp-tag qp-tag--red">red</span>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-tag qp-status qp-tag--{hue}</code> + <code>qp-dot qp-dot--{gray,green}</code> — Status 胶囊；圆点永远和文字一起出现。圆点没有 blue（和强调色同值，v0.6 删除）。</div>
+    <div class="demo-row">
+      <span class="qp-tag qp-status qp-tag--gray"><span class="qp-dot qp-dot--gray"></span>Not started</span>
+      <span class="qp-tag qp-status qp-tag--blue"><span class="qp-dot qp-dot--gray"></span>In progress</span>
+      <span class="qp-tag qp-status qp-tag--green"><span class="qp-dot qp-dot--green"></span>Done</span>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-badge</code> — 灰色「AI」「New」「Beta」徽标；<code>qp-count</code> — 可以不读的中性计数（tertiary 纯文字）；需要读的计数用灰色 <code>qp-tag</code>。</div>
+    <div class="demo-row">
+      <span class="qp-badge">AI</span><span class="qp-badge">New</span><span class="qp-badge">Beta</span>
+      <span>评论 <span class="qp-count">12</span></span>
+      <span>未读 <span class="qp-tag">3</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="avatars">
+  <h2>头像 / 作者行</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-avatar</code>（人：首字 / AI：sparkles 图标，<code>is-working</code> 时变色）— 人和 AI 都是灰色圆，只靠形状和「AI」徽标区分（D11）。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><span class="qp-avatar">我</span><figcaption>人</figcaption></figure>
+      <figure class="demo-cell"><span class="qp-avatar"><svg class="qp-icon"><use href="#i-sparkles"/></svg></span><figcaption>AI 静止</figcaption></figure>
+      <figure class="demo-cell"><span class="qp-avatar is-working"><svg class="qp-icon"><use href="#i-sparkles"/></svg></span><figcaption>AI is-working</figcaption></figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-author</code> + <code>__name</code> <code>__time</code> — 评论 / 消息 / 提交的作者行。</div>
+    <div class="demo-col">
+      <div class="qp-author"><span class="qp-avatar">我</span><span class="qp-author__name">陈</span><span class="qp-author__time">6 分钟前</span></div>
+      <div class="qp-author"><span class="qp-avatar"><svg class="qp-icon"><use href="#i-sparkles"/></svg></span><span class="qp-author__name">助手</span><span class="qp-badge">AI</span><span class="qp-author__time">刚刚</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="callout">
+  <h2>Callout / 预览卡</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-callout</code> — 页面里唯一的"卡片"：无边框、无阴影、无彩色边条。<code>qp-preview-card</code> — 只在浮层里。</div>
+    <div class="demo-row">
+      <div class="qp-callout demo-box">按 <kbd class="qp-kbd">⌘K</kbd> 搜索文件和内容。</div>
+      <div class="qp-preview-card demo-box"><div class="qp-section-title">reading-list.md</div><p class="qp-desc">notes / archive · 1,204 字</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="popover">
+  <h2>菜单 / popover / tooltip</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-popover qp-menu</code>（<code>--wide</code> 插入菜单）+ <code>qp-menu__heading</code> <code>qp-divider</code> — 进出动效 scale + opacity，origin 指向触发点。</div>
+    <div class="demo-row">
+      <div class="qp-popover qp-menu">
+        <div class="qp-menu__heading">页面</div>
+        <div class="qp-row qp-row--menu"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-copy"/></svg></span><span class="qp-row__label">Copy link</span><span class="qp-row__hint">⌘L</span></div>
+        <div class="qp-row qp-row--menu"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-eye"/></svg></span><span class="qp-row__label">Open in peek</span></div>
+        <hr class="qp-divider">
+        <div class="qp-row qp-row--menu"><span class="qp-iconbox"><svg class="qp-icon qp-icon--danger"><use href="#i-trash"/></svg></span><span class="qp-row__label">Delete</span><span class="qp-row__hint">Del</span></div>
+      </div>
+      <div class="qp-popover qp-menu qp-menu--wide">
+        <div class="qp-menu__heading">基础块</div>
+        <div class="qp-row qp-row--command is-current"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-align-left"/></svg></span><span class="qp-row__label">Text</span></div>
+        <div class="qp-row qp-row--command"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-calendar"/></svg></span><span class="qp-row__label">Date</span></div>
+        <hr class="qp-divider">
+        <div class="qp-row qp-row--menu"><span class="qp-row__label">Close menu</span><span class="qp-row__hint">esc</span></div>
+      </div>
+      <div class="qp-popover qp-menu" style="animation:none">
+        <div class="qp-menu__heading qp-menu__heading--strong">notes / archive</div>
+        <div class="qp-row qp-row--menu"><span class="qp-row__label">2023.md</span></div>
+        <div class="qp-menu__heading qp-menu__heading--strong">整个空间</div>
+        <div class="qp-row qp-row--menu is-current"><span class="qp-row__label">reading-list.md</span></div>
+      </div>
+    </div>
+    <p class="demo-note">第三个菜单：分组标题是认出下面各项所必需的（同名项靠它区分），用 <code class="qp-code">qp-menu__heading--strong</code>；长菜单限高 <code class="qp-code">--layout-menu-max-height</code>。</p>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-tooltip</code>（JS 定位的静态元素）/ <code>[data-qp-tooltip]</code>（纯 CSS，悬停 --delay-tooltip 后出现）— caption 字号。</div>
+    <div class="demo-row">
+      <figure class="demo-cell"><span class="qp-tooltip">陈编辑 · 6 分钟前</span><figcaption>qp-tooltip</figcaption></figure>
+      <figure class="demo-cell"><button class="qp-icon-btn" data-qp-tooltip="新建页面" aria-label="新建页面"><svg class="qp-icon"><use href="#i-plus"/></svg></button><figcaption>悬停试试</figcaption></figure>
+      <figure class="demo-cell" style="padding-bottom: var(--space-3xl)"><button class="qp-icon-btn is-hover" data-qp-tooltip="新建页面" aria-label="新建页面"><svg class="qp-icon"><use href="#i-plus"/></svg></button><figcaption>强制 is-hover</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="modal">
+  <h2>弹窗 / 命令面板 / 详情侧板 / 底部面板</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-overlay</code> > <code>qp-modal</code> + <code>__nav</code> <code>__body</code> <code>__title</code> <code>__close</code> <code>__actions</code> · <code>qp-modal--sm</code> — 不可逆操作确认 / 单列表单（<code>--sm</code>）/ 低频全局配置（左导航，导航行用 <code>qp-row--menu</code>）。关闭按钮是独立的 <code>qp-icon-btn</code>。（样板里放在局部舞台中）</div>
+    <div class="demo-stage">
+      <div class="qp-overlay">
+        <div class="qp-modal qp-modal--sm" role="dialog" aria-label="删除工作区">
+          <div class="qp-modal__body">
+            <h3 class="qp-modal__title">删除工作区</h3>
+            <p class="qp-desc" style="margin:0">这会永久删除工作区里的所有页面，无法撤销。输入工作区名确认。</p>
+            <input class="qp-input" placeholder="Acme notes">
+            <div class="qp-modal__actions"><button class="qp-btn">取消</button><button class="qp-btn qp-btn--danger">删除</button></div>
+          </div>
+          <button class="qp-icon-btn qp-modal__close" aria-label="关闭"><svg class="qp-icon"><use href="#i-x"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="demo-stage demo-stage--tall" style="margin-top: var(--space-xl)">
+      <div class="qp-overlay">
+        <div class="qp-modal" role="dialog" aria-label="设置" style="width: 100%; height: 100%">
+          <div class="qp-modal__nav">
+            <div class="qp-row qp-row--menu is-selected"><span class="qp-row__label">General</span></div>
+            <div class="qp-row qp-row--menu"><span class="qp-row__label">Members</span></div>
+          </div>
+          <div class="qp-modal__body" style="max-width: var(--layout-form-width)">
+            <h3 class="qp-modal__title">General</h3><hr class="qp-divider">
+            <div style="display:flex; align-items:center; gap: var(--space-xl)">
+              <div class="demo-col" style="flex:1; gap: 0"><span class="qp-label">Show line numbers</span><span class="qp-desc">打开后，你会在代码块左侧看到行号。</span></div>
+              <button class="qp-switch" role="switch" aria-checked="true" aria-label="Show line numbers"><span class="qp-switch__knob"></span></button>
+            </div>
+          </div>
+          <button class="qp-icon-btn qp-modal__close" aria-label="关闭"><svg class="qp-icon"><use href="#i-x"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-command</code> + <code>__input</code> <code>__list</code> <code>__foot</code> — 全局跳转 / 搜索；glass。默认不垫遮罩（<code>[模式]</code>），产品要遮罩时外层套 <code>qp-overlay</code>。入场是 qp-fade 占位。（样板已简化：用行内宽度缩小，真实宽度 <code>--layout-command-width</code>；模式层默认的右侧预览区没有采集、没有类，这里只画结果列）</div>
+    <div class="demo-stage demo-stage--tall" style="display:flex; justify-content:center; align-items:flex-start; padding-top: var(--space-2xl)">
+      <div class="qp-command" style="width: 640px; max-height: 360px">
+        <div class="qp-command__input"><svg class="qp-icon"><use href="#i-search"/></svg><input placeholder="搜索页面或输入命令" aria-label="搜索"></div>
+        <div class="qp-command__list">
+          <div class="qp-result is-current"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span><div class="qp-result__body"><span class="qp-result__title">reading-list.md</span><span class="qp-result__meta">notes / archive · Edited 6m ago</span></div></div>
+          <div class="qp-result"><span class="qp-iconbox"><span class="qp-lang qp-lang--ts">TS</span></span><div class="qp-result__body"><span class="qp-result__title">store.ts</span><span class="qp-result__meta">app / src · 昨天</span></div></div>
+        </div>
+        <div class="qp-command__foot">↵ Open · Ctrl+↵ Open in new tab · esc Close</div>
+      </div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-drawer</code> — 需要和列表对照看的单条记录；贴视口右缘、不加遮罩、左侧可交互；顶部工具行放「»」关闭、「↗」全屏打开（<code>[模式]</code>）。<code>qp-sheet</code> + <code>__handle</code> — 移动端底部面板；<code>qp-sidebar--drawer</code> — 移动端文件树抽屉，下面垫 <code>qp-overlay</code>（均为 [估计]）。</div>
+    <div class="demo-stage" style="display:flex; justify-content:flex-end">
+      <aside class="qp-drawer" style="width: 50%">
+        <div class="qp-topbar"><button class="qp-icon-btn" aria-label="关闭" data-qp-tooltip="关闭"><svg class="qp-icon"><use href="#i-chevrons-right"/></svg></button><button class="qp-icon-btn" aria-label="全屏打开" data-qp-tooltip="全屏打开"><svg class="qp-icon"><use href="#i-arrow-up-right"/></svg></button><span style="flex:1"></span></div>
+        <div style="padding: 0 var(--space-2xl)"><h2 class="qp-title">Reading list</h2></div>
+      </aside>
+    </div>
+    <div class="demo-stage" style="margin-top: var(--space-xl)">
+      <div class="qp-overlay"></div>
+      <div class="qp-sidebar qp-sidebar--drawer" ><div class="qp-sidebar__group" style="margin-top: var(--space-md)"><div class="qp-sidebar__heading">文件（qp-sidebar--drawer）</div><div class="qp-row qp-row--nav"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-folder"/></svg></span><span class="qp-row__label">notes</span></div></div></div>
+      <div class="qp-sheet" style="position:absolute; right: var(--space-xl); bottom: 0; width: 320px"><span class="qp-sheet__handle"></span><div class="qp-section-title">评论</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="toast">
+  <h2>Toast / Inline message</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-toast-layer</code> > <code>qp-toast</code> — 影响不在视野内的操作；单行、停留 --duration-toast、hover 暂停。</div>
+    <div class="demo-stage" style="height: 120px"><div class="qp-toast-layer"><div class="qp-toast">已复制链接</div></div></div>
+    <div class="demo-row" style="margin-top: var(--space-xl)">
+      <div class="qp-toast"><span class="qp-iconbox"><svg class="qp-icon"><use href="#i-file-text"/></svg></span>已移到 archive<button class="qp-btn qp-btn--ghost">Undo</button></div>
+      <div class="qp-toast">已复制链接</div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-msg</code>（中性）<code>--success</code> <code>--warning</code> <code>--danger</code> + <code>__actions</code> — 校验和权限问题；中性提示不用 accent 色系。</div>
+    <div class="demo-col" style="max-width: 560px">
+      <div class="qp-msg"><svg class="qp-icon"><use href="#i-info"/></svg><span>索引还没有建好，搜索结果可能不完整。</span></div>
+      <div class="qp-msg qp-msg--success"><svg class="qp-icon"><use href="#i-circle-check"/></svg><span>已重新连接。</span></div>
+      <div class="qp-msg qp-msg--warning"><svg class="qp-icon"><use href="#i-alert"/></svg><span>连接已断开，现在只能查看。</span></div>
+      <div class="qp-msg qp-msg--danger"><svg class="qp-icon"><use href="#i-alert"/></svg><span>网络超时，没能保存，请稍后重试。</span><span class="qp-msg__actions"><button class="qp-btn">重试</button></span></div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-msg qp-msg--bar</code> — 贴边的全宽提示条（视图顶部状态）。</div>
+    <div class="demo-col">
+      <div class="qp-msg qp-msg--bar"><svg class="qp-icon"><use href="#i-eye"/></svg><span>正在看的是 3 天前的副本</span></div>
+      <div class="qp-msg qp-msg--bar qp-msg--warning"><svg class="qp-icon"><use href="#i-alert"/></svg><span>已断开，只读</span></div>
+      <div class="qp-msg qp-msg--bar qp-msg--danger"><svg class="qp-icon"><use href="#i-alert"/></svg><span>文件读不到，可以重试或查看历史版本</span><span class="qp-msg__actions"><button class="qp-btn">重试</button><button class="qp-btn">查看历史</button></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="empty">
+  <h2>空状态 / 骨架屏</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-empty</code> — 一行说明 + 一个"+ 动词"ghost 入口；不放插画。</div>
+    <div class="qp-empty"><span>No upcoming events</span><button class="qp-btn qp-btn--ghost"><svg class="qp-icon"><use href="#i-plus"/></svg>New event</button></div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-skeleton</code>（body 行高）/ <code>--ui</code>（ui 行高）— 列表 / 预览 / 结果的加载；宽度由行内 style 给；reduced-motion 下静止。</div>
+    <div class="demo-col" style="width: 420px; gap: 0">
+      <div class="qp-skeleton"></div><div class="qp-skeleton" style="width:80%"></div><div class="qp-skeleton" style="width:60%"></div>
+      <div class="qp-skeleton qp-skeleton--ui" style="width:40%; margin-top: var(--space-md)"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="table">
+  <h2>数据库表格</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-table</code> + <code>__th</code> <code>__title</code> <code>__affordance</code> <code>__open</code> <code>__sub</code> <code>__new</code> — 行 hover 不加背景，只淡入拖拽柄 / 勾选框 / Open；无斑马纹、表头无底色。</div>
+    <table class="qp-table">
+      <thead><tr>
+        <th style="width:44px"></th>
+        <th style="width:260px"><span class="qp-table__th"><svg class="qp-icon"><use href="#i-align-left"/></svg>Name</span></th>
+        <th style="width:140px"><span class="qp-table__th"><svg class="qp-icon"><use href="#i-calendar"/></svg>Due</span></th>
+        <th style="width:160px"><span class="qp-table__th"><svg class="qp-icon"><use href="#i-circle-check"/></svg>Status</span></th>
+      </tr></thead>
+      <tbody>
+        <tr><td></td><td class="qp-table__title">Rest 行</td><td>11-07</td><td><span class="qp-tag qp-status qp-tag--blue"><span class="qp-dot qp-dot--gray"></span>In progress</span></td></tr>
+        <tr class="is-hover"><td><span class="qp-table__affordance" style="display:inline-flex; gap: var(--space-2xs); align-items:center"><svg class="qp-icon"><use href="#i-grip"/></svg><input type="checkbox" class="qp-checkbox" aria-label="选择"></span></td>
+          <td class="qp-table__title"><span style="display:flex; align-items:center; gap: var(--space-md)"><span style="flex:1; overflow:hidden; text-overflow:ellipsis">Hover 行（强制）</span><button class="qp-btn qp-btn--ghost qp-btn--inline qp-table__open">Open</button></span></td><td>11-08</td><td><span class="qp-tag qp-status qp-tag--gray"><span class="qp-dot qp-dot--gray"></span>Not started</span></td></tr>
+        <tr><td></td><td class="qp-table__title"><span class="qp-table__sub">子项</span></td><td></td><td></td></tr>
+        <tr><td></td><td><span class="qp-table__sub qp-table__new">+ Add sub-item</span></td><td></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="tabs">
+  <h2>标签页</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-tabs</code> > <code>qp-tab</code>（<code>is-selected</code> / <code>aria-selected</code>）+ <code>__count</code> — 分段 tab；选中不用强调色、下划线或加粗。</div>
+    <div class="demo-row">
+      <div class="qp-tabs"><button class="qp-tab is-selected">全部 <span class="qp-tab__count">3</span></button><button class="qp-tab">评论</button><button class="qp-tab is-hover">hover</button><button class="qp-tab is-pressed">active</button><button class="qp-tab is-focus">focus</button><button class="qp-tab is-selected is-hover">选中 + hover</button></div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-tab qp-tab--view</code> — 视图 tab（高 --size-row-command）。侧边导航式 tab 用 <code>qp-row qp-row--menu</code>。</div>
+    <div class="qp-tabs"><button class="qp-tab qp-tab--view is-selected">Table</button><button class="qp-tab qp-tab--view">Board</button><button class="qp-tab qp-tab--view">Calendar</button></div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="content">
+  <h2>内容块（Markdown）</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-prose</code>（渲染出的 Markdown 直接放进去）· <code>qp-display</code> <code>qp-title</code> <code>qp-h1/2/3</code> <code>qp-section-title</code> <code>qp-link</code> <code>qp-code</code> <code>qp-quote</code> <code>qp-md-table</code> <code>qp-math(--block)</code> — 内容用 body 级，标题 600、只靠字号分级。</div>
+    <article class="qp-prose demo-prose-col">
+      <h1 class="qp-display">读书笔记</h1>
+      <h2>二级标题</h2>
+      <p>正文段落 16/24。<strong>加粗用 600</strong>，链接 <a href="#content">像这样</a>，行内代码 <code>useStore()</code> 不着色，行内公式 <span class="qp-math" data-tex="e^{i\pi}+1=0">e^{iπ}+1=0</span>。</p>
+      <ul><li>无序列表项</li><li>缩进 --space-2xl，项间距 --space-2xs</li></ul>
+      <ol><li>有序列表序号不着色</li><li>第二项</li></ol>
+      <blockquote>引用块：左侧竖线，不加背景。</blockquote>
+      <h3>三级标题</h3>
+      <div class="qp-md-table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td>id</td><td>主键</td></tr><tr><td>title</td><td>标题</td></tr></tbody></table></div>
+      <div class="qp-math qp-math--block" data-tex="\int_0^1 x^2\,dx = \tfrac{1}{3}" data-display="1">∫₀¹ x² dx = 1/3</div>
+    </article>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-title-input</code> — 空文档的标题：和 <code>qp-display</code> 同级，透明无边框，新建后光标直接停在这里。<code>qp-figcaption</code>（<code>qp-prose figcaption</code>）— 图片 / 图表下方的说明。</div>
+    <div class="demo-prose-col">
+      <input class="qp-title-input" placeholder="无标题" aria-label="标题" style="width:100%">
+      <figure class="qp-prose" style="margin: var(--space-xl) 0 0">
+        <div class="qp-callout" style="height: 96px"></div>
+        <figcaption>图 1 每月新建页面数</figcaption>
+      </figure>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-h1</code> <code>qp-h2</code> <code>qp-h3</code> <code>qp-link</code> <code>qp-quote</code> <code>qp-md-table</code> — 不在 <code>qp-prose</code> 里时（如自己拼的内容块）用的同款类。</div>
+    <div class="demo-prose-col qp-prose">
+      <div class="qp-h1" style="margin-top:0">H1 标题</div><div class="qp-h2">H2 标题</div><div class="qp-h3">H3 标题</div>
+      <p>正文里的 <span class="qp-link">链接</span>。</p>
+      <div class="qp-quote">单独使用的引用块。</div>
+      <div class="qp-md-table-wrap"><table class="qp-md-table"><thead><tr><th>列</th><th>值</th></tr></thead><tbody><tr><td>a</td><td>1</td></tr></tbody></table></div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-codeblock</code> + <code>__head</code> <code>__copy</code> <code>__pre</code>（或内部 pre）+ <code>qp-tok-*</code> — 版心里的代码块；语言名 caption + tertiary，复制按钮 hover 才出现。</div>
+    <div class="demo-row">
+      <div class="qp-codeblock demo-box" style="width: 420px">
+        <div class="qp-codeblock__head"><span>TypeScript</span><button class="qp-btn qp-btn--ghost qp-btn--inline qp-codeblock__copy"><svg class="qp-icon"><use href="#i-copy"/></svg>Copy</button></div>
+<pre class="qp-codeblock__pre"><span class="qp-tok-comment">// 只用 --color-syntax-*</span>
+<span class="qp-tok-keyword">export function</span> <span class="qp-tok-function">open</span><span class="qp-tok-punct">(</span>path<span class="qp-tok-punct">:</span> <span class="qp-tok-type">string</span><span class="qp-tok-punct">) {</span>
+  <span class="qp-tok-keyword">return</span> <span class="qp-tok-builtin">fetch</span><span class="qp-tok-punct">(</span><span class="qp-tok-string">`/f/${path}`</span><span class="qp-tok-punct">, {</span> <span class="qp-tok-property">retry</span><span class="qp-tok-punct">:</span> <span class="qp-tok-number">3</span> <span class="qp-tok-punct">})</span>
+<span class="qp-tok-punct">}</span></pre>
+      </div>
+      <div class="qp-codeblock is-hover" style="width: 320px">
+        <div class="qp-codeblock__head"><span>hover（复制按钮出现）</span><button class="qp-btn qp-btn--ghost qp-btn--inline qp-codeblock__copy"><svg class="qp-icon"><use href="#i-copy"/></svg>Copy</button></div>
+        <pre class="qp-codeblock__pre"><span class="qp-tok-meta">@dataclass</span>
+<span class="qp-tok-keyword">class</span> <span class="qp-tok-type">Note</span>: ...</pre>
+      </div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-code-lines</code> > <code>qp-code-line[.is-current]</code> + <code>__num</code> — 带行号的代码 / 代码文件视图；当前行（光标 / 键盘所在）是中性底色。v0.7 由 <code>is-active</code> 改名为通用状态类 <code>is-current</code>。</div>
+    <div class="qp-code-lines" style="background: var(--color-bg-code); border-radius: var(--radius-md); padding: var(--space-md) 0; width: 420px">
+      <div class="qp-code-line"><span class="qp-code-line__num">1</span><span><span class="qp-tok-keyword">import</span> fs <span class="qp-tok-keyword">from</span> <span class="qp-tok-string">'node:fs'</span></span></div>
+      <div class="qp-code-line is-current"><span class="qp-code-line__num">2</span><span><span class="qp-tok-keyword">const</span> src <span class="qp-tok-punct">=</span> fs.<span class="qp-tok-function">readFileSync</span>(p)</span></div>
+      <div class="qp-code-line"><span class="qp-code-line__num">3</span><span><span class="qp-tok-comment"># is-current = 当前行</span></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="comments">
+  <h2>评论锚点 / 线程 / 查找命中</h2>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-comment-anchor</code>（hover / <code>is-selected</code> 当前线程）· <code>qp-find-match(--current)</code> — 被评论的文字区间 / 页内查找。</div>
+    <p class="qp-prose">普通文字 <span class="qp-comment-anchor">被评论的文字</span>，<span class="qp-comment-anchor is-hover">hover</span>，<span class="qp-comment-anchor is-selected">当前线程</span>；查找 <span class="qp-find-match">命中</span> 和 <span class="qp-find-match qp-find-match--current">当前命中</span>。</p>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-thread</code> + <code>__body</code> — 平铺线程（D5）：无边框、无色条、无阴影；当前线程 <code>is-selected</code>，比 hover 的线程深一档（D17）。</div>
+    <div class="demo-row">
+      <div class="qp-thread demo-box"><div class="qp-author"><span class="qp-avatar">我</span><span class="qp-author__name">陈</span><span class="qp-author__time">6 分钟前</span></div><div class="qp-thread__body">这里的结论需要引用来源。</div></div>
+      <div class="qp-thread is-hover demo-box"><div class="qp-author"><span class="qp-avatar">我</span><span class="qp-author__name">hover</span></div><div class="qp-thread__body">hover 叠加层。</div></div>
+      <div class="qp-thread is-selected demo-box"><div class="qp-author"><span class="qp-avatar"><svg class="qp-icon"><use href="#i-sparkles"/></svg></span><span class="qp-author__name">助手</span><span class="qp-badge">AI</span><span class="qp-author__time">刚刚</span></div><div class="qp-thread__body">当前线程：比 hover 深一档。</div></div>
+    </div>
+  </div>
+  <div class="demo-group">
+    <div class="demo-cls"><code>qp-thread__reply</code> + <code>__reply-actions</code> — 线程里的回复区，和正文对齐；「回复」secondary，其余操作 ghost，「取消」ghost。</div>
+    <div class="qp-thread is-selected" style="width: 320px">
+      <div class="qp-author"><span class="qp-avatar">我</span><span class="qp-author__name">陈</span><span class="qp-author__time">6 分钟前</span></div>
+      <div class="qp-thread__body">这里的结论需要引用来源。</div>
+      <div class="qp-thread__reply"><textarea class="qp-input" rows="2" placeholder="回复…"></textarea>
+        <div class="qp-thread__reply-actions"><button class="qp-btn">回复</button><button class="qp-btn qp-btn--ghost">解决</button><span style="flex:1"></span><button class="qp-btn qp-btn--ghost">取消</button></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<section id="compose">
+  <h2>组合示例：列表页页头</h2>
+  <div class="demo-group">
+    <div class="demo-cls">列表页页头（组合，不另建类）= <code>qp-h2</code> + <code>qp-desc</code> + 右侧按钮（筛选开关 <code>qp-btn--ghost is-on</code>，批量操作 <code>qp-btn</code>）— 排布由产品布局负责；不加描边工具栏。</div>
+    <div style="display:flex; align-items:flex-end; gap: var(--space-md); max-width: 720px">
+      <div class="demo-col" style="flex:1; gap: var(--space-2xs)"><h2 class="qp-h2" style="margin:0">Pages</h2><span class="qp-desc">这个工作区里所有页面，按最后编辑时间排。</span></div>
+      <button class="qp-btn qp-btn--ghost is-on" aria-pressed="true">只看我的</button>
+      <button class="qp-btn" disabled>批量移动</button>
+    </div>
+  </div>
+</section>
+</main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script>
+  // 离线时保留源码文字；联网时用 KaTeX 渲染
+  if (window.katex) document.querySelectorAll('[data-tex]').forEach(el => {
+    try { katex.render(el.dataset.tex, el, { displayMode: !!el.dataset.display, throwOnError: false }) } catch (e) {}
+  })
+</script>
+</body>
+</html>

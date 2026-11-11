@@ -1,6 +1,6 @@
 # 降低软件复杂度的开发规范
 
-参考《[软件设计的哲学》中文版](https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/)，以下条款供系统设计、代码编写与审查时作为补充规范。
+参考《[软件设计的哲学》中文版](https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/)，以下条款供系统设计、代码编写与审查时作为补充规范。适用于后端与通用设计；App（React）代码在此基础上按 [React 开发规范](react-guidelines.md) 编写与自查。
 
 ## 总体判断
 

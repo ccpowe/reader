@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>notion 风格包 v0.2 · 组件样板</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="notion.css">
+<style>
+  /* 样板页自己的排版（demo- 前缀，不属于风格包） */
+  body { margin: 0; }
+  .demo-page { max-width: calc(var(--layout-settings-content-w) + var(--layout-sidebar-width)); margin: 0 auto; padding: var(--space-44) var(--space-24) var(--space-96); }
+  .demo-intro { color: var(--color-text-secondary); font-size: var(--text-ui-size); line-height: var(--text-ui-line); margin: var(--space-8) 0 0; }
+  .demo-toc { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-16); }
+  .demo-section { padding-top: var(--space-44); }
+  .demo-section > h2 { margin: 0 0 var(--space-4); font-size: var(--text-h3-size); line-height: var(--text-h3-line); font-weight: var(--font-weight-semibold); }
+  .demo-group { display: grid; grid-template-columns: 260px 1fr; gap: var(--space-24); padding: var(--space-16) 0; box-shadow: inset 0 calc(-1 * var(--border-hairline-width)) 0 0 var(--color-border-hairline); }
+  .demo-label code { font-family: var(--font-mono); font-size: var(--text-small-size); line-height: var(--text-small-line-alt); color: var(--color-text-primary); word-break: break-all; }
+  .demo-label p { margin: var(--space-4) 0 0; font-size: var(--text-small-size); line-height: var(--text-small-line-alt); color: var(--color-text-secondary); }
+  .demo-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-12); }
+  .demo-col { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-12); }
+  .demo-col > .nt-input, .demo-col > .nt-search-field, .demo-col > .nt-skeleton--line, .demo-col > .nt-progress, .demo-col > .nt-code-block { align-self: stretch; }
+  .demo-state { display: inline-flex; flex-direction: column; align-items: flex-start; gap: var(--space-4); }
+  .demo-state > small { font-size: var(--text-micro-size); line-height: var(--text-micro-line); color: var(--color-text-tertiary); font-family: var(--font-mono); }
+  .demo-surface-sidebar { background: var(--color-bg-sidebar); padding: var(--space-8); border-radius: var(--radius-md); width: 270px; }
+  .demo-static { position: relative; }
+  .demo-modal-frame { position: relative; height: 260px; overflow: hidden; border-radius: var(--radius-md); }
+  .demo-modal-frame .nt-modal { position: absolute; }
+  .demo-modal-frame .nt-layer { position: absolute; }
+  .demo-layer-anchor { --nt-x: var(--space-24); --nt-y: var(--space-44); }
+  .demo-table { --nt-table-columns: 280px 160px 140px 140px; padding-left: var(--space-24); overflow-x: auto; }
+  .demo-table-simple { --nt-table-columns: 320px 200px 1fr; }
+  .demo-search { width: 600px; height: auto; }
+  .demo-peek { width: 520px; }
+  .demo-peek-body { padding: var(--space-8) var(--space-24) var(--space-24); }
+  .demo-width-280 { width: 280px; }
+  .demo-width-360 { width: 360px; }
+  .demo-doc { width: 720px; max-width: 100%; padding-left: var(--space-24); }
+</style>
+</head>
+<body class="nt-app">
+
+<!-- 图标：inline SVG（20 网格，1.25 描边，圆角端点）。实心只用于 Home、折叠三角，以及由圆点组成的 ··· 和拖拽把手；
+     勾和下拉箭头在小尺寸下描边略粗。产品也可以换成 Lucide，strokeWidth 设为 1.25 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-page" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 2.75h6l3.75 3.75v10a.75.75 0 0 1-.75.75h-9a.75.75 0 0 1-.75-.75V3.5a.75.75 0 0 1 .75-.75Z"/><path d="M11.25 2.75V6.5H15"/><path d="M7.5 10.5h5M7.5 13.25h5"/></g></symbol>
+    <symbol id="i-plus" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></symbol>
+    <symbol id="i-more" viewBox="0 0 20 20"><g fill="currentColor"><circle cx="4.5" cy="10" r="1.1"/><circle cx="10" cy="10" r="1.1"/><circle cx="15.5" cy="10" r="1.1"/></g></symbol>
+    <symbol id="i-chev" viewBox="0 0 20 20"><path d="m5.5 8 4.5 4.5L14.5 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-caret" viewBox="0 0 20 20"><path d="M6 7.5h8l-4 5.5Z" fill="currentColor"/></symbol>
+    <symbol id="i-search" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"><circle cx="8.75" cy="8.75" r="5"/><path d="m12.5 12.5 4 4"/></g></symbol>
+    <symbol id="i-x" viewBox="0 0 20 20"><path d="m5.5 5.5 9 9M14.5 5.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 20 20"><path d="m4.5 10.5 3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"><rect x="4.5" y="8.5" width="11" height="8" rx="1.5"/><path d="M7 8.5V6.5a3 3 0 0 1 6 0v2"/></g></symbol>
+    <symbol id="i-link" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"><path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1"/><path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/></g></symbol>
+    <symbol id="i-star" viewBox="0 0 20 20"><path d="m10 3 2.1 4.4 4.7.6-3.4 3.3.8 4.7L10 13.8 5.8 16l.8-4.7L3.2 8l4.7-.6L10 3Z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></symbol>
+    <symbol id="i-home" viewBox="0 0 20 20"><path d="M3.5 8.6 10 3.5l6.5 5.1V16a.9.9 0 0 1-.9.9h-3.4v-4.6H7.8v4.6H4.4a.9.9 0 0 1-.9-.9Z" fill="currentColor"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"><path d="M3.5 11 5.6 4.5h8.8L16.5 11v4.5H3.5Z"/><path d="M3.5 11h4a2.5 2.5 0 0 0 5 0h4"/></g></symbol>
+    <symbol id="i-compose" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.75H5A1.25 1.25 0 0 0 3.75 5v10A1.25 1.25 0 0 0 5 16.25h10A1.25 1.25 0 0 0 16.25 15v-4"/><path d="M14.6 3.2a1.4 1.4 0 0 1 2 2L10 11.8l-2.6.6.6-2.6Z"/></g></symbol>
+    <symbol id="i-text" viewBox="0 0 20 20"><path d="M4 5.5h12M4 10h12M4 14.5h7" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></symbol>
+    <symbol id="i-status" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25"><circle cx="10" cy="10" r="6"/><path d="M10 4v6l4 3" stroke-linecap="round"/></g></symbol>
+    <symbol id="i-user" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25"><circle cx="10" cy="7" r="3"/><path d="M4.5 16a5.5 5.5 0 0 1 11 0" stroke-linecap="round"/></g></symbol>
+    <symbol id="i-cal" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"><rect x="3.5" y="4.5" width="13" height="12" rx="1.5"/><path d="M3.5 8.5h13M7 3v3M13 3v3" stroke-linecap="round"/></g></symbol>
+    <symbol id="i-filter" viewBox="0 0 20 20"><path d="M4 6h12M6.5 10h7M9 14h2" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></symbol>
+    <symbol id="i-sort" viewBox="0 0 20 20"><path d="M7 4v12M7 16l-3-3M13 16V4M13 4l3 3" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h12M8 6V4.5h4V6M5.5 6l.7 10h7.6l.7-10"/></g></symbol>
+    <symbol id="i-copy" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"><rect x="7" y="7" width="9" height="9" rx="1.5"/><path d="M13 7V5.5A1.5 1.5 0 0 0 11.5 4h-6A1.5 1.5 0 0 0 4 5.5v6A1.5 1.5 0 0 0 5.5 13H7"/></g></symbol>
+    <symbol id="i-help" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M8 8a2 2 0 1 1 2.8 1.8c-.5.3-.8.7-.8 1.2v.5"/><circle cx="10" cy="14" r=".4" fill="currentColor"/></g></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 20 20"><path d="M10 3.5c.6 3.4 2.1 5 5.5 6.5-3.4 1.5-4.9 3.1-5.5 6.5-.6-3.4-2.1-5-5.5-6.5 3.4-1.5 4.9-3.1 5.5-6.5Z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 20 20"><path d="M7 13 13 7M8 7h5v5" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-loader" viewBox="0 0 20 20"><path d="M10 3.5a6.5 6.5 0 1 0 6.5 6.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.5"/><path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M5.05 14.95l1.4-1.4M13.55 6.45l1.4-1.4"/></g></symbol>
+    <symbol id="i-sliders" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"><path d="M4 6h7M15 6h1M4 14h1M9 14h7"/><circle cx="13" cy="6" r="2"/><circle cx="7" cy="14" r="2"/></g></symbol>
+    <symbol id="i-drag" viewBox="0 0 20 20"><g fill="currentColor"><circle cx="7.5" cy="5" r="1.2"/><circle cx="12.5" cy="5" r="1.2"/><circle cx="7.5" cy="10" r="1.2"/><circle cx="12.5" cy="10" r="1.2"/><circle cx="7.5" cy="15" r="1.2"/><circle cx="12.5" cy="15" r="1.2"/></g></symbol>
+  </defs>
+</svg>
+
+<div class="demo-page">
+  <h1 class="nt-page-title">notion 风格包 · 组件样板</h1>
+  <p class="demo-intro">v0.2。样板页按组件分区，不算一个"视图"：这里同时出现多个 700 标题、多个 primary 只是为了展示。引用 <code class="nt-code">tokens.css</code> + <code class="nt-code">notion.css</code>。每组左边是类名和一句用法，右边是各种状态。带 <code class="nt-code">is-hover</code> / <code class="nt-code">is-active</code> / <code class="nt-code">is-focus</code> 的是强制状态，只在样板页用；产品里靠真实的 :hover / :active / :focus-visible。</p>
+  <nav class="demo-toc">
+    <a class="nt-chip" href="#buttons">按钮</a><a class="nt-chip" href="#badges">徽标与标签</a><a class="nt-chip" href="#forms">表单</a>
+    <a class="nt-chip" href="#rows">列表行 / 树行</a><a class="nt-chip" href="#chrome">侧栏与顶栏</a><a class="nt-chip" href="#tabs">标签页</a>
+    <a class="nt-chip" href="#overlays">菜单 / tooltip / 弹窗 / toast</a><a class="nt-chip" href="#feedback">空状态与加载</a>
+    <a class="nt-chip" href="#table">表格</a><a class="nt-chip" href="#settings">设置页</a><a class="nt-chip" href="#search">搜索</a>
+    <a class="nt-chip" href="#peek">Side Peek</a><a class="nt-chip" href="#content">内容块</a>
+  </nav>
+
+  <!-- ================================================================ 按钮 -->
+  <section class="demo-section" id="buttons">
+    <h2>按钮</h2>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-btn.nt-btn--primary</code><p>视图里最主要的那一个动作（新建、保存）。一个视图最多一个。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><button class="nt-btn nt-btn--primary">New page</button><small>rest</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--primary is-hover">New page</button><small>is-hover</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--primary is-active">New page</button><small>is-active</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--primary is-focus">New page</button><small>is-focus</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--primary" disabled>New page</button><small>:disabled</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-split &gt; .nt-btn + .nt-split__toggle</code><p>主按钮带一个"更多新建方式"的箭头段。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><span class="nt-split"><button class="nt-btn nt-btn--primary">New</button><button class="nt-btn nt-btn--primary nt-split__toggle" aria-label="More"><svg class="nt-icon nt-icon--xs"><use href="#i-chev"/></svg></button></span><small>rest</small></span>
+        <span class="demo-state"><span class="nt-split"><button class="nt-btn nt-btn--primary">New</button><button class="nt-btn nt-btn--primary nt-split__toggle is-hover" aria-label="More"><svg class="nt-icon nt-icon--xs"><use href="#i-chev"/></svg></button></span><small>toggle is-hover</small></span>
+        <span class="demo-state"><span class="nt-split"><button class="nt-btn nt-btn--primary">New</button><button class="nt-btn nt-btn--primary nt-split__toggle is-focus" aria-label="More"><svg class="nt-icon nt-icon--xs"><use href="#i-chev"/></svg></button></span><small>toggle is-focus</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-btn.nt-btn--secondary</code><p>蓝色浅底的辅助动作（复制链接）。不和 primary 并排；如果这个动作就是视图存在的理由，用 primary。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><button class="nt-btn nt-btn--secondary"><svg class="nt-icon nt-icon--sm"><use href="#i-link"/></svg>Copy link</button><small>rest</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--secondary is-hover"><svg class="nt-icon nt-icon--sm"><use href="#i-link"/></svg>Copy link</button><small>is-hover</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--secondary is-focus">Copy link</button><small>is-focus</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--secondary" disabled>Copy link</button><small>:disabled</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-btn.nt-btn--outline</code> + <code>.nt-btn__chev</code><p>下拉按钮 / 设置行里的选择器，显示当前值。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><button class="nt-btn nt-btn--outline">Use system setting<svg class="nt-icon nt-icon--xs nt-btn__chev"><use href="#i-chev"/></svg></button><small>rest</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--outline is-hover">Use system setting<svg class="nt-icon nt-icon--xs nt-btn__chev"><use href="#i-chev"/></svg></button><small>is-hover</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--outline is-active">Use system setting<svg class="nt-icon nt-icon--xs nt-btn__chev"><use href="#i-chev"/></svg></button><small>is-active</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--outline is-focus">Use system setting<svg class="nt-icon nt-icon--xs nt-btn__chev"><use href="#i-chev"/></svg></button><small>is-focus</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--outline" disabled>Export</button><small>:disabled</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-btn</code>（ghost）· <code>.nt-btn--muted</code> · <code>.nt-btn--sm</code><p>没有底色的文字按钮（Share、角色下拉）。muted = 次要灰字。sm = 24px 高。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><button class="nt-btn"><svg class="nt-icon nt-icon--sm"><use href="#i-lock"/></svg>Share</button><small>rest</small></span>
+        <span class="demo-state"><button class="nt-btn is-hover"><svg class="nt-icon nt-icon--sm"><use href="#i-lock"/></svg>Share</button><small>is-hover</small></span>
+        <span class="demo-state"><button class="nt-btn is-active">Share</button><small>is-active</small></span>
+        <span class="demo-state"><button class="nt-btn is-focus">Share</button><small>is-focus</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--muted">Workspace owner<svg class="nt-icon nt-icon--xs nt-btn__chev"><use href="#i-chev"/></svg></button><small>--muted</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--muted is-hover">Workspace owner<svg class="nt-icon nt-icon--xs nt-btn__chev"><use href="#i-chev"/></svg></button><small>--muted is-hover</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--sm">Small</button><small>--sm</small></span>
+        <span class="demo-state"><button class="nt-btn" disabled>Share</button><small>:disabled</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-btn.nt-btn--danger</code><p>只用于不可撤销的删除：放在"Danger zone"或删除确认弹窗里。菜单里的"移到回收站"不用红色。hover 未采到，所以没有 hover 变化。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><button class="nt-btn nt-btn--danger">Delete workspace</button><small>rest</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--danger is-focus">Delete workspace</button><small>is-focus</small></span>
+        <span class="demo-state"><button class="nt-btn nt-btn--danger" disabled>Delete workspace</button><small>:disabled</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-icon-btn</code> · <code>--sm</code> · <code>--round</code> · <code>.is-on</code><p>只有图标的动作（链接、收藏、···）。必须有 aria-label。round = 搜索面板右上角的蓝色图标。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><button class="nt-icon-btn" aria-label="Favorite"><svg class="nt-icon"><use href="#i-star"/></svg></button><small>rest</small></span>
+        <span class="demo-state"><button class="nt-icon-btn is-hover" aria-label="Favorite"><svg class="nt-icon"><use href="#i-star"/></svg></button><small>is-hover</small></span>
+        <span class="demo-state"><button class="nt-icon-btn is-active" aria-label="Favorite"><svg class="nt-icon"><use href="#i-star"/></svg></button><small>is-active</small></span>
+        <span class="demo-state"><button class="nt-icon-btn is-focus" aria-label="Favorite"><svg class="nt-icon"><use href="#i-star"/></svg></button><small>is-focus</small></span>
+        <span class="demo-state"><button class="nt-icon-btn is-on" aria-label="Favorite" aria-pressed="true"><svg class="nt-icon"><use href="#i-star"/></svg></button><small>is-on</small></span>
+        <span class="demo-state"><button class="nt-icon-btn" aria-label="Favorite" disabled><svg class="nt-icon"><use href="#i-star"/></svg></button><small>:disabled</small></span>
+        <span class="demo-state"><button class="nt-icon-btn nt-icon-btn--sm" aria-label="Close"><svg class="nt-icon nt-icon--sm"><use href="#i-x"/></svg></button><small>--sm</small></span>
+        <span class="demo-state"><button class="nt-icon-btn nt-icon-btn--round" aria-label="Ask AI"><svg class="nt-icon"><use href="#i-sparkle"/></svg></button><small>--round</small></span>
+        <span class="demo-state"><button class="nt-icon-btn nt-icon-btn--round is-hover" aria-label="Ask AI"><svg class="nt-icon"><use href="#i-sparkle"/></svg></button><small>--round is-hover</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-fab</code><p>右下角浮动帮助按钮。唯一带弹性动效的元素。位置由产品定。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><button class="nt-fab" aria-label="Help"><svg class="nt-icon"><use href="#i-help"/></svg></button><small>rest</small></span>
+        <span class="demo-state"><button class="nt-fab is-hover" aria-label="Help"><svg class="nt-icon"><use href="#i-help"/></svg></button><small>is-hover</small></span>
+        <span class="demo-state"><button class="nt-fab is-focus" aria-label="Help"><svg class="nt-icon"><use href="#i-help"/></svg></button><small>is-focus</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-link</code> · <code>.nt-link--muted</code> · <code>.nt-icon--*</code> · <code>.nt-spin</code><p>链接用蓝字。muted = 灰色带下划线的提示链接。图标尺寸 xs–xl，颜色继承。spin = 加载中旋转。</p></div>
+      <div class="demo-row">
+        <a class="nt-link" href="#buttons">Learn more</a>
+        <a class="nt-link is-focus" href="#buttons">is-focus</a>
+        <a class="nt-link nt-link--muted" href="#buttons">create a template</a>
+        <svg class="nt-icon nt-icon--xs"><use href="#i-page"/></svg>
+        <svg class="nt-icon nt-icon--sm"><use href="#i-page"/></svg>
+        <svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg>
+        <svg class="nt-icon nt-icon--lg"><use href="#i-page"/></svg>
+        <svg class="nt-icon nt-icon--xl"><use href="#i-page"/></svg>
+        <svg class="nt-icon nt-icon--secondary"><use href="#i-page"/></svg>
+        <svg class="nt-icon nt-icon--tertiary"><use href="#i-page"/></svg>
+        <svg class="nt-icon nt-icon--sm nt-icon--secondary nt-spin" role="status" aria-label="Loading"><use href="#i-loader"/></svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 徽标与标签 -->
+  <section class="demo-section" id="badges">
+    <h2>键帽、徽标、标签、状态点、头像</h2>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-kbd</code><p>快捷键提示，放在搜索框右侧、菜单底栏。</p></div>
+      <div class="demo-row"><span class="nt-kbd">Ctrl+K</span><span class="nt-kbd">esc</span><span class="nt-kbd">Ctrl+↵</span></div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-badge</code> · <code>.nt-badge--new</code><p>灰底 = 说明性徽标（当前页面）；new = 菜单里的新功能。</p></div>
+      <div class="demo-row"><span class="nt-badge">Current page</span><span class="nt-badge nt-badge--new">New</span></div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-tag.nt-tag--{hue}</code><p>数据分类标签（选择属性）。数据色（tag / status）是界面里唯一的多色元素，不要用在 chrome 上。</p></div>
+      <div class="demo-row">
+        <span class="nt-tag nt-tag--gray">Gray</span><span class="nt-tag nt-tag--brown">Brown</span><span class="nt-tag nt-tag--orange">Orange</span>
+        <span class="nt-tag nt-tag--yellow">Yellow</span><span class="nt-tag nt-tag--green">Green</span><span class="nt-tag nt-tag--blue">Blue</span>
+        <span class="nt-tag nt-tag--purple">Purple</span><span class="nt-tag nt-tag--pink">Pink</span><span class="nt-tag nt-tag--red">Red</span><span class="nt-tag nt-tag--teal">Teal</span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-status.nt-status--{gray|blue|green}</code> + <code>__dot</code><p>流程状态。只有三种实测的颜色：未开始 / 进行中 / 完成。</p></div>
+      <div class="demo-row">
+        <span class="nt-status nt-status--gray"><span class="nt-status__dot"></span>Not started</span>
+        <span class="nt-status nt-status--blue"><span class="nt-status__dot"></span>In progress</span>
+        <span class="nt-status nt-status--green"><span class="nt-status__dot"></span>Done</span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-dot-anchor</code> + <code>.nt-dot</code> · <code>--on-page</code><p>未读通知点，叠在图标按钮右上角。外圈颜色要和所在底色一致。</p></div>
+      <div class="demo-row">
+        <span class="demo-surface-sidebar"><span class="nt-dot-anchor"><button class="nt-icon-btn" aria-label="Inbox"><svg class="nt-icon"><use href="#i-inbox"/></svg></button><span class="nt-dot"></span></span></span>
+        <span class="nt-dot-anchor"><button class="nt-icon-btn" aria-label="Help"><svg class="nt-icon"><use href="#i-help"/></svg></button><span class="nt-dot nt-dot--on-page"></span></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-avatar</code> · <code>--comment</code> · <code>--md</code> · <code>--workspace</code> · <code>.nt-help</code><p>字母头像。workspace = 圆角方块。help = 标题旁的"?"。</p></div>
+      <div class="demo-row">
+        <span class="nt-avatar">A</span><span class="nt-avatar nt-avatar--comment">B</span><span class="nt-avatar nt-avatar--md">C</span><span class="nt-avatar nt-avatar--workspace">W</span>
+        <svg class="nt-help"><use href="#i-help"/></svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 表单 -->
+  <section class="demo-section" id="forms">
+    <h2>表单控件</h2>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-input</code> · <code>.is-error</code><p>设置页文本输入。错误态只改外圈颜色，错误文字放在描述行。</p></div>
+      <div class="demo-col demo-width-280">
+        <input class="nt-input" placeholder="Name your workspace…">
+        <input class="nt-input" value="Acme Inc.">
+        <input class="nt-input is-focus" value="is-focus">
+        <input class="nt-input is-error" value="is-error">
+        <input class="nt-input" value=":disabled" disabled>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-search-field</code> + <code>__input</code><p>面板内的小搜索框（设置左栏顶部）。</p></div>
+      <div class="demo-col demo-width-280">
+        <label class="nt-search-field"><svg class="nt-icon nt-icon--sm"><use href="#i-search"/></svg><input class="nt-search-field__input" placeholder="Search…"></label>
+        <label class="nt-search-field is-focus"><svg class="nt-icon nt-icon--sm"><use href="#i-search"/></svg><input class="nt-search-field__input" value="is-focus"></label>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-switch</code> &gt; <code>input + __track &gt; __knob</code><p>立即生效的开关。原生 checkbox 透明盖在轨道上，键盘可用。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><label class="nt-switch"><input type="checkbox" role="switch" aria-label="Off"><span class="nt-switch__track"><span class="nt-switch__knob"></span></span></label><small>off</small></span>
+        <span class="demo-state"><label class="nt-switch"><input type="checkbox" role="switch" aria-label="On" checked><span class="nt-switch__track"><span class="nt-switch__knob"></span></span></label><small>:checked</small></span>
+        <span class="demo-state"><label class="nt-switch is-on"><input type="checkbox" role="switch" aria-label="On" checked><span class="nt-switch__track"><span class="nt-switch__knob"></span></span></label><small>is-on</small></span>
+        <span class="demo-state"><label class="nt-switch is-focus"><input type="checkbox" role="switch" aria-label="Focus"><span class="nt-switch__track"><span class="nt-switch__knob"></span></span></label><small>is-focus</small></span>
+        <span class="demo-state"><label class="nt-switch"><input type="checkbox" role="switch" aria-label="Disabled" disabled><span class="nt-switch__track"><span class="nt-switch__knob"></span></span></label><small>:disabled</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-checkbox</code> &gt; <code>input + __box</code><p>多选 / 待办勾选。勾选态是 D2 估计（主色底）。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><label class="nt-checkbox"><input type="checkbox" aria-label="Item"><span class="nt-checkbox__box"><svg class="nt-icon"><use href="#i-check"/></svg></span></label><small>rest</small></span>
+        <span class="demo-state"><label class="nt-checkbox is-hover"><input type="checkbox" aria-label="Item"><span class="nt-checkbox__box"><svg class="nt-icon"><use href="#i-check"/></svg></span></label><small>is-hover</small></span>
+        <span class="demo-state"><label class="nt-checkbox"><input type="checkbox" aria-label="Item" checked><span class="nt-checkbox__box"><svg class="nt-icon"><use href="#i-check"/></svg></span></label><small>:checked</small></span>
+        <span class="demo-state"><label class="nt-checkbox is-on is-hover"><input type="checkbox" aria-label="Item" checked><span class="nt-checkbox__box"><svg class="nt-icon"><use href="#i-check"/></svg></span></label><small>is-on is-hover</small></span>
+        <span class="demo-state"><label class="nt-checkbox is-focus"><input type="checkbox" aria-label="Item"><span class="nt-checkbox__box"><svg class="nt-icon"><use href="#i-check"/></svg></span></label><small>is-focus</small></span>
+        <span class="demo-state"><label class="nt-checkbox"><input type="checkbox" aria-label="Item" disabled><span class="nt-checkbox__box"><svg class="nt-icon"><use href="#i-check"/></svg></span></label><small>:disabled</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label">下拉 = <code>.nt-btn--outline</code> + <code>.nt-popover.nt-menu</code><p>没有单独的 select 类：触发器用 outline 按钮，选项用菜单，当前项用 <code>.nt-menu__check</code>。</p></div>
+      <div class="demo-col">
+        <button class="nt-btn nt-btn--outline is-active" aria-expanded="true">Comfortable<svg class="nt-icon nt-icon--xs nt-btn__chev"><use href="#i-chev"/></svg></button>
+        <div class="nt-popover nt-menu is-open demo-static" role="listbox">
+          <div class="nt-menu__section">
+            <div class="nt-menu__item is-selected" role="option" aria-selected="true"><span class="nt-menu__label">Comfortable</span><svg class="nt-icon nt-icon--sm nt-menu__check"><use href="#i-check"/></svg></div>
+            <div class="nt-menu__item" role="option"><span class="nt-menu__label">Compact</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 行 -->
+  <section class="demo-section" id="rows">
+    <h2>列表行 / 树行</h2>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-row</code> + <code>__icon __label __meta __actions</code><p>侧栏、导航列表的行。hover 和选中同一层浅底，选中只多一个文字变深。</p></div>
+      <div class="demo-surface-sidebar"><div class="nt-rows">
+        <div class="nt-row" tabindex="0"><span class="nt-row__icon"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><span class="nt-row__label">Rest</span><span class="nt-row__meta">12</span></div>
+        <div class="nt-row is-hover" tabindex="0"><span class="nt-row__icon"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><span class="nt-row__label">is-hover：出现行内动作</span><span class="nt-row__meta">12</span><span class="nt-row__actions"><button class="nt-icon-btn nt-icon-btn--sm" aria-label="More"><svg class="nt-icon nt-icon--sm"><use href="#i-more"/></svg></button><button class="nt-icon-btn nt-icon-btn--sm" aria-label="Add"><svg class="nt-icon nt-icon--sm"><use href="#i-plus"/></svg></button></span></div>
+        <div class="nt-row is-selected" tabindex="0" aria-current="page"><span class="nt-row__icon"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><span class="nt-row__label">is-selected</span></div>
+        <div class="nt-row is-open" tabindex="0"><span class="nt-row__icon"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><span class="nt-row__label">is-open：它的菜单开着</span><span class="nt-row__actions"><button class="nt-icon-btn nt-icon-btn--sm" aria-label="More"><svg class="nt-icon nt-icon--sm"><use href="#i-more"/></svg></button></span></div>
+        <div class="nt-row is-focus" tabindex="0"><span class="nt-row__icon"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><span class="nt-row__label">is-focus</span></div>
+        <div class="nt-row" tabindex="0"><span class="nt-row__icon"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><span class="nt-row__label nt-row__label--placeholder">Untitled（__label--placeholder）</span></div>
+        <div class="nt-row" tabindex="0"><span class="nt-row__icon"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><span class="nt-row__label">A very long page title that truncates with an ellipsis at the end</span></div>
+        <div class="nt-row nt-row--action" tabindex="0"><span class="nt-row__icon"><svg class="nt-icon nt-icon--xl"><use href="#i-compose"/></svg></span><span class="nt-row__label">New page（--action）</span></div>
+      </div></div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-row--tree</code> + <code>__glyph / __toggle</code> · <code>.nt-disclosure</code> · <code>.nt-tree__children</code><p>页面树。hover 时页面图标换成展开箭头；父行 <code>is-open</code> 时箭头转正、子级显示。</p></div>
+      <div class="demo-surface-sidebar"><div class="nt-rows">
+        <div class="nt-row nt-row--tree" tabindex="0" aria-expanded="false"><span class="nt-row__icon"><span class="nt-row__glyph"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><button class="nt-row__toggle" aria-label="Expand"><svg class="nt-icon nt-icon--xs nt-disclosure"><use href="#i-chev"/></svg></button></span><span class="nt-row__label">Collapsed</span></div>
+        <div class="nt-row nt-row--tree is-hover" tabindex="0" aria-expanded="false"><span class="nt-row__icon"><span class="nt-row__glyph"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><button class="nt-row__toggle" aria-label="Expand"><svg class="nt-icon nt-icon--xs nt-disclosure"><use href="#i-chev"/></svg></button></span><span class="nt-row__label">is-hover → chevron</span></div>
+        <div class="nt-row nt-row--tree is-hover" tabindex="0" aria-expanded="true"><span class="nt-row__icon"><span class="nt-row__glyph"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><button class="nt-row__toggle" aria-label="Collapse"><svg class="nt-icon nt-icon--xs nt-disclosure is-open"><use href="#i-chev"/></svg></button></span><span class="nt-row__label">Expanded</span></div>
+        <div class="nt-tree__children nt-rows">
+          <div class="nt-row" tabindex="0"><span class="nt-row__icon"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><span class="nt-row__label">Child page</span></div>
+          <div class="nt-row is-selected" tabindex="0"><span class="nt-row__icon"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><span class="nt-row__label">Selected child</span></div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-section-label</code> + <code>.nt-disclosure</code> · <code>.nt-empty-hint--sidebar</code><p>侧栏分组标题，同时是折叠头；箭头只在 hover 时出现。</p></div>
+      <div class="demo-surface-sidebar">
+        <button class="nt-section-label is-open">Private<svg class="nt-icon nt-icon--xs nt-disclosure"><use href="#i-chev"/></svg></button>
+        <button class="nt-section-label is-hover is-open">is-hover（展开）<svg class="nt-icon nt-icon--xs nt-disclosure"><use href="#i-chev"/></svg></button>
+        <button class="nt-section-label is-hover">is-hover（折叠）<svg class="nt-icon nt-icon--xs nt-disclosure"><use href="#i-chev"/></svg></button>
+        <div class="nt-empty-hint nt-empty-hint--sidebar">No upcoming events</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 侧栏与顶栏 -->
+  <section class="demo-section" id="chrome">
+    <h2>侧栏与顶栏</h2>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-sidebar</code> + <code>__header __body __footer __workspace</code> · <code>.nt-sidebar-search</code> · <code>.nt-sidebar-tabs / .nt-sidebar-tab</code> + <code>--icon</code> · <code>.nt-promo</code><p>应用侧栏 [模式]。外观固定，里面放什么由产品定。只有图标的 tab 加 <code>--icon</code>，未选中时变淡。</p></div>
+      <aside class="nt-sidebar demo-width-280">
+        <div class="nt-sidebar__header">
+          <span class="nt-sidebar__workspace"><span class="nt-avatar nt-avatar--workspace">W</span>Workspace</span>
+          <span class="nt-topbar__actions"><button class="nt-icon-btn" aria-label="Inbox"><svg class="nt-icon"><use href="#i-inbox"/></svg></button><button class="nt-icon-btn" aria-label="New page"><svg class="nt-icon"><use href="#i-compose"/></svg></button></span>
+        </div>
+        <label class="nt-sidebar-search"><svg class="nt-icon nt-icon--sm"><use href="#i-search"/></svg><input class="nt-sidebar-search__input" placeholder="Search or ask…"><span class="nt-kbd">Ctrl+K</span></label>
+        <label class="nt-sidebar-search is-focus"><svg class="nt-icon nt-icon--sm"><use href="#i-search"/></svg><input class="nt-sidebar-search__input" value="is-focus"></label>
+        <div class="nt-sidebar__body">
+          <div class="nt-sidebar-tabs">
+            <button class="nt-sidebar-tab is-selected"><svg class="nt-icon"><use href="#i-home"/></svg>Home</button>
+            <button class="nt-sidebar-tab nt-sidebar-tab--icon" aria-label="Inbox"><svg class="nt-icon"><use href="#i-inbox"/></svg></button>
+            <button class="nt-sidebar-tab nt-sidebar-tab--icon is-hover" aria-label="Calendar"><svg class="nt-icon"><use href="#i-cal"/></svg></button>
+          </div>
+          <button class="nt-section-label is-open">Private<svg class="nt-icon nt-icon--xs nt-disclosure"><use href="#i-chev"/></svg></button>
+          <div class="nt-rows"><div class="nt-row" tabindex="0"><span class="nt-row__icon"><svg class="nt-icon nt-icon--md"><use href="#i-page"/></svg></span><span class="nt-row__label">Getting started</span></div></div>
+        </div>
+        <div class="nt-promo">
+          <p class="nt-promo__title">Try the desktop app</p>
+          Faster startup and offline access.
+          <div><a class="nt-promo__link" href="#chrome">Download<svg class="nt-icon nt-icon--xs"><use href="#i-arrow"/></svg></a></div>
+          <button class="nt-icon-btn nt-icon-btn--sm nt-promo__close" aria-label="Dismiss"><svg class="nt-icon nt-icon--sm"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="nt-sidebar__footer">
+          <span class="nt-sidebar__workspace"><span class="nt-avatar nt-avatar--workspace">W</span>Workspace<svg class="nt-icon nt-icon--xs nt-icon--secondary"><use href="#i-chev"/></svg></span>
+          <span class="nt-dot-anchor"><button class="nt-icon-btn" aria-label="Help"><svg class="nt-icon"><use href="#i-help"/></svg></button><span class="nt-dot"></span></span>
+        </div>
+      </aside>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-topbar</code> + <code>__crumbs __actions __status</code> · <code>.nt-crumb</code> · <code>.is-faded</code><p>内容区顶栏。打字或搜索打开时加 <code>is-faded</code>，700ms 淡出。</p></div>
+      <div class="demo-col">
+        <header class="nt-topbar">
+          <nav class="nt-topbar__crumbs">
+            <button class="nt-crumb"><svg class="nt-icon nt-icon--md nt-icon--secondary"><use href="#i-page"/></svg><span class="nt-crumb__label">Projects</span></button>
+            <span class="nt-crumb-sep">/</span>
+            <button class="nt-crumb is-hover"><span class="nt-crumb__label">is-hover</span></button>
+            <button class="nt-crumb nt-crumb--muted"><svg class="nt-icon nt-icon--sm"><use href="#i-lock"/></svg>Private<svg class="nt-icon nt-icon--xs"><use href="#i-chev"/></svg></button>
+          </nav>
+          <span class="nt-topbar__actions">
+            <span class="nt-topbar__status">Edited 6m ago</span>
+            <button class="nt-btn"><svg class="nt-icon nt-icon--sm"><use href="#i-lock"/></svg>Share</button>
+            <button class="nt-icon-btn" aria-label="Copy link"><svg class="nt-icon"><use href="#i-link"/></svg></button>
+            <button class="nt-icon-btn" aria-label="Favorite"><svg class="nt-icon"><use href="#i-star"/></svg></button>
+            <button class="nt-icon-btn" aria-label="More"><svg class="nt-icon"><use href="#i-more"/></svg></button>
+          </span>
+        </header>
+        <header class="nt-topbar is-faded"><span class="nt-topbar__crumbs">is-faded（看不见是正常的）</span></header>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 标签页 -->
+  <section class="demo-section" id="tabs">
+    <h2>标签页</h2>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-tabs</code> &gt; <code>.nt-tab</code> + <code>__count</code><p>分段切换同一数据的子集（成员 / 访客）。</p></div>
+      <div class="nt-tabs" role="tablist">
+        <button class="nt-tab" role="tab">Guests</button>
+        <button class="nt-tab is-selected" role="tab" aria-selected="true">Members <span class="nt-tab__count">12</span></button>
+        <button class="nt-tab is-selected is-hover" role="tab">selected + hover</button>
+        <button class="nt-tab is-hover" role="tab">is-hover</button>
+        <button class="nt-tab is-focus" role="tab">is-focus</button>
+        <button class="nt-tab" role="tab" disabled>:disabled</button>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-tab.nt-tab--view</code> in <code>.nt-viewbar</code><p>数据库视图切换（表格 / 看板…），放在视图栏左边。</p></div>
+      <div class="nt-viewbar">
+        <div class="nt-tabs"><button class="nt-tab nt-tab--view is-selected"><svg class="nt-icon nt-icon--sm"><use href="#i-text"/></svg>Table</button><button class="nt-tab nt-tab--view">Board</button><button class="nt-tab nt-tab--view is-hover">is-hover</button></div>
+        <div class="nt-viewbar__tools">
+          <button class="nt-icon-btn" aria-label="Filter"><svg class="nt-icon"><use href="#i-filter"/></svg></button>
+          <button class="nt-icon-btn" aria-label="Sort"><svg class="nt-icon"><use href="#i-sort"/></svg></button>
+          <button class="nt-icon-btn" aria-label="Search"><svg class="nt-icon"><use href="#i-search"/></svg></button>
+          <span class="nt-split"><button class="nt-btn nt-btn--primary">New</button><button class="nt-btn nt-btn--primary nt-split__toggle" aria-label="More"><svg class="nt-icon nt-icon--xs"><use href="#i-chev"/></svg></button></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-chip</code> · <code>--add</code><p>搜索筛选条件。静止无底色；已生效的筛选用 is-selected。</p></div>
+      <div class="demo-row">
+        <button class="nt-chip"><svg class="nt-icon nt-icon--sm"><use href="#i-user"/></svg>Created by<svg class="nt-icon nt-icon--xs"><use href="#i-chev"/></svg></button>
+        <button class="nt-chip is-hover">is-hover<svg class="nt-icon nt-icon--xs"><use href="#i-chev"/></svg></button>
+        <button class="nt-chip is-selected">is-selected<svg class="nt-icon nt-icon--xs"><use href="#i-chev"/></svg></button>
+        <button class="nt-chip is-focus">is-focus</button>
+        <button class="nt-chip nt-chip--add"><svg class="nt-icon nt-icon--sm"><use href="#i-plus"/></svg>Filter</button>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-nav</code> + <code>__heading</code> · <code>.nt-nav-item</code> · <code>--upgrade</code><p>设置弹窗的左栏导航。</p></div>
+      <nav class="nt-nav demo-width-280">
+        <label class="nt-search-field"><svg class="nt-icon nt-icon--sm"><use href="#i-search"/></svg><input class="nt-search-field__input" placeholder="Search…"></label>
+        <div class="nt-nav__heading">Account</div>
+        <button class="nt-nav-item"><span class="nt-avatar">A</span>Alex Doe</button>
+        <button class="nt-nav-item is-selected"><svg class="nt-icon"><use href="#i-sliders"/></svg>Preferences</button>
+        <button class="nt-nav-item is-selected is-hover"><svg class="nt-icon"><use href="#i-sliders"/></svg>selected + hover</button>
+        <button class="nt-nav-item is-hover"><svg class="nt-icon"><use href="#i-user"/></svg>is-hover</button>
+        <button class="nt-nav-item is-focus"><svg class="nt-icon"><use href="#i-user"/></svg>is-focus</button>
+        <button class="nt-nav-item nt-nav-item--upgrade"><svg class="nt-icon"><use href="#i-arrow"/></svg>Upgrade plan</button>
+      </nav>
+    </div>
+  </section>
+
+  <!-- ================================================================ 浮层 -->
+  <section class="demo-section" id="overlays">
+    <h2>菜单 / popover、tooltip、弹窗、toast</h2>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-popover.nt-menu</code> + <code>__section __sep __item __icon __label __qualifier __shortcut __meta</code> · <code>.nt-group-label</code><p>右键 / ··· 菜单。键盘当前行用 <code>is-selected</code> + <code>aria-activedescendant</code>（焦点留在菜单上），看起来和 hover 一样；真把焦点放到菜单项上时显示焦点环。禁用项用 aria-disabled（只变灰，不整体变淡）。没有红色"删除"项。</p></div>
+      <div class="nt-popover nt-menu is-open demo-static" role="menu">
+        <div class="nt-menu__section">
+          <div class="nt-group-label">Page</div>
+          <button class="nt-menu__item" role="menuitem"><span class="nt-menu__icon"><svg class="nt-icon"><use href="#i-star"/></svg></span><span class="nt-menu__label">Add to favorites</span></button>
+          <button class="nt-menu__item is-hover" role="menuitem"><span class="nt-menu__icon"><svg class="nt-icon"><use href="#i-copy"/></svg></span><span class="nt-menu__label">Duplicate（is-hover）</span><span class="nt-menu__shortcut">Ctrl+D</span></button>
+          <button class="nt-menu__item is-selected" role="menuitem"><span class="nt-menu__icon"><svg class="nt-icon"><use href="#i-link"/></svg></span><span class="nt-menu__label">Copy link（is-selected）</span></button>
+          <button class="nt-menu__item is-focus" role="menuitem"><span class="nt-menu__icon"><svg class="nt-icon"><use href="#i-page"/></svg></span><span class="nt-menu__label">Rename（is-focus）</span></button>
+          <button class="nt-menu__item" role="menuitem" aria-disabled="true"><span class="nt-menu__icon"><svg class="nt-icon"><use href="#i-arrow"/></svg></span><span class="nt-menu__label">Move to（aria-disabled）</span></button>
+        </div>
+        <div class="nt-menu__sep"></div>
+        <div class="nt-menu__section">
+          <button class="nt-menu__item" role="menuitem"><span class="nt-menu__icon"><svg class="nt-icon"><use href="#i-trash"/></svg></span><span class="nt-menu__label">Move to trash</span></button>
+        </div>
+        <div class="nt-menu__sep"></div>
+        <div class="nt-menu__meta"><span>Last edited by Alex Doe</span><span>Today at 10:24</span></div>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-menu--slash</code> · <code>.nt-menu__item--option</code> · <code>.nt-badge--new</code> · <code>.nt-menu__footer</code><p>"/" 插入菜单：选项更高，带分组、徽标、限定词、底栏。</p></div>
+      <div class="nt-popover nt-menu nt-menu--slash is-open demo-static" role="listbox">
+        <div class="nt-menu__section">
+          <div class="nt-group-label">Basic blocks</div>
+          <div class="nt-menu__item nt-menu__item--option is-selected" role="option"><span class="nt-menu__icon"><svg class="nt-icon"><use href="#i-text"/></svg></span><span class="nt-menu__label">Text</span><span class="nt-menu__shortcut">Ctrl+0</span></div>
+          <div class="nt-menu__item nt-menu__item--option" role="option"><span class="nt-menu__icon"><svg class="nt-icon"><use href="#i-page"/></svg></span><span class="nt-menu__label">Embed <span class="nt-menu__qualifier">· HTML</span></span><span class="nt-badge nt-badge--new">New</span></div>
+          <div class="nt-menu__item nt-menu__item--option is-hover" role="option"><span class="nt-menu__icon"><svg class="nt-icon"><use href="#i-check"/></svg></span><span class="nt-menu__label">To-do list</span><span class="nt-menu__shortcut">[]</span></div>
+        </div>
+        <div class="nt-menu__footer"><span>Close menu</span><span class="nt-menu__shortcut">esc</span></div>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-popover</code> · <code>.is-open</code> · <code>--from-end</code><p>任何浮层面板的外壳。没有 is-open 时透明、不可点（进出动效 200ms）。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><span class="nt-popover is-open demo-static"><span class="nt-empty-hint nt-empty-hint--sidebar">is-open</span></span><small>is-open</small></span>
+        <span class="demo-state"><span class="nt-popover nt-popover--from-end is-open demo-static"><span class="nt-empty-hint nt-empty-hint--sidebar">--from-end</span></span><small>右上角对齐的触发器</small></span>
+        <span class="demo-state"><span class="nt-popover demo-static"><span class="nt-empty-hint nt-empty-hint--sidebar">closed</span></span><small>（关闭：不可见）</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-tooltip</code> + <code>__shortcut</code> · <code>.is-open</code><p>只给图标按钮做名称 / 快捷键提示。外观是 D2 估计，待补采。</p></div>
+      <div class="demo-row">
+        <span class="demo-state"><span class="nt-tooltip is-open" role="tooltip">Copy link <span class="nt-tooltip__shortcut">Ctrl+L</span></span><small>is-open</small></span>
+        <span class="demo-state"><span class="nt-tooltip" role="tooltip">hidden</span><small>（关闭）</small></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-modal</code> + <code>__scrim</code> · <code>.nt-dialog</code> + <code>__close __body __title __text __footer</code> · <code>--confirm</code> · <code>.nt-dialog--settings</code><p>需要打断用户的确认，或设置这种整块模式切换。只有弹窗带遮罩。确认弹窗加 <code>--confirm</code>（宽度 D2 估计）。<code>nt-dialog--settings</code> 是近全屏的设置弹窗（四周留 72/50px，内部左栏用 <code>.nt-nav</code>），太大，样板页不展示。</p></div>
+      <div class="demo-modal-frame">
+        <div class="nt-modal is-open" role="presentation">
+          <div class="nt-modal__scrim"></div>
+          <div class="nt-dialog nt-dialog--confirm" role="dialog" aria-modal="true" aria-labelledby="dlg-t">
+            <button class="nt-icon-btn nt-icon-btn--sm nt-dialog__close" aria-label="Close"><svg class="nt-icon nt-icon--sm"><use href="#i-x"/></svg></button>
+            <div class="nt-dialog__body"><h3 class="nt-dialog__title" id="dlg-t">Delete this workspace?</h3><p class="nt-dialog__text">All pages and members will be removed. This can't be undone.</p></div>
+            <div class="nt-dialog__footer"><button class="nt-btn nt-btn--outline">Cancel</button><button class="nt-btn nt-btn--danger">Delete workspace</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-toast-region</code> &gt; <code>.nt-toast</code> + <code>__icon __message</code> · <code>.is-open</code><p>不打断的结果反馈。能撤销时带一个撤销按钮；不能撤销（已在确认弹窗里确认过）时只有文字。D2 估计。</p></div>
+      <div class="demo-row">
+        <span class="nt-toast is-open" role="status"><svg class="nt-icon nt-icon--sm nt-toast__icon"><use href="#i-check"/></svg><span class="nt-toast__message">Page moved to trash</span><button class="nt-btn">Undo</button></span>
+        <span class="nt-toast is-open" role="status"><svg class="nt-icon nt-icon--sm nt-toast__icon"><use href="#i-check"/></svg><span class="nt-toast__message">Workspace deleted</span></span>
+        <span class="nt-toast" role="status"><span class="nt-toast__message">closed</span></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 空状态与加载 -->
+  <section class="demo-section" id="feedback">
+    <h2>空状态、骨架屏、加载</h2>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-empty-hint</code> · <code>--sidebar</code> · <code>--page</code><p>原版的空状态就是一行灰字，优先用这个。</p></div>
+      <div class="demo-col">
+        <span class="nt-empty-hint">Empty</span>
+        <span class="nt-empty-hint nt-empty-hint--page">Press Enter to continue with an empty page, or <a class="nt-link nt-link--muted" href="#feedback">create a template</a></span>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-empty</code> + <code>__icon __title __text __actions</code><p>整个区域都没有内容、需要引导下一步时才用。推导组件，原版没有，这里是组合示例。</p></div>
+      <div class="nt-empty demo-width-360">
+        <svg class="nt-icon nt-icon--xl nt-empty__icon"><use href="#i-page"/></svg>
+        <div class="nt-empty__title">No pages yet</div>
+        <div class="nt-empty__text">Pages you create here will show up in this list.</div>
+        <div class="nt-empty__actions"><button class="nt-btn"><svg class="nt-icon nt-icon--sm"><use href="#i-plus"/></svg>New page</button></div>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-layer</code> + <code>__catcher __anchor</code><p>浮层定位层，没有外观。菜单放进 <code>__anchor</code>（坐标写进 <code>--nt-x / --nt-y</code>），不会被侧栏的滚动容器裁掉；<code>__catcher</code> 是透明的"点外面关闭"区域，不是遮罩。</p></div>
+      <div class="demo-modal-frame">
+        <div class="nt-layer is-open">
+          <div class="nt-layer__catcher"></div>
+          <div class="nt-layer__anchor demo-layer-anchor">
+            <div class="nt-popover nt-menu is-open" role="menu"><div class="nt-menu__section"><button class="nt-menu__item" role="menuitem"><span class="nt-menu__label">Positioned menu</span></button></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-skeleton</code> · <code>--line</code><p>数据还在加载的单元格 / 行，带微光。</p></div>
+      <div class="demo-col demo-width-280"><span class="nt-skeleton"></span><span class="nt-skeleton nt-skeleton--line"></span></div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-progress</code> · <code>.is-working</code><p>输入后正在查询的不定进度条（搜索面板顶部）。不在工作时不占视觉。</p></div>
+      <div class="demo-col demo-width-280"><div class="nt-progress is-working" role="progressbar" aria-label="Searching"></div><div class="nt-progress" aria-hidden="true"></div></div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 表格 -->
+  <section class="demo-section" id="table">
+    <h2>表格</h2>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-table</code> + <code>__row --header</code> · <code>__head-cell</code> · <code>__cell --pill --muted</code> · <code>__title __caret __indent __check __add</code> · <code>__group __group-count</code> · <code>.nt-quick-action</code><p>数据库表。列宽用 <code>--nt-table-columns</code> 给。行 <code>is-current</code> = 正在详情里打开；<code>is-selected</code> = 被框选（这两种是实测的蓝色 halo）。<code>__check</code> 是选行用的，只在 hover / 聚焦 / 已勾选时出现；表示数据（是否完成）的勾选框放进标题格，一直显示。<code>__group</code> = 可折叠的分组头（推导）。</p></div>
+      <div class="nt-table demo-table" role="table">
+        <div class="nt-table__row nt-table__row--header" role="row">
+          <div class="nt-table__head-cell" role="columnheader"><svg class="nt-icon"><use href="#i-text"/></svg>Name</div>
+          <div class="nt-table__head-cell is-hover" role="columnheader"><svg class="nt-icon"><use href="#i-status"/></svg>Status</div>
+          <div class="nt-table__head-cell" role="columnheader"><svg class="nt-icon"><use href="#i-user"/></svg>Owner</div>
+          <div class="nt-table__head-cell" role="columnheader"><svg class="nt-icon"><use href="#i-cal"/></svg>Due</div>
+        </div>
+        <button class="nt-table__group is-open" aria-expanded="true"><svg class="nt-icon nt-icon--xs nt-disclosure"><use href="#i-chev"/></svg><span class="nt-status nt-status--blue"><span class="nt-status__dot"></span>In progress</span><span class="nt-table__group-count">3</span></button>
+        <div class="nt-table__row" role="row">
+          <div class="nt-table__cell" role="cell"><span class="nt-table__caret"><svg class="nt-icon nt-icon--sm nt-disclosure is-open"><use href="#i-caret"/></svg></span><svg class="nt-icon nt-icon--md nt-icon--secondary"><use href="#i-page"/></svg><span class="nt-table__title">Rest row</span></div>
+          <div class="nt-table__cell nt-table__cell--pill" role="cell"><span class="nt-status nt-status--blue"><span class="nt-status__dot"></span>In progress</span></div>
+          <div class="nt-table__cell" role="cell"><span class="nt-person"><span class="nt-avatar">A</span>Alex</span></div>
+          <div class="nt-table__cell" role="cell"><span class="nt-table__text">Nov 12</span></div>
+        </div>
+        <div class="nt-table__row" role="row">
+          <div class="nt-table__cell" role="cell"><span class="nt-table__indent"></span><svg class="nt-icon nt-icon--md nt-icon--secondary"><use href="#i-page"/></svg><span class="nt-table__title">Sub-item（__indent）</span></div>
+          <div class="nt-table__cell nt-table__cell--pill" role="cell"><span class="nt-tag nt-tag--orange">Demo</span></div>
+          <div class="nt-table__cell" role="cell"><span class="nt-empty-hint">Empty</span></div>
+          <div class="nt-table__cell" role="cell"></div>
+        </div>
+        <div class="nt-table__row is-hover" role="row">
+          <span class="nt-table__check"><label class="nt-checkbox"><input type="checkbox" aria-label="Select row"><span class="nt-checkbox__box"><svg class="nt-icon"><use href="#i-check"/></svg></span></label></span>
+          <div class="nt-table__cell" role="cell"><svg class="nt-icon nt-icon--md nt-icon--secondary"><use href="#i-page"/></svg><span class="nt-table__title">is-hover：勾选框 + OPEN</span><button class="nt-quick-action">Open</button></div>
+          <div class="nt-table__cell nt-table__cell--pill" role="cell"><span class="nt-status nt-status--gray"><span class="nt-status__dot"></span>Not started</span></div>
+          <div class="nt-table__cell" role="cell"><span class="nt-skeleton"></span></div>
+          <div class="nt-table__cell" role="cell">Nov 14</div>
+        </div>
+        <div class="nt-table__row is-current" role="row" aria-current="true">
+          <div class="nt-table__cell" role="cell"><svg class="nt-icon nt-icon--md nt-icon--secondary"><use href="#i-page"/></svg><span class="nt-table__title">is-current（在详情里打开）</span></div>
+          <div class="nt-table__cell nt-table__cell--pill" role="cell"><span class="nt-status nt-status--green"><span class="nt-status__dot"></span>Done</span></div>
+          <div class="nt-table__cell" role="cell"><span class="nt-person"><span class="nt-avatar">B</span>Blake</span></div>
+          <div class="nt-table__cell" role="cell">Nov 9</div>
+        </div>
+        <div class="nt-table__row" role="row">
+          <div class="nt-table__cell" role="cell"><label class="nt-checkbox"><input type="checkbox" aria-label="Done" checked><span class="nt-checkbox__box"><svg class="nt-icon"><use href="#i-check"/></svg></span></label><span class="nt-table__title">Done task（数据勾选框，常显）</span></div>
+          <div class="nt-table__cell nt-table__cell--pill" role="cell"><span class="nt-status nt-status--green"><span class="nt-status__dot"></span>Done</span></div>
+          <div class="nt-table__cell" role="cell"></div><div class="nt-table__cell" role="cell"></div>
+        </div>
+        <button class="nt-table__group is-hover"><svg class="nt-icon nt-icon--xs nt-disclosure"><use href="#i-chev"/></svg><span class="nt-status nt-status--gray"><span class="nt-status__dot"></span>Not started</span><span class="nt-table__group-count">5</span></button>
+        <div class="nt-table__row is-selected" role="row" aria-selected="true">
+          <div class="nt-table__cell" role="cell"><svg class="nt-icon nt-icon--md nt-icon--secondary"><use href="#i-page"/></svg><span class="nt-table__title">is-selected（框选）</span></div>
+          <div class="nt-table__cell" role="cell"></div><div class="nt-table__cell" role="cell"></div><div class="nt-table__cell" role="cell"></div>
+        </div>
+        <button class="nt-table__add"><svg class="nt-icon nt-icon--sm"><use href="#i-plus"/></svg>New page</button>
+        <button class="nt-table__add is-hover"><svg class="nt-icon nt-icon--sm"><use href="#i-plus"/></svg>is-hover</button>
+      </div>
+      <div></div>
+      <div class="demo-row"><button class="nt-quick-action is-focus">Open</button><button class="nt-quick-action is-hover">Open</button><small class="nt-empty-hint">quick-action：is-focus / is-hover</small></div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-table.nt-table--simple</code> · <code>.nt-person</code> + <code>__text __name __sub</code><p>设置里的成员表：只有横线，没有竖线。</p></div>
+      <div class="nt-table nt-table--simple demo-table-simple" role="table">
+        <div class="nt-table__row nt-table__row--header" role="row"><div class="nt-table__head-cell" role="columnheader">User<svg class="nt-icon"><use href="#i-sort"/></svg></div><div class="nt-table__head-cell" role="columnheader">Role</div><div class="nt-table__head-cell" role="columnheader">Groups</div></div>
+        <div class="nt-table__row" role="row">
+          <div class="nt-table__cell" role="cell"><span class="nt-person"><span class="nt-avatar nt-avatar--md">A</span><span class="nt-person__text"><span class="nt-person__name">Alex Doe</span><span class="nt-person__sub">alex@example.com</span></span></span></div>
+          <div class="nt-table__cell" role="cell"><button class="nt-btn nt-btn--muted">Workspace owner<svg class="nt-icon nt-icon--xs nt-btn__chev"><use href="#i-chev"/></svg></button></div>
+          <div class="nt-table__cell" role="cell"><span class="nt-skeleton"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 设置 -->
+  <section class="demo-section" id="settings">
+    <h2>设置页内容</h2>
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-settings-title / -subtitle</code> · <code>.nt-settings-section</code> + <code>__heading</code> · <code>.nt-setting</code> + <code>__text __label __desc __more __control</code><p>左边说明，右边控件。破坏性设置放在最后一节"Danger zone"。</p></div>
+      <div>
+        <h2 class="nt-settings-title">Preferences</h2>
+        <p class="nt-settings-subtitle">Manage how the app looks and behaves for you.</p>
+        <div class="nt-settings-section">
+          <h3 class="nt-settings-section__heading">Appearance<svg class="nt-help"><use href="#i-help"/></svg></h3>
+          <div class="nt-setting">
+            <div class="nt-setting__text"><span class="nt-setting__label">Theme</span><div class="nt-setting__desc">Choose how the interface looks on this device.</div></div>
+            <div class="nt-setting__control"><button class="nt-btn nt-btn--outline">Use system setting<svg class="nt-icon nt-icon--xs nt-btn__chev"><use href="#i-chev"/></svg></button></div>
+          </div>
+          <div class="nt-setting">
+            <div class="nt-setting__text"><span class="nt-setting__label">Open links in desktop app</span><div class="nt-setting__desc">Links you click will open in the desktop app.</div><a class="nt-setting__more" href="#settings"><svg class="nt-help"><use href="#i-help"/></svg>Learn more</a></div>
+            <div class="nt-setting__control"><label class="nt-switch"><input type="checkbox" role="switch" aria-label="Open links in desktop app" checked><span class="nt-switch__track"><span class="nt-switch__knob"></span></span></label></div>
+          </div>
+        </div>
+        <div class="nt-settings-section">
+          <h3 class="nt-settings-section__heading">Danger zone</h3>
+          <div class="nt-setting">
+            <div class="nt-setting__text"><span class="nt-setting__label">Delete workspace</span><div class="nt-setting__desc">Permanently remove this workspace and all of its content.</div></div>
+            <div class="nt-setting__control"><button class="nt-btn nt-btn--danger">Delete workspace</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 搜索 -->
+  <section class="demo-section" id="search">
+    <h2>搜索面板</h2>
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-search</code> + <code>__input-row __input __chips __results __footer</code> · <code>.nt-result</code> + <code>__icon __text __line __title __parent __meta</code> · <code>.nt-preview</code><p>全局搜索浮层：没有遮罩（点外面关闭用 <code>.nt-layer__catcher</code>）。方向键移动 <code>is-selected</code>。零结果时在结果区写一行 <code>.nt-empty-hint</code>。</p></div>
+      <div class="demo-col">
+        <div class="nt-search is-open demo-search" role="dialog" aria-label="Search">
+          <div class="nt-progress is-working" aria-hidden="true"></div>
+          <div class="nt-search__input-row">
+            <svg class="nt-icon nt-icon--xl"><use href="#i-search"/></svg>
+            <input class="nt-search__input" placeholder="Search or ask…">
+            <button class="nt-icon-btn nt-icon-btn--round" aria-label="Ask AI"><svg class="nt-icon"><use href="#i-sparkle"/></svg></button>
+          </div>
+          <div class="nt-search__chips"><button class="nt-chip"><svg class="nt-icon nt-icon--sm"><use href="#i-sort"/></svg>Sort<svg class="nt-icon nt-icon--xs"><use href="#i-chev"/></svg></button><button class="nt-chip nt-chip--add"><svg class="nt-icon nt-icon--sm"><use href="#i-plus"/></svg>Filter</button></div>
+          <div class="nt-search__results" role="listbox">
+            <div class="nt-group-label">Today<button class="nt-btn nt-btn--sm nt-btn--outline">Best matches<svg class="nt-icon nt-icon--xs nt-btn__chev"><use href="#i-chev"/></svg></button></div>
+            <div class="nt-result is-selected" role="option" aria-selected="true"><span class="nt-result__icon"><svg class="nt-icon"><use href="#i-page"/></svg></span><span class="nt-result__text"><span class="nt-result__line"><span class="nt-result__title">Quarterly plan</span><span class="nt-result__parent">— Projects</span><span class="nt-badge">Current page</span></span><span class="nt-result__meta">Alex Doe • Edited 2h ago</span></span></div>
+            <div class="nt-result" role="option"><span class="nt-result__icon"><svg class="nt-icon"><use href="#i-page"/></svg></span><span class="nt-result__text"><span class="nt-result__title">Rest result</span></span></div>
+            <div class="nt-result is-hover" role="option"><span class="nt-result__icon"><svg class="nt-icon"><use href="#i-page"/></svg></span><span class="nt-result__text"><span class="nt-result__title">is-hover</span></span></div>
+          </div>
+          <div class="nt-search__footer"><span><span class="nt-kbd">Ctrl+↵</span> Open in new tab</span><button class="nt-icon-btn nt-icon-btn--sm" aria-label="Search settings"><svg class="nt-icon nt-icon--sm"><use href="#i-gear"/></svg></button></div>
+        </div>
+        <div class="nt-search is-open demo-search" role="dialog" aria-label="Search (no results)">
+          <div class="nt-search__input-row"><svg class="nt-icon nt-icon--xl"><use href="#i-search"/></svg><input class="nt-search__input" value="zzz"></div>
+          <div class="nt-search__results" role="listbox"><div class="nt-empty-hint">No results for "zzz"</div></div>
+        </div>
+        <div class="nt-preview demo-width-360"><div class="nt-callout"><span class="nt-callout__icon">💡</span><div class="nt-callout__body">.nt-preview：浮起的预览卡外壳。</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ Side Peek -->
+  <section class="demo-section" id="peek">
+    <h2>Side Peek 与属性</h2>
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-peek</code> + <code>__bar</code> · <code>.is-open</code> · <code>.nt-props / .nt-prop</code> + <code>__label __value __empty</code> · <code>--add</code> · <code>.nt-comments</code> + <code>__label __input __field</code> · <code>.nt-comment-list / .nt-comment</code> + <code>__main __head __author __time __text</code><p>右侧详情面板，没有遮罩，左边的列表保持可用。Peek 是一个独立面板，自己有一个 700 标题。顺序：标题 → 属性 → 评论 → 正文。评论线程是 D2 估计。</p></div>
+      <aside class="nt-peek is-open demo-peek">
+        <div class="nt-peek__bar"><span class="nt-topbar__actions"><button class="nt-icon-btn" aria-label="Close peek"><svg class="nt-icon"><use href="#i-x"/></svg></button><button class="nt-icon-btn" aria-label="Open as page"><svg class="nt-icon"><use href="#i-arrow"/></svg></button></span><span class="nt-topbar__actions"><button class="nt-btn">Share</button><button class="nt-icon-btn" aria-label="More"><svg class="nt-icon"><use href="#i-more"/></svg></button></span></div>
+        <div class="demo-peek-body">
+          <h1 class="nt-page-title nt-page-title--db">Launch checklist</h1>
+          <div class="nt-props">
+            <div class="nt-prop" tabindex="0"><span class="nt-prop__label"><svg class="nt-icon"><use href="#i-status"/></svg>Status</span><span class="nt-prop__value"><span class="nt-status nt-status--blue"><span class="nt-status__dot"></span>In progress</span></span></div>
+            <div class="nt-prop is-hover" tabindex="0"><span class="nt-prop__label"><svg class="nt-icon"><use href="#i-user"/></svg>Owner</span><span class="nt-prop__value"><span class="nt-person"><span class="nt-avatar">A</span>Alex</span></span></div>
+            <div class="nt-prop" tabindex="0"><span class="nt-prop__label"><svg class="nt-icon"><use href="#i-cal"/></svg>Due</span><span class="nt-prop__value"><span class="nt-prop__empty">Empty</span></span></div>
+            <div class="nt-prop is-focus" tabindex="0"><span class="nt-prop__label"><svg class="nt-icon"><use href="#i-text"/></svg>is-focus</span><span class="nt-prop__value">Value</span></div>
+            <button class="nt-prop nt-prop--add"><svg class="nt-icon nt-icon--sm"><use href="#i-plus"/></svg>Add a property</button>
+          </div>
+          <div class="nt-comments">
+            <div class="nt-comments__label">Comments</div>
+            <div class="nt-comment-list">
+              <div class="nt-comment"><span class="nt-avatar nt-avatar--comment">B</span><div class="nt-comment__main"><div class="nt-comment__head"><span class="nt-comment__author">Blake</span><span class="nt-comment__time">2h ago</span></div><p class="nt-comment__text">Moved the launch to next week.</p></div></div>
+              <div class="nt-comment"><span class="nt-avatar nt-avatar--comment">A</span><div class="nt-comment__main"><div class="nt-comment__head"><span class="nt-comment__author">Alex</span><span class="nt-comment__time">Just now</span></div><p class="nt-comment__text">Sounds good.</p></div></div>
+            </div>
+            <div class="nt-comments__input"><span class="nt-avatar nt-avatar--comment">A</span><input class="nt-comments__field" placeholder="Add a comment…"></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ================================================================ 内容 -->
+  <section class="demo-section" id="content">
+    <h2>内容块</h2>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-page-title</code> · <code>.nt-block</code> + <code>--h1 --h2 --h3 --list</code> · <code>__content __marker</code> · <code>.nt-block-handle</code> · <code>.nt-h1/2/3 .nt-text .nt-bullet .nt-page-link</code> · <code>.nt-editable</code><p>编辑器页面。块的上方留白由块类型决定，块下方不加边距。可编辑的文字加 <code>.nt-editable</code>：不显示焦点环，只有光标；空时显示 data-placeholder。</p></div>
+      <div class="demo-doc">
+        <h1 class="nt-page-title"><span class="nt-editable" contenteditable="true">Page title（.nt-editable）</span></h1>
+        <h1 class="nt-page-title"><span class="nt-editable" contenteditable="true" data-placeholder="Untitled"></span></h1>
+        <div class="nt-block nt-block--h1"><div class="nt-block__content"><h2 class="nt-h1">Heading 1</h2></div></div>
+        <div class="nt-block is-hover"><button class="nt-block-handle" aria-label="Drag"><svg class="nt-icon nt-icon--sm"><use href="#i-drag"/></svg></button><div class="nt-block__content"><p class="nt-text">Paragraph（is-hover：左侧出现拖拽把手）。Body text uses the regular weight and a comfortable line height.</p></div></div>
+        <div class="nt-block nt-block--h2"><div class="nt-block__content"><h3 class="nt-h2">Heading 2</h3></div></div>
+        <div class="nt-block"><span class="nt-block__marker"><span class="nt-bullet"></span></span><div class="nt-block__content"><p class="nt-text">List item</p></div></div>
+        <div class="nt-block nt-block--list"><span class="nt-block__marker"><span class="nt-bullet"></span></span><div class="nt-block__content"><p class="nt-text">Second item</p></div></div>
+        <div class="nt-block nt-block--list"><span class="nt-block__marker"><label class="nt-checkbox"><input type="checkbox" aria-label="Done" checked><span class="nt-checkbox__box"><svg class="nt-icon"><use href="#i-check"/></svg></span></label></span><div class="nt-block__content"><p class="nt-text nt-text--muted">To-do (done)</p></div></div>
+        <div class="nt-block nt-block--h3"><div class="nt-block__content"><h4 class="nt-h3">Heading 3</h4></div></div>
+        <div class="nt-block is-selected"><div class="nt-block__content"><p class="nt-text">Selected block（is-selected）</p></div></div>
+        <div class="nt-block"><button class="nt-page-link"><svg class="nt-icon"><use href="#i-page"/></svg>Child page</button></div>
+        <div class="nt-block"><button class="nt-page-link is-hover"><svg class="nt-icon"><use href="#i-page"/></svg>Child page（is-hover）</button></div>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-callout</code> + <code>__icon __body</code><p>正文里需要被注意的一段。平的，没有阴影。</p></div>
+      <div class="nt-callout"><span class="nt-callout__icon">💡</span><div class="nt-callout__body">Callouts sit flat on the page with a recessed fill.</div></div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-code</code> · <code>.nt-code-block</code> + <code>__lang __code</code><p>行内代码 / 代码块（D2 估计）。</p></div>
+      <div class="demo-col">
+        <p class="nt-text">Run <code class="nt-code">npm install</code> first.</p>
+        <div class="nt-code-block"><div class="nt-code-block__lang">JavaScript</div><pre class="nt-code-block__code">function greet(name) {
+  return `Hello, ${name}`
+}</pre></div>
+      </div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-quote</code><p>引用（D2 估计）。</p></div>
+      <blockquote class="nt-quote">Simple things should be simple, complex things should be possible.</blockquote>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-content-table</code><p>正文里的简单表格（推导：DB 表格细线，无外框）。</p></div>
+      <table class="nt-content-table"><tr><th>Plan</th><th>Seats</th></tr><tr><td>Free</td><td>1</td></tr><tr><td>Team</td><td>Unlimited</td></tr></table>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-toc</code> + <code>__bar --2 --3</code> · <code>.is-current</code><p>页面右缘的大纲条，当前所在段落变深。</p></div>
+      <div class="nt-toc demo-width-280"><span class="nt-toc__bar"></span><span class="nt-toc__bar nt-toc__bar--2 is-current"></span><span class="nt-toc__bar nt-toc__bar--3"></span><span class="nt-toc__bar"></span></div>
+    </div>
+
+    <div class="demo-group">
+      <div class="demo-label"><code>.nt-prose</code><p>渲染 Markdown / 富文本时套在容器上，原生元素自动套用块样式。链接和 <code>.nt-link</code> 一致；表格无外框。</p></div>
+      <div class="nt-prose demo-doc">
+        <h2>Prose heading</h2>
+        <p>Paragraph with <code>inline code</code> and a <a href="#content">link</a>.</p>
+        <ul><li>First</li><li>Second</li></ul>
+        <blockquote>A quoted line.</blockquote>
+        <pre>const x = 1</pre>
+        <table><tr><th>Key</th><th>Value</th></tr><tr><td>a</td><td>1</td></tr></table>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

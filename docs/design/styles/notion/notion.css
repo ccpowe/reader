@@ -1,0 +1,1117 @@
+/* =====================================================================
+   notion.css — notion 风格包 v0.2 通用组件类（前缀 nt-，BEM）
+   只依赖 tokens.css。产品不要改写这里任何类的颜色 / 背景 / 边框 / 阴影 / 圆角 / 高度 / 内边距。
+   注释里的 [选定 D2]：采集缺口。analysis 有估计的按估计；analysis 写"can't tell"的，取先前应用的一致做法，待补采。
+   状态类：is-selected  is-current  is-open  is-on  is-error  is-working  is-faded
+   强制状态（只给样板页用）：is-hover  is-active  is-focus
+   禁用：原生 :disabled 或 [aria-disabled="true"]
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   0. 基础
+   --------------------------------------------------------------------- */
+.nt-app {
+  font-family: var(--font-sans);
+  font-size: var(--text-ui-size);
+  line-height: var(--text-ui-line);
+  letter-spacing: normal;
+  color: var(--color-text-primary);
+  background: var(--color-bg-page);
+  -webkit-font-smoothing: antialiased;
+}
+.nt-app *, .nt-app *::before, .nt-app *::after { box-sizing: border-box; }
+.nt-app ::placeholder { color: var(--color-text-placeholder); opacity: 1; }
+
+/* 焦点环：所有可交互的 nt- 控件统一用 --focus-ring，不用浏览器 outline。
+   例外（实测：文字输入的焦点记录里没有环）：嵌在面板里的裸文字输入（__input / __field / .nt-editable）只显示光标 */
+:is(.nt-btn, .nt-icon-btn, .nt-fab, .nt-row, .nt-section-label, .nt-sidebar-tab, .nt-nav-item, .nt-crumb,
+    .nt-tab, .nt-chip, .nt-menu__item, .nt-result, .nt-prop, .nt-table__add, .nt-table__head-cell, .nt-table__group,
+    .nt-quick-action, .nt-link, .nt-page-link, .nt-row__toggle, .nt-block-handle, .nt-promo__link, .nt-setting__more):focus-visible,
+:is(.nt-btn, .nt-icon-btn, .nt-fab, .nt-row, .nt-section-label, .nt-sidebar-tab, .nt-nav-item, .nt-crumb,
+    .nt-tab, .nt-chip, .nt-menu__item, .nt-result, .nt-prop, .nt-table__add, .nt-table__head-cell, .nt-table__group,
+    .nt-quick-action, .nt-link, .nt-page-link, .nt-row__toggle, .nt-block-handle, .nt-promo__link, .nt-setting__more).is-focus {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* 禁用：整个控件 0.4。菜单项例外：只把文字和图标变成三级灰（见第 9 节） */
+:is(.nt-btn, .nt-icon-btn, .nt-input, .nt-switch, .nt-checkbox, .nt-tab, .nt-chip):is(:disabled, [aria-disabled="true"]),
+.nt-switch:has(input:disabled), .nt-checkbox:has(input:disabled) {
+  opacity: var(--opacity-disabled);
+  pointer-events: none;
+}
+
+/* 按钮类元素的重置（只作用于本包的类） */
+:is(.nt-btn, .nt-icon-btn, .nt-fab, .nt-row, .nt-section-label, .nt-sidebar-tab, .nt-nav-item, .nt-crumb,
+    .nt-tab, .nt-chip, .nt-menu__item, .nt-result, .nt-prop, .nt-table__add, .nt-table__head-cell, .nt-table__group,
+    .nt-quick-action, .nt-page-link, .nt-row__toggle, .nt-block-handle, .nt-promo__link, .nt-setting__more) {
+  font: inherit;
+  text-decoration: none;
+  padding: 0;
+  color: inherit;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---------------------------------------------------------------------
+   1. 图标（颜色继承所在行；尺寸 xs–xl）
+   --------------------------------------------------------------------- */
+.nt-icon { display: block; flex: none; width: var(--icon-lg); height: var(--icon-lg); }
+.nt-icon--xs { width: var(--icon-xs); height: var(--icon-xs); }
+.nt-icon--sm { width: var(--icon-sm); height: var(--icon-sm); }
+.nt-icon--md { width: var(--icon-md); height: var(--icon-md); }
+.nt-icon--lg { width: var(--icon-lg); height: var(--icon-lg); }
+.nt-icon--xl { width: var(--icon-xl); height: var(--icon-xl); }
+.nt-icon--secondary { color: var(--color-icon-secondary); }
+.nt-icon--tertiary { color: var(--color-icon-tertiary); }
+
+/* 加载中旋转（套在任意图标上） */
+.nt-spin { animation: nt-spin var(--duration-spin) linear infinite; }
+@keyframes nt-spin { to { transform: rotate(360deg); } }
+
+/* ---------------------------------------------------------------------
+   2. 按钮
+   --------------------------------------------------------------------- */
+.nt-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-6); flex: none;
+  height: var(--size-button); padding: 0 var(--space-8);
+  border-radius: var(--radius-md);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line-tight); font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  color: var(--color-text-primary);
+  transition: background var(--duration-quick) var(--ease-in-out), color var(--duration-quick) var(--ease-in-out);
+}
+.nt-btn__chev { color: var(--color-text-secondary); }
+
+/* 默认 = ghost（文字按钮） */
+.nt-btn:hover, .nt-btn.is-hover { background: var(--color-fill-hover); }
+.nt-btn:active, .nt-btn.is-active { background: var(--color-fill-pressed); }
+.nt-btn--muted { color: var(--color-text-secondary); }
+.nt-btn--muted:hover, .nt-btn--muted.is-hover { color: var(--color-text-primary); }
+
+.nt-btn--primary { background: var(--color-accent); color: var(--color-text-on-accent); line-height: var(--text-ui-line-loose); }
+.nt-btn--primary:hover, .nt-btn--primary.is-hover { background: var(--color-accent-hover); }
+.nt-btn--primary:active, .nt-btn--primary.is-active { background: var(--color-accent-pressed); }
+
+.nt-btn--secondary { background: var(--color-fill-accent-soft); color: var(--color-text-link); }
+.nt-btn--secondary:hover, .nt-btn--secondary.is-hover { background: var(--color-fill-accent-soft-hover); }
+.nt-btn--secondary:active, .nt-btn--secondary.is-active { background: var(--color-fill-accent-soft-hover); }
+
+.nt-btn--outline { box-shadow: inset 0 0 0 var(--border-hairline-width) var(--color-border-control); }
+.nt-btn--outline:focus-visible, .nt-btn--outline.is-focus { box-shadow: inset 0 0 0 var(--border-hairline-width) var(--color-border-control), var(--focus-ring); }
+
+/* 危险：只用于不可撤销的破坏性操作，出现在 Danger zone 或删除确认弹窗里。hover 未采到 → 不提供 hover 变化 */
+.nt-btn--danger { background: var(--color-danger-bg); color: var(--color-text-danger); }
+.nt-btn--danger:hover, .nt-btn--danger.is-hover, .nt-btn--danger:active, .nt-btn--danger.is-active { background: var(--color-danger-bg); }
+
+.nt-btn--sm { height: var(--size-button-small); padding: 0 var(--space-6); }
+
+/* 分体按钮（主按钮 + 右侧箭头段） */
+.nt-split { display: inline-flex; flex: none; }
+.nt-split > .nt-btn:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.nt-split__toggle.nt-btn {
+  width: var(--size-split-toggle); padding: 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  box-shadow: var(--shadow-split-divider);
+}
+.nt-split__toggle.nt-btn:focus-visible, .nt-split__toggle.nt-btn.is-focus { box-shadow: var(--shadow-split-divider), var(--focus-ring); }
+
+/* 图标按钮 */
+.nt-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: var(--size-icon-button); height: var(--size-icon-button); padding: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-icon-secondary);
+  transition: background var(--duration-quick) var(--ease-in-out), color var(--duration-quick) var(--ease-in-out);
+}
+.nt-icon-btn:hover, .nt-icon-btn.is-hover { background: var(--color-fill-hover); color: var(--color-text-primary); }
+.nt-icon-btn:active, .nt-icon-btn.is-active { background: var(--color-fill-pressed); color: var(--color-text-primary); }
+.nt-icon-btn.is-on { color: var(--color-icon-primary); }
+.nt-icon-btn--sm { width: var(--size-icon-button-sm); height: var(--size-icon-button-sm); }
+.nt-icon-btn--round { width: var(--size-round-button); height: var(--size-round-button); border-radius: var(--radius-full); color: var(--color-icon-accent); }
+.nt-icon-btn--round:hover, .nt-icon-btn--round.is-hover { color: var(--color-icon-accent); }
+
+/* 浮动帮助按钮：外观在这里；位置是 [模式]，默认右下角（DESIGN §7） */
+.nt-fab {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--size-floating-btn); height: var(--size-floating-btn); padding: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-page); color: var(--color-icon-primary);
+  box-shadow: var(--shadow-md);
+  transition: transform var(--duration-spring) var(--ease-spring), background var(--duration-quick) var(--ease-in-out);
+}
+.nt-fab:hover, .nt-fab.is-hover { background: var(--color-fill-hover-floating); transform: scale(var(--scale-floating-hover)); }
+.nt-fab:focus-visible, .nt-fab.is-focus { box-shadow: var(--shadow-md), var(--focus-ring); }
+
+/* 链接 */
+.nt-link { color: var(--color-text-link); text-decoration: none; cursor: pointer; border-radius: var(--radius-sm); }
+.nt-link--muted { color: var(--color-text-tertiary); text-decoration: underline; }
+
+/* ---------------------------------------------------------------------
+   3. 键帽、徽标、标签、状态 pill、状态点、头像
+   --------------------------------------------------------------------- */
+.nt-kbd {
+  display: inline-flex; align-items: center; flex: none;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-chip); color: var(--color-text-kbd);
+  font-family: var(--font-sans);
+  font-size: var(--text-micro-size); line-height: var(--text-micro-line); font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
+.nt-badge {
+  display: inline-flex; align-items: center; flex: none;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-chip); color: var(--color-text-kbd);
+  font-size: var(--text-micro-size); line-height: var(--text-micro-line); font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+.nt-badge--new { background: var(--color-badge-new-bg); color: var(--color-badge-new-text); }
+
+/* 选择标签（数据色，无圆点） */
+.nt-tag {
+  display: inline-flex; align-items: center; flex: none; max-width: 100%;
+  height: var(--size-pill); padding: 0 var(--space-6);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--color-tag-gray-bg); color: var(--color-tag-gray-text);
+}
+.nt-tag--gray   { background: var(--color-tag-gray-bg);   color: var(--color-tag-gray-text); }
+.nt-tag--brown  { background: var(--color-tag-brown-bg);  color: var(--color-tag-brown-text); }
+.nt-tag--orange { background: var(--color-tag-orange-bg); color: var(--color-tag-orange-text); }
+.nt-tag--yellow { background: var(--color-tag-yellow-bg); color: var(--color-tag-yellow-text); }
+.nt-tag--green  { background: var(--color-tag-green-bg);  color: var(--color-tag-green-text); }
+.nt-tag--blue   { background: var(--color-tag-blue-bg);   color: var(--color-tag-blue-text); }
+.nt-tag--purple { background: var(--color-tag-purple-bg); color: var(--color-tag-purple-text); }
+.nt-tag--pink   { background: var(--color-tag-pink-bg);   color: var(--color-tag-pink-text); }
+.nt-tag--red    { background: var(--color-tag-red-bg);    color: var(--color-tag-red-text); }
+.nt-tag--teal   { background: var(--color-tag-teal-bg);   color: var(--color-tag-teal-text); }
+
+/* 状态 pill（圆点 + 文字）：只有 gray / blue / green 有实测圆点色 */
+.nt-status {
+  display: inline-flex; align-items: center; gap: var(--space-6); flex: none;
+  height: var(--size-pill); padding: 0 var(--pad-pill-end) 0 var(--pad-pill-start);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line);
+  white-space: nowrap;
+}
+.nt-status__dot { width: var(--size-dot); height: var(--size-dot); border-radius: var(--radius-full); flex: none; }
+.nt-status--gray  { background: var(--color-tag-gray-bg);  color: var(--color-tag-gray-text); }
+.nt-status--gray  .nt-status__dot { background: var(--color-tag-gray-dot); }
+.nt-status--blue  { background: var(--color-tag-blue-bg);  color: var(--color-tag-blue-text); }
+.nt-status--blue  .nt-status__dot { background: var(--color-tag-blue-dot); }
+.nt-status--green { background: var(--color-tag-green-bg); color: var(--color-tag-green-text); }
+.nt-status--green .nt-status__dot { background: var(--color-tag-green-dot); }
+
+/* 通知点：叠在图标按钮右上角 */
+.nt-dot-anchor { position: relative; display: inline-flex; }
+.nt-dot {
+  position: absolute; top: var(--space-4); right: var(--space-4);
+  width: var(--size-dot); height: var(--size-dot);
+  border-radius: var(--radius-full);
+  background: var(--color-notification-dot);
+  box-shadow: 0 0 0 var(--size-dot-ring) var(--color-bg-sidebar);
+  pointer-events: none;
+}
+.nt-dot--on-page { box-shadow: 0 0 0 var(--size-dot-ring) var(--color-bg-page); }
+
+/* 字母头像 */
+.nt-avatar {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; overflow: hidden;
+  width: var(--size-avatar-sm); height: var(--size-avatar-sm);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-chip); color: var(--color-icon-secondary);
+  font-size: var(--text-micro-size); line-height: 1; font-weight: var(--font-weight-medium);
+  -webkit-user-select: none; user-select: none;
+}
+.nt-avatar--comment { width: var(--size-avatar-comment); height: var(--size-avatar-comment); font-size: var(--text-small-size); }
+.nt-avatar--md { width: var(--size-avatar-md); height: var(--size-avatar-md); font-size: var(--text-small-size); }
+.nt-avatar--workspace { width: var(--size-avatar-workspace); height: var(--size-avatar-workspace); border-radius: var(--radius-sm); }
+.nt-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* 帮助 "?" */
+.nt-help { display: inline-flex; width: var(--size-help-icon); height: var(--size-help-icon); color: var(--color-text-tertiary); flex: none; }
+
+/* ---------------------------------------------------------------------
+   4. 表单：输入框、导航内搜索框、开关、勾选框
+   --------------------------------------------------------------------- */
+/* 圆角借用按钮的 --radius-md（推断，输入框圆角未单独测量） */
+.nt-input {
+  display: block; width: 100%; min-width: 0;
+  height: var(--size-input); padding: 0 var(--space-10);
+  border: 0; outline: none;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-input);
+  box-shadow: var(--shadow-input-ring);
+  font-family: var(--font-sans);
+  font-size: var(--text-input-size); line-height: var(--text-input-line);
+  color: var(--color-text-primary);
+}
+.nt-input::placeholder { color: var(--color-text-placeholder); }
+.nt-input:focus, .nt-input.is-focus { box-shadow: var(--focus-ring-input); }
+.nt-input.is-error, .nt-input.is-error:focus { box-shadow: var(--focus-ring-input-error); }
+
+/* 导航内搜索（设置左栏）：28px，内收细线 */
+.nt-search-field {
+  display: flex; align-items: center; gap: var(--space-6);
+  height: var(--size-button); padding: 0 var(--space-8);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-input);
+  box-shadow: var(--shadow-input-ring-inset);
+  color: var(--color-icon-secondary);
+}
+.nt-search-field:focus-within, .nt-search-field.is-focus { box-shadow: var(--focus-ring-input); }
+.nt-search-field__input {
+  flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: transparent;
+  font: inherit; font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-primary);
+}
+
+/* 开关：原生 input 透明盖在轨道上 */
+.nt-switch { position: relative; display: inline-flex; flex: none; cursor: pointer; }
+.nt-switch > input { position: absolute; inset: 0; z-index: 1; margin: 0; opacity: 0; cursor: pointer; }
+.nt-switch__track {
+  position: relative; display: block;
+  width: var(--size-switch-w); height: var(--size-switch-h);
+  border-radius: var(--radius-full);
+  background: var(--color-switch-off);
+  transition: background var(--duration-base) var(--ease-out);
+}
+.nt-switch__knob {
+  position: absolute; top: var(--space-2); left: var(--space-2);
+  width: var(--size-switch-knob); height: var(--size-switch-knob);
+  border-radius: var(--radius-full);
+  background: var(--color-switch-knob);
+  transition: transform var(--duration-base) var(--ease-out);
+}
+.nt-switch > input:checked + .nt-switch__track, .nt-switch.is-on .nt-switch__track { background: var(--color-switch-on); }
+.nt-switch > input:checked + .nt-switch__track .nt-switch__knob,
+.nt-switch.is-on .nt-switch__knob { transform: translateX(calc(var(--size-switch-w) - var(--size-switch-knob) - 2 * var(--space-2))); }
+.nt-switch > input:focus-visible + .nt-switch__track, .nt-switch.is-focus .nt-switch__track { box-shadow: var(--focus-ring); }
+
+/* 勾选框：未勾选为实测；勾选态 [选定 D2]（analysis 没有估计，取先前应用的一致做法：主色底 + 反白勾） */
+.nt-checkbox { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; cursor: pointer; }
+.nt-checkbox > input { position: absolute; inset: 0; z-index: 1; margin: 0; opacity: 0; cursor: pointer; }
+.nt-checkbox__box {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--size-checkbox); height: var(--size-checkbox);
+  border-radius: var(--radius-xs);
+  box-shadow: inset 0 0 0 var(--border-hairline-width) var(--color-border-checkbox);
+  color: transparent;
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-checkbox:hover .nt-checkbox__box, .nt-checkbox.is-hover .nt-checkbox__box { background: var(--color-fill-hover); }
+.nt-checkbox > input:checked + .nt-checkbox__box, .nt-checkbox.is-on .nt-checkbox__box {
+  background: var(--color-accent); box-shadow: none; color: var(--color-text-on-accent);
+}
+.nt-checkbox:hover > input:checked + .nt-checkbox__box, .nt-checkbox.is-on.is-hover .nt-checkbox__box { background: var(--color-accent-hover); }
+.nt-checkbox > input:focus-visible + .nt-checkbox__box, .nt-checkbox.is-focus .nt-checkbox__box { box-shadow: var(--focus-ring); }
+.nt-checkbox__box .nt-icon { width: var(--icon-xs); height: var(--icon-xs); }
+
+/* ---------------------------------------------------------------------
+   5. 列表行 / 树行（侧栏行配方）
+   --------------------------------------------------------------------- */
+.nt-row {
+  position: relative;
+  display: flex; align-items: center; gap: var(--space-8); width: 100%; min-width: 0;
+  height: var(--size-sidebar-row);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-8);
+  border-radius: var(--radius-md);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line-loose); font-weight: var(--font-weight-regular);
+  color: var(--color-text-strong-muted);
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-row:hover, .nt-row.is-hover, .nt-row.is-open { background: var(--color-fill-hover); }
+.nt-row.is-selected { background: var(--color-fill-selected); color: var(--color-text-primary); }
+.nt-row__icon {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: var(--size-icon-box); height: var(--size-icon-box);
+  border-radius: var(--radius-icon);
+  color: var(--color-icon-secondary);
+}
+.nt-row.is-selected .nt-row__icon { color: var(--color-icon-primary); }
+.nt-row--action .nt-row__icon { color: var(--color-icon-sidebar); }
+.nt-row__label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nt-row__label--placeholder { color: var(--color-text-tertiary); }
+.nt-row__meta { flex: none; font-size: var(--text-small-size); line-height: var(--text-small-line); color: var(--color-text-tertiary); }
+.nt-row__actions {
+  display: flex; align-items: center; gap: var(--space-2); flex: none;
+  opacity: 0; transition: opacity var(--duration-short) var(--ease-standard);
+}
+.nt-row:hover .nt-row__actions, .nt-row.is-hover .nt-row__actions, .nt-row.is-open .nt-row__actions,
+.nt-row:focus-within .nt-row__actions { opacity: 1; }
+.nt-row:hover .nt-row__meta, .nt-row.is-hover .nt-row__meta { display: none; }
+
+/* 树行：hover 时页面图标换成展开箭头 */
+.nt-row__glyph, .nt-row__toggle { display: inline-flex; align-items: center; justify-content: center; }
+.nt-row__toggle { position: absolute; inset: 0; padding: 0; opacity: 0; color: var(--color-icon-secondary); border-radius: var(--radius-icon); }
+.nt-row--tree:hover .nt-row__glyph, .nt-row--tree.is-hover .nt-row__glyph { opacity: 0; }
+.nt-row--tree:hover .nt-row__toggle, .nt-row--tree.is-hover .nt-row__toggle { opacity: 1; }
+/* 键盘聚焦时也要看得见（DESIGN §4：行内动作在 hover 或聚焦时出现） */
+.nt-row--tree:has(.nt-row__toggle:focus-visible) .nt-row__glyph, .nt-row--tree:has(.nt-row__toggle.is-focus) .nt-row__glyph { opacity: 0; }
+.nt-row__toggle:focus-visible, .nt-row__toggle.is-focus { opacity: 1; }
+.nt-tree__children { display: flex; flex-direction: column; gap: var(--space-1); padding-left: var(--size-indent); }
+
+/* 折叠箭头：默认折叠（−90°），父元素 .is-open 时展开 */
+.nt-disclosure { flex: none; transform: rotate(var(--rotate-collapsed)); transition: transform var(--duration-base) var(--ease-out); }
+.is-open > .nt-disclosure, .is-open > * > .nt-disclosure, .nt-disclosure.is-open { transform: none; }
+
+.nt-rows { display: flex; flex-direction: column; gap: var(--space-1); }
+
+/* 分组标题（侧栏 "Private" 等），同时是可折叠头 */
+.nt-section-label {
+  display: flex; align-items: center; gap: var(--space-4); width: 100%;
+  height: var(--size-sidebar-row); margin-top: var(--space-12); padding: 0 var(--space-8);
+  border-radius: var(--radius-md);
+  font-size: var(--text-small-size); line-height: var(--text-small-line); font-weight: var(--font-weight-medium);
+  color: var(--color-text-tertiary);
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-section-label:hover, .nt-section-label.is-hover { background: var(--color-fill-hover); }
+.nt-section-label .nt-disclosure { opacity: 0; transition: opacity var(--duration-short) var(--ease-standard), transform var(--duration-base) var(--ease-out); }
+.nt-section-label:hover .nt-disclosure, .nt-section-label.is-hover .nt-disclosure { opacity: 1; }
+
+/* 面板分组标签（菜单 / 搜索结果的 "Suggested" "Today"） */
+.nt-group-label {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: var(--space-6) 0 var(--space-8); padding: 0 var(--space-8);
+  font-size: var(--text-small-size); line-height: var(--text-group-label-line); font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+/* ---------------------------------------------------------------------
+   6. 侧栏外框、搜索框、Home tab、推广卡、底栏
+   --------------------------------------------------------------------- */
+.nt-sidebar {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--color-bg-sidebar);
+  box-shadow: var(--shadow-sidebar-edge);
+  z-index: var(--z-sidebar);
+  color: var(--color-text-strong-muted);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line-loose);
+}
+.nt-sidebar__header {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  height: var(--layout-topbar-height); padding: 0 var(--space-12); flex: none;
+}
+.nt-sidebar__body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--space-8) var(--space-12); scrollbar-width: thin; }
+.nt-sidebar__footer {
+  display: flex; align-items: center; justify-content: space-between; flex: none;
+  height: var(--size-sidebar-footer); padding: 0 var(--space-8) 0 var(--space-12);
+  box-shadow: inset 0 var(--border-hairline-width) 0 0 var(--color-border-sidebar-edge);
+}
+.nt-sidebar__workspace {
+  display: inline-flex; align-items: center; gap: var(--space-8); min-width: 0;
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line); font-weight: var(--font-weight-medium);
+  color: var(--color-text-strong-muted);
+}
+
+.nt-sidebar-search {
+  display: flex; align-items: center; gap: var(--space-6);
+  height: var(--size-sidebar-search);
+  margin: 0 var(--space-12) var(--space-6);
+  padding: 0 var(--space-6) 0 var(--space-10);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 var(--border-hairline-width) var(--color-border-control);
+  background: transparent;
+  color: var(--color-icon-secondary);
+  cursor: text;
+}
+.nt-sidebar-search:focus-within, .nt-sidebar-search.is-focus { box-shadow: var(--focus-ring-input); }
+.nt-sidebar-search__input {
+  flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: transparent;
+  font: inherit; font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-primary);
+}
+.nt-sidebar-search__input::placeholder { color: var(--color-text-tertiary); }
+
+.nt-sidebar-tabs { display: flex; align-items: center; gap: var(--space-2); }
+.nt-sidebar-tab {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-6);
+  height: var(--size-sidebar-tab); min-width: var(--size-sidebar-tab); padding: 0 var(--space-8);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line-tight); font-weight: var(--font-weight-medium);
+  color: var(--color-icon-sidebar);
+  transition: background var(--duration-instant) var(--ease-in);
+}
+/* 只有图标的 tab，未选中时变淡（实测范围只有这两个） */
+.nt-sidebar-tab--icon { opacity: var(--opacity-dim); }
+.nt-sidebar-tab:hover, .nt-sidebar-tab.is-hover { background: var(--color-fill-hover); }
+.nt-sidebar-tab.is-selected { opacity: 1; background: var(--color-fill-selected); color: var(--color-text-primary); }
+
+.nt-promo {
+  position: relative;
+  margin: var(--space-8);
+  padding: var(--space-8);
+  border-radius: var(--radius-popover);
+  background: var(--color-bg-page);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-small-size); line-height: var(--text-small-line);
+  color: var(--color-text-secondary);
+}
+.nt-promo__title { margin: 0 0 var(--space-2); font-size: var(--text-promo-title-size); line-height: var(--text-promo-title-line); font-weight: var(--font-weight-semibold); color: var(--color-text-primary); }
+.nt-promo__link { display: inline-flex; align-items: center; gap: var(--space-4); margin-top: var(--space-6); font-weight: var(--font-weight-semibold); color: var(--color-text-primary); }
+.nt-promo__close { position: absolute; top: var(--space-4); right: var(--space-4); }
+
+/* ---------------------------------------------------------------------
+   7. 顶栏、面包屑
+   --------------------------------------------------------------------- */
+.nt-topbar {
+  display: flex; align-items: center; gap: var(--space-2);
+  height: var(--layout-topbar-height);
+  padding: 0 var(--space-10) 0 var(--space-12);
+  background: var(--color-bg-page);
+  z-index: var(--z-topbar);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line-tight);
+  transition: opacity var(--duration-slow) var(--ease-standard);
+}
+.nt-topbar.is-faded { opacity: 0; }
+.nt-topbar__crumbs { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1; }
+.nt-topbar__actions { display: flex; align-items: center; gap: var(--space-2); flex: none; }
+.nt-topbar__status { margin-right: var(--space-6); color: var(--color-text-tertiary); white-space: nowrap; }
+
+.nt-crumb {
+  display: inline-flex; align-items: center; gap: var(--space-5); min-width: 0;
+  height: var(--size-button-small); padding: var(--space-2) var(--space-6);
+  border-radius: var(--radius-md);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line-tight); color: var(--color-text-primary);
+  transition: background var(--duration-quick) var(--ease-in-out);
+}
+.nt-crumb:hover, .nt-crumb.is-hover { background: var(--color-fill-hover); }
+.nt-crumb__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-crumb--muted { color: var(--color-text-tertiary); }
+.nt-crumb-sep { color: var(--color-text-tertiary); }
+
+
+/* ---------------------------------------------------------------------
+   8. 标签页：视图 tab、分段 tab、筛选 chip、设置左栏项
+   --------------------------------------------------------------------- */
+.nt-tabs { display: inline-flex; align-items: center; gap: var(--space-4); }
+.nt-tab {
+  display: inline-flex; align-items: center; gap: var(--space-6);
+  height: var(--size-settings-nav); padding: 0 var(--space-12);
+  border-radius: var(--radius-full);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line-tight); font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary); white-space: nowrap;
+  transition: background var(--duration-instant) var(--ease-in), color var(--duration-instant) var(--ease-in);
+}
+.nt-tab:hover, .nt-tab.is-hover { background: var(--color-fill-hover); }
+.nt-tab.is-selected { background: var(--color-fill-selected); color: var(--color-text-primary); }
+.nt-tab.is-selected:hover, .nt-tab.is-selected.is-hover { background: var(--color-fill-selected-hover); }
+.nt-tab__count { color: var(--color-text-tertiary); }
+
+/* DB 视图 tab（"Table"） */
+.nt-tab--view { height: auto; padding: var(--space-6) var(--space-12); border-radius: var(--radius-view-tab); }
+
+/* 搜索筛选 chip：静止无底色 */
+.nt-chip {
+  display: inline-flex; align-items: center; gap: var(--space-4);
+  height: var(--size-button-small); padding: 0 var(--pad-pill-end) 0 var(--pad-chip-start);
+  border-radius: var(--radius-chip);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line-loose);
+  color: var(--color-text-secondary); white-space: nowrap;
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-chip:hover, .nt-chip.is-hover { background: var(--color-fill-hover); }
+.nt-chip.is-selected { background: var(--color-fill-selected); color: var(--color-text-primary); }
+.nt-chip--add { color: var(--color-text-tertiary); }
+
+/* 设置左栏 */
+.nt-nav { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-8); background: var(--color-bg-settings-nav); }
+.nt-nav__heading {
+  padding: var(--space-6) var(--space-8);
+  font-size: var(--text-small-size); line-height: var(--text-small-line); font-weight: var(--font-weight-medium);
+  color: var(--color-text-tertiary);
+}
+.nt-nav-item {
+  display: flex; align-items: center; gap: var(--space-6); width: 100%;
+  height: var(--size-settings-nav); padding: var(--space-4) var(--space-6);
+  border-radius: var(--radius-md);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line); font-weight: var(--font-weight-medium);
+  color: var(--color-text-strong-muted);
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-nav-item:hover, .nt-nav-item.is-hover { background: var(--color-fill-hover); }
+.nt-nav-item.is-selected { background: var(--color-fill-selected); color: var(--color-text-primary); }
+.nt-nav-item.is-selected:hover, .nt-nav-item.is-selected.is-hover { background: var(--color-fill-selected-hover); }
+.nt-nav-item--upgrade { color: var(--color-text-link); }
+.nt-nav-item--upgrade .nt-icon { color: var(--color-icon-accent); }
+
+/* ---------------------------------------------------------------------
+   9. 弹出层：popover、菜单
+   --------------------------------------------------------------------- */
+.nt-popover {
+  background: var(--color-bg-popover);
+  border-radius: var(--radius-popover);
+  box-shadow: var(--shadow-lg);
+  opacity: 0; pointer-events: none;
+  transform: scale(var(--scale-popover-from)); transform-origin: top left;
+  transition: opacity var(--duration-base) var(--ease-standard), transform var(--duration-base) var(--ease-standard);
+}
+.nt-popover--from-end { transform-origin: top right; }
+.nt-popover.is-open { opacity: 1; pointer-events: auto; transform: none; }
+
+.nt-menu { width: var(--layout-menu-width); max-height: 70vh; overflow-y: auto; scrollbar-width: thin; }
+.nt-menu--slash { width: var(--layout-slash-menu-width); }
+.nt-menu__section { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-4); }
+.nt-menu__sep { height: var(--border-hairline-width); margin: 0 var(--space-12); background: var(--color-border-hairline); }
+.nt-menu__item {
+  display: flex; align-items: center; gap: var(--space-8); width: 100%;
+  height: var(--size-menu-item); padding: 0 var(--space-8);
+  border-radius: var(--radius-md);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-primary);
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-menu__item--option { height: var(--size-option-item); }
+.nt-menu__item:hover, .nt-menu__item.is-hover, .nt-menu__item.is-selected { background: var(--color-fill-hover); }
+/* 键盘当前行用 is-selected（aria-activedescendant），DOM 焦点留在菜单容器上；
+   真的把焦点放到菜单项上时（roving tabindex），焦点环照常显示 */
+.nt-menu__item:focus-visible { background: var(--color-fill-hover); }
+.nt-menu:focus-visible { outline: none; }
+.nt-menu__item[aria-disabled="true"] { color: var(--color-text-tertiary); pointer-events: none; }
+.nt-menu__item[aria-disabled="true"] .nt-menu__icon { color: var(--color-icon-tertiary); }
+.nt-menu__icon { display: inline-flex; flex: none; color: var(--color-icon-primary); }
+.nt-menu__label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nt-menu__qualifier { color: var(--color-text-tertiary); }
+.nt-menu__shortcut { flex: none; font-size: var(--text-small-size); line-height: var(--text-small-line-alt); color: var(--color-text-tertiary); }
+.nt-menu__check { flex: none; color: var(--color-icon-primary); }
+.nt-menu__footer {
+  display: flex; align-items: center; justify-content: space-between;
+  height: var(--size-option-item); padding: 0 var(--space-12);
+  box-shadow: inset 0 var(--border-hairline-width) 0 0 var(--color-border-solid);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-primary);
+}
+.nt-menu__meta {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-8) var(--space-12) var(--space-10);
+  font-size: var(--text-small-size); line-height: var(--text-small-line-alt); color: var(--color-text-tertiary);
+}
+
+/* ---------------------------------------------------------------------
+   10. Tooltip  [选定 D2]：动效为实测，外观未采到，按 popover 配方缩小一档（md 圆角 + md 阴影）估计
+   --------------------------------------------------------------------- */
+.nt-tooltip {
+  display: inline-flex; align-items: center; gap: var(--space-6);
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-popover);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-small-size); line-height: var(--text-small-line); font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap; pointer-events: none;
+  opacity: 0; transform: scale(var(--scale-tooltip-from));
+  transition: opacity var(--duration-tooltip) var(--ease-out), transform var(--duration-tooltip) var(--ease-out);
+}
+.nt-tooltip.is-open { opacity: 1; transform: none; }
+.nt-tooltip__shortcut { color: var(--color-text-tertiary); font-weight: var(--font-weight-regular); }
+
+/* ---------------------------------------------------------------------
+   11. 弹窗（遮罩 + 对话框）
+   遮罩、设置弹窗为实测；确认弹窗 [选定 D2]：未采到，套设置弹窗的配方（xl 阴影、card 圆角、同样的进出动效）
+   --------------------------------------------------------------------- */
+.nt-modal { position: fixed; inset: 0; z-index: var(--z-overlay); display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.nt-modal.is-open { pointer-events: auto; }
+.nt-modal__scrim {
+  position: absolute; inset: 0;
+  background: var(--color-bg-overlay-modal);
+  opacity: 0; transition: opacity var(--duration-base) var(--ease-standard);
+}
+.nt-dialog {
+  position: relative; display: flex; flex-direction: column; max-width: 100%; max-height: 100%;
+  border-radius: var(--radius-card);
+  background: var(--color-bg-page);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+  opacity: 0; transform: scale(var(--scale-dialog-from));
+  transition: opacity var(--duration-base) var(--ease-standard), transform var(--duration-base) var(--ease-standard);
+}
+.nt-modal.is-open .nt-modal__scrim, .nt-modal.is-open .nt-dialog { opacity: 1; }
+.nt-modal.is-open .nt-dialog { transform: none; }
+.nt-dialog--settings {
+  width: min(var(--layout-settings-dialog-w), calc(100vw - 2 * var(--size-scrim-inset-x)));
+  height: min(var(--layout-settings-dialog-h), calc(100vh - 2 * var(--size-scrim-inset-y)));
+  flex-direction: row;
+}
+.nt-dialog--confirm { width: min(var(--layout-dialog-confirm-w), calc(100vw - 2 * var(--space-24))); }
+.nt-dialog__close { position: absolute; top: var(--space-12); right: var(--space-12); z-index: 1; }
+.nt-dialog__body { padding: var(--space-24); overflow-y: auto; }
+.nt-dialog__title { margin: 0 0 var(--space-8); font-size: var(--text-settings-section-size); line-height: var(--text-settings-section-line); font-weight: var(--font-weight-medium); }
+.nt-dialog__text { margin: 0; font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-secondary); }
+.nt-dialog__footer { display: flex; justify-content: flex-end; gap: var(--space-8); padding: 0 var(--space-24) var(--space-24); }
+
+/* ---------------------------------------------------------------------
+   12. Toast  [选定 D2]：未采到，analysis 没有估计；取先前应用的一致做法（popover 配方，底部居中）
+   --------------------------------------------------------------------- */
+.nt-toast-region {
+  position: fixed; left: 0; right: 0; bottom: var(--space-24); z-index: var(--z-overlay);
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-8);
+  pointer-events: none;
+}
+.nt-toast {
+  display: inline-flex; align-items: center; gap: var(--space-8);
+  min-height: var(--size-floating-btn);
+  padding: var(--space-6) var(--space-6) var(--space-6) var(--space-12);
+  border-radius: var(--radius-popover);
+  background: var(--color-bg-popover);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-primary);
+  opacity: 0; transform: scale(var(--scale-popover-from)); transform-origin: bottom center;
+  transition: opacity var(--duration-base) var(--ease-standard), transform var(--duration-base) var(--ease-standard);
+}
+.nt-toast.is-open { opacity: 1; transform: none; pointer-events: auto; }
+.nt-toast__icon { color: var(--color-icon-secondary); }
+.nt-toast__message { min-width: 0; max-width: var(--layout-search-preview-w); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: var(--space-4); }
+
+/* ---------------------------------------------------------------------
+   13. 空状态、骨架屏、加载条
+   --------------------------------------------------------------------- */
+/* 行内空提示（实测三种：侧栏 "No upcoming events"、属性 "Empty"、空页面提示） */
+.nt-empty-hint { color: var(--color-text-tertiary); font-size: var(--text-ui-size); line-height: var(--text-ui-line); }
+.nt-empty-hint--sidebar { color: var(--color-text-sidebar-muted); padding: var(--space-4) var(--space-8); }
+.nt-empty-hint--page { font-size: var(--text-body-size); line-height: var(--text-body-line); }
+
+/* 整块空状态 [推导]：原版没有，由先前应用组合出来（图标 + 标题 + 说明 + 动作） */
+.nt-empty {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-4);
+  padding: var(--space-44) var(--space-12) var(--space-24);
+}
+.nt-empty__icon { color: var(--color-icon-tertiary); margin-bottom: var(--space-8); }
+.nt-empty__title { font-size: var(--text-ui-size); line-height: var(--text-ui-line); font-weight: var(--font-weight-medium); color: var(--color-text-strong-muted); }
+.nt-empty__text { font-size: var(--text-small-size); line-height: var(--text-small-line-alt); color: var(--color-text-tertiary); }
+.nt-empty__actions { display: flex; gap: var(--space-6); margin-top: var(--space-12); }
+
+.nt-skeleton {
+  display: block; position: relative; overflow: hidden;
+  width: var(--size-skeleton-w); height: var(--size-skeleton-h);
+  border-radius: var(--radius-sm);
+  background: var(--color-skeleton);
+}
+.nt-skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--color-skeleton), transparent);
+  transform: translateX(-100%);
+  animation: nt-shimmer var(--duration-shimmer) linear infinite;
+}
+.nt-skeleton--line { width: 100%; }
+
+/* 输入时的不定进度条：只在 .is-working 时出现 */
+.nt-progress { position: relative; height: var(--size-progress-bar); overflow: hidden; opacity: 0; }
+.nt-progress.is-working { opacity: 1; }
+.nt-progress::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+  transform: translateX(-100%);
+  animation: nt-shimmer var(--duration-shimmer) linear infinite;
+}
+@keyframes nt-shimmer { to { transform: translateX(100%); } }
+
+/* ---------------------------------------------------------------------
+   14. 数据表（DB 表格配方，div 网格；列宽由产品用 --nt-table-columns 给）
+   --------------------------------------------------------------------- */
+.nt-viewbar {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-8);
+  height: var(--size-view-bar);
+  box-shadow: inset 0 calc(-1 * var(--border-hairline-width)) 0 0 var(--color-border-hairline);
+}
+.nt-viewbar__tools { display: flex; align-items: center; gap: var(--space-2); }
+
+.nt-table { font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-primary); }
+.nt-table__row {
+  position: relative;
+  display: grid; grid-template-columns: var(--nt-table-columns, 1fr);
+  min-height: var(--size-db-row);
+}
+.nt-table__row--header {
+  position: sticky; top: 0; z-index: var(--z-db-header);
+  min-height: var(--size-db-header);
+  background: var(--color-bg-page);
+  box-shadow: var(--shadow-db-header);
+}
+.nt-table__head-cell {
+  display: flex; align-items: center; gap: var(--space-6); min-width: 0;
+  padding: var(--space-8);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line-loose); color: var(--color-text-secondary);
+  white-space: nowrap; overflow: hidden;
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-table__head-cell .nt-icon { color: var(--color-icon-secondary); width: var(--icon-sm); height: var(--icon-sm); }
+.nt-table__head-cell:hover, .nt-table__head-cell.is-hover { background: var(--color-fill-hover); }
+.nt-table__head-cell + .nt-table__head-cell { box-shadow: inset var(--border-hairline-width) 0 0 0 var(--color-border-hairline); }
+
+.nt-table__cell {
+  display: flex; align-items: center; gap: var(--space-8); min-width: 0;
+  padding: var(--pad-cell-y) var(--space-8);
+  box-shadow: inset calc(-1 * var(--border-hairline-width)) calc(-1 * var(--border-hairline-width)) 0 0 var(--color-border-hairline);
+}
+.nt-table__cell:last-child { box-shadow: inset 0 calc(-1 * var(--border-hairline-width)) 0 0 var(--color-border-hairline); }
+.nt-table__cell--pill { padding: var(--space-8); }
+.nt-table__cell--muted { color: var(--color-text-secondary); }
+.nt-table__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-table__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--font-weight-medium); line-height: var(--text-ui-line-loose); }
+.nt-table__caret { display: inline-flex; flex: none; color: var(--color-icon-secondary); }
+.nt-table__indent { flex: none; width: var(--size-indent); }
+
+/* 行在 Side Peek / 详情中打开（也可用于任何"另一处正显示它"的记录）。蓝色 halo 为实测，是蓝色白名单里的一项 */
+.nt-table__row.is-current { background: var(--color-fill-row-selected); box-shadow: var(--shadow-row-open); border-radius: var(--radius-xs); }
+.nt-table__row.is-current::before {
+  content: ""; position: absolute; top: 50%;
+  left: calc(-1 * (var(--space-8) + var(--size-drag-handle-w)));
+  width: var(--size-drag-handle-w); height: var(--size-drag-handle-h);
+  transform: translateY(-50%);
+  border-radius: var(--radius-full);
+  background: var(--color-accent-selection);
+}
+/* 框选（实测 selectable halo，蓝色）。只用于框选，不用于 hover / 键盘当前行 */
+.nt-table__row.is-selected { background: var(--color-fill-block-selected); }
+
+/* 行 hover 才出现：左侧勾选框、标题格右侧 "OPEN" 快捷动作 */
+.nt-table__check { position: absolute; top: 50%; left: calc(-1 * (var(--size-checkbox) + var(--space-8))); transform: translateY(-50%); opacity: 0; transition: opacity var(--duration-short) var(--ease-standard); }
+.nt-table__row:hover .nt-table__check, .nt-table__row.is-hover .nt-table__check, .nt-table__check:focus-within,
+.nt-table__check:has(input:checked) { opacity: 1; }
+.nt-quick-action {
+  flex: none; display: inline-flex; align-items: center; gap: var(--space-4);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-page); box-shadow: var(--shadow-md);
+  font-size: var(--text-quick-action-size); line-height: var(--text-quick-action-line); font-weight: var(--font-weight-medium);
+  letter-spacing: var(--letter-spacing-quick-action); text-transform: uppercase;
+  color: var(--color-text-secondary);
+  opacity: 0; transition: opacity var(--duration-short) var(--ease-standard), background var(--duration-instant) var(--ease-in);
+}
+.nt-table__row:hover .nt-quick-action, .nt-table__row.is-hover .nt-quick-action, .nt-quick-action:focus-visible, .nt-quick-action.is-focus { opacity: 1; }
+.nt-quick-action:hover, .nt-quick-action.is-hover { background: var(--color-fill-hover-solid-on-page); color: var(--color-text-primary); }
+.nt-quick-action:focus-visible, .nt-quick-action.is-focus { box-shadow: var(--shadow-md), var(--focus-ring); }
+
+/* "New page" / "New sub-item" 行 */
+.nt-table__add {
+  display: flex; align-items: center; gap: var(--space-6); width: 100%;
+  height: var(--size-db-row); padding: 0 var(--space-8);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-tertiary);
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-table__add:hover, .nt-table__add.is-hover { background: var(--color-fill-hover); }
+
+/* 分组头 [推导]：分组视图没采到；套侧栏分组标题的配方（可折叠、箭头 hover 才出现），高度对齐数据行。
+   里面放分组值（.nt-status / .nt-tag）和 __group-count */
+.nt-table__group {
+  display: flex; align-items: center; gap: var(--space-6); width: 100%;
+  height: var(--size-db-row); margin-top: var(--space-12); padding: 0 var(--space-8);
+  border-radius: var(--radius-md);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-secondary);
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-table__group:hover, .nt-table__group.is-hover { background: var(--color-fill-hover); }
+.nt-table__group .nt-disclosure { opacity: 0; transition: opacity var(--duration-short) var(--ease-standard), transform var(--duration-base) var(--ease-out); }
+.nt-table__group:hover .nt-disclosure, .nt-table__group.is-hover .nt-disclosure,
+.nt-table__group:focus-visible .nt-disclosure, .nt-table__group.is-focus .nt-disclosure { opacity: 1; }
+.nt-table__group-count { color: var(--color-text-tertiary); }
+
+/* 简单表（设置 › 成员表）：表头上下实线，行只有底线，无竖线 */
+.nt-table--simple .nt-table__row { min-height: var(--size-member-row); box-shadow: inset 0 calc(-1 * var(--border-hairline-width)) 0 0 var(--color-border-solid); }
+.nt-table--simple .nt-table__row--header { min-height: var(--size-member-header); box-shadow: var(--shadow-table-rule); }
+.nt-table--simple .nt-table__head-cell { padding: 0 var(--space-8); line-height: var(--text-ui-line); }
+.nt-table--simple .nt-table__head-cell + .nt-table__head-cell,
+.nt-table--simple .nt-table__cell, .nt-table--simple .nt-table__cell:last-child { box-shadow: none; }
+.nt-table--simple .nt-table__cell { padding: 0 var(--space-8); }
+
+/* 用户格：头像 + 名字 / 邮箱 */
+.nt-person { display: inline-flex; align-items: center; gap: var(--space-6); min-width: 0; }
+.nt-person__text { display: flex; flex-direction: column; min-width: 0; }
+.nt-person__name { color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-person__sub { font-size: var(--text-small-size); line-height: var(--text-small-line); color: var(--color-text-secondary); }
+
+/* ---------------------------------------------------------------------
+   15. 设置页内容：标题、分节、设置行
+   --------------------------------------------------------------------- */
+.nt-settings-title { margin: 0; font-size: var(--text-settings-title-size); line-height: var(--text-settings-title-line); font-weight: var(--font-weight-semibold); color: var(--color-text-primary); }
+.nt-settings-subtitle { margin: var(--space-4) 0 0; font-size: var(--text-body-size); line-height: var(--text-body-line); color: var(--color-text-primary); }
+.nt-settings-section { margin-top: var(--space-44); }
+.nt-settings-section__heading {
+  margin: 0 0 var(--space-16); padding-bottom: var(--space-12);
+  box-shadow: inset 0 calc(-1 * var(--border-hairline-width)) 0 0 var(--color-border-hairline);
+  font-size: var(--text-settings-section-size); line-height: var(--text-settings-section-line); font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  display: flex; align-items: center; gap: var(--space-6);
+}
+.nt-setting { display: flex; align-items: center; justify-content: space-between; gap: var(--space-24); }
+.nt-setting + .nt-setting { margin-top: var(--space-24); }
+.nt-setting__text { min-width: 0; max-width: var(--layout-search-list-w); }
+.nt-setting__label { display: block; font-size: var(--text-ui-size); line-height: var(--text-ui-line); font-weight: var(--font-weight-medium); color: var(--color-text-primary); }
+.nt-setting__desc { margin-top: var(--space-2); font-size: var(--text-description-size); line-height: var(--text-description-line); color: var(--color-text-secondary); }
+.nt-setting__more { display: inline-flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4); font-size: var(--text-description-size); line-height: var(--text-description-line); color: var(--color-text-tertiary); }
+.nt-setting__control { display: flex; align-items: center; gap: var(--space-8); flex: none; }
+
+/* ---------------------------------------------------------------------
+   16. 搜索面板（Ctrl+K）、结果行、预览卡
+   --------------------------------------------------------------------- */
+.nt-search {
+  display: flex; flex-direction: column; overflow: hidden;
+  border-radius: var(--radius-search);
+  background: var(--color-bg-search-panel);
+  box-shadow: var(--shadow-xl);
+  opacity: 0; pointer-events: none;
+  transform: scale(var(--scale-popover-from));
+  transition: opacity var(--duration-base) var(--ease-standard), transform var(--duration-base) var(--ease-standard);
+}
+.nt-search.is-open { opacity: 1; pointer-events: auto; transform: none; }
+.nt-search__input-row { display: flex; align-items: center; gap: var(--space-8); padding: var(--space-12); color: var(--color-icon-secondary); }
+.nt-search__input {
+  flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: transparent;
+  font: inherit; font-size: var(--text-body-size); line-height: var(--text-body-line); color: var(--color-text-primary);
+}
+.nt-search__input::placeholder { color: var(--color-text-tertiary); }
+.nt-search__chips { display: flex; flex-wrap: wrap; gap: var(--space-6); padding: var(--space-10) var(--space-12); }
+.nt-search__results { padding: 0 var(--space-10); overflow-y: auto; scrollbar-width: thin; }
+/* 零结果：一行灰字，和结果行的内边距对齐 */
+.nt-search__results > .nt-empty-hint { padding: var(--space-8) var(--space-8) var(--space-12); }
+.nt-search__footer {
+  display: flex; align-items: center; justify-content: space-between; flex: none;
+  height: var(--size-search-footer); padding: 0 var(--space-12);
+  box-shadow: inset 0 var(--border-hairline-width) 0 0 var(--color-border-hairline);
+  font-size: var(--text-small-size); line-height: var(--text-small-line-alt); color: var(--color-text-tertiary);
+}
+
+.nt-result {
+  display: flex; align-items: center; gap: var(--space-8); width: 100%;
+  padding: var(--space-8);
+  border-radius: var(--radius-card);
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-result:hover, .nt-result.is-hover, .nt-result.is-selected { background: var(--color-fill-selected); }
+.nt-result__icon { display: inline-flex; flex: none; color: var(--color-icon-secondary); }
+.nt-result__text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.nt-result__line { display: flex; align-items: baseline; gap: var(--space-6); min-width: 0; }
+.nt-result__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-ui-size); line-height: var(--text-ui-line); font-weight: var(--font-weight-medium); color: var(--color-text-strong-muted); }
+.nt-result:hover .nt-result__title, .nt-result.is-hover .nt-result__title, .nt-result.is-selected .nt-result__title { color: var(--color-text-primary); }
+.nt-result__parent, .nt-result__meta { font-size: var(--text-small-size); line-height: var(--text-small-line-alt); color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 浮起的预览卡（实测：lg 阴影 + 1px 实线）。"浮层只靠阴影"的唯一例外 */
+.nt-preview {
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--color-bg-page);
+  box-shadow: var(--shadow-lg);
+  border: var(--border-hairline-width) solid var(--color-border-solid);
+}
+
+/* ---------------------------------------------------------------------
+   17. Side Peek（右侧详情面板）与属性行
+   --------------------------------------------------------------------- */
+.nt-peek {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--color-bg-page);
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  transform: translateX(100%);
+  transition: transform var(--duration-peek) var(--ease-standard);
+}
+.nt-peek.is-open { transform: none; }
+.nt-peek__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); height: var(--layout-topbar-height); padding: 0 var(--space-12); flex: none; }
+
+.nt-props { display: flex; flex-direction: column; gap: var(--space-1); }
+.nt-prop {
+  display: flex; align-items: center; width: 100%; min-height: var(--size-peek-prop-row);
+  padding: var(--space-7) var(--space-6);
+  border-radius: var(--radius-md);
+  font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-primary);
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-prop:hover, .nt-prop.is-hover { background: var(--color-fill-hover); }
+.nt-prop__label { display: inline-flex; align-items: center; gap: var(--space-6); flex: none; width: var(--layout-peek-prop-label-w); color: var(--color-text-secondary); }
+.nt-prop__label .nt-icon { width: var(--icon-sm); height: var(--icon-sm); color: var(--color-icon-secondary); }
+.nt-prop__value { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); min-width: 0; flex: 1; }
+.nt-prop__empty { color: var(--color-text-tertiary); }
+.nt-prop--add { color: var(--color-text-tertiary); gap: var(--space-6); }
+
+.nt-comments { padding-bottom: var(--space-12); box-shadow: inset 0 calc(-1 * var(--border-hairline-width)) 0 0 var(--color-border-hairline); }
+.nt-comments__label { margin-bottom: var(--space-8); font-size: var(--text-description-size); line-height: var(--text-description-line); font-weight: var(--font-weight-medium); color: var(--color-text-secondary); }
+.nt-comments__input { display: flex; align-items: center; gap: var(--space-8); }
+.nt-comments__field {
+  flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: transparent;
+  font: inherit; font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-primary);
+}
+.nt-comments__field::placeholder { color: var(--color-text-tertiary); }
+
+/* 评论线程 [选定 D2]：analysis 只采到 "Comments" 标题和输入框，线程写 can't tell。
+   按延续验证里的组合固化：评论头像 + 作者（medium）+ 相对时间（三级灰）+ 正文（UI 字号） */
+.nt-comment-list { display: flex; flex-direction: column; gap: var(--space-16); margin-bottom: var(--space-12); }
+.nt-comment { display: flex; align-items: flex-start; gap: var(--space-10); }
+.nt-comment__main { flex: 1; min-width: 0; }
+.nt-comment__head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-6); }
+.nt-comment__author { font-size: var(--text-description-size); line-height: var(--text-description-line); font-weight: var(--font-weight-medium); color: var(--color-text-primary); }
+.nt-comment__time { font-size: var(--text-small-size); line-height: var(--text-small-line); color: var(--color-text-tertiary); }
+.nt-comment__text { margin: var(--space-2) 0 0; font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-primary); word-break: break-word; }
+
+/* ---------------------------------------------------------------------
+   18. 文档内容：页面标题、块、callout、代码、引用、内容表、大纲条
+   --------------------------------------------------------------------- */
+.nt-page-title {
+  margin: 0; padding: var(--block-inner-pad) var(--space-6);
+  font-size: var(--text-page-title-size); line-height: var(--text-page-title-line); font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary); word-break: break-word;
+}
+.nt-page-title--db { font-size: var(--text-page-title-db-size); line-height: var(--text-page-title-db-line); }
+
+/* 可编辑文字（contenteditable 的标题 / 正文）。实测文字输入聚焦时没有环，只显示光标 */
+.nt-editable { outline: none; cursor: text; }
+.nt-editable:empty::before { content: attr(data-placeholder); color: var(--color-text-placeholder); pointer-events: none; }
+
+/* 块包裹：上方留白 = 包裹的 padding-top；块之间不加下边距 */
+.nt-block { position: relative; display: flex; align-items: flex-start; padding: var(--block-space-text) var(--space-6) 0; }
+.nt-block--h1 { padding-top: var(--block-space-h1); }
+.nt-block--h2 { padding-top: var(--block-space-h2); }
+.nt-block--h3 { padding-top: var(--block-space-h3); }
+.nt-block--list { padding-top: var(--block-space-list); }
+.nt-block__content { flex: 1; min-width: 0; padding: var(--block-inner-pad) var(--space-2); }
+.nt-block__marker { display: flex; align-items: center; justify-content: center; flex: none; width: var(--size-indent); height: calc(var(--text-body-line) + 2 * var(--block-inner-pad)); }
+.nt-bullet { width: var(--size-bullet); height: var(--size-bullet); border-radius: var(--radius-full); background: currentColor; }
+.nt-block__marker + .nt-block__content { padding-left: var(--space-6); }
+
+/* 块拖拽把手：块 hover 时 0→1 */
+.nt-block-handle {
+  position: absolute; top: var(--block-space-text); left: calc(-1 * var(--size-icon-box));
+  display: flex; align-items: center; justify-content: center;
+  width: var(--size-icon-button-sm); height: var(--text-body-line); padding: 0;
+  border-radius: var(--radius-xs);
+  color: var(--color-icon-tertiary);
+  opacity: 0; transition: opacity var(--duration-short) var(--ease-standard);
+  cursor: grab;
+}
+.nt-block:hover .nt-block-handle, .nt-block.is-hover .nt-block-handle,
+.nt-block-handle:focus-visible, .nt-block-handle.is-focus { opacity: 1; }
+.nt-block-handle:hover { background: var(--color-fill-hover); }
+/* 框选的块：实测 selectable halo（蓝色，白名单内） */
+.nt-block.is-selected .nt-block__content { background: var(--color-fill-block-selected); border-radius: var(--radius-xs); }
+
+.nt-h1, .nt-h2, .nt-h3 { margin: 0; font-weight: var(--font-weight-semibold); color: var(--color-text-primary); }
+.nt-h1 { font-size: var(--text-h1-size); line-height: var(--text-h1-line); }
+.nt-h2 { font-size: var(--text-h2-size); line-height: var(--text-h2-line); }
+.nt-h3 { font-size: var(--text-h3-size); line-height: var(--text-h3-line); }
+.nt-text { margin: 0; font-size: var(--text-body-size); line-height: var(--text-body-line); color: var(--color-text-primary); word-break: break-word; }
+.nt-text--muted { color: var(--color-text-tertiary); }
+
+/* 子页面链接行 */
+.nt-page-link {
+  display: flex; align-items: center; gap: var(--space-6); width: 100%;
+  padding: var(--block-inner-pad) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-page-link-size); line-height: var(--text-page-link-line); font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  transition: background var(--duration-instant) var(--ease-in);
+}
+.nt-page-link:hover, .nt-page-link.is-hover { background: var(--color-fill-hover); }
+.nt-page-link .nt-icon { color: var(--color-icon-secondary); }
+
+.nt-callout {
+  display: flex; gap: var(--space-8);
+  padding: var(--space-12);
+  border: var(--border-hairline-width) solid transparent;
+  border-radius: var(--radius-popover);
+  background: var(--color-bg-callout);
+  font-size: var(--text-body-size); line-height: var(--text-body-line); color: var(--color-text-primary);
+}
+.nt-callout__icon { flex: none; width: var(--icon-lg); font-size: var(--icon-lg); line-height: var(--text-body-line); text-align: center; }
+.nt-callout__body { flex: 1; min-width: 0; }
+
+/* 行内代码：圆角借用 kbd / badge 的 --radius-sm（推断，未单独测量） */
+.nt-code {
+  font-family: var(--font-mono); font-size: var(--text-inline-code-size);
+  padding: var(--pad-inline-code-y) var(--pad-inline-code-x);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-inline-code); color: var(--color-text-secondary);
+}
+
+/* 代码块 [选定 D2]：底色为根变量 --cd-codBloBac；字号、内边距、圆角、语言标签 analysis 写 can't tell，取先前应用的做法 */
+.nt-code-block { position: relative; min-width: 0; border-radius: var(--radius-popover); background: var(--color-bg-code-block); }
+.nt-code-block__lang { padding: var(--space-8) var(--space-16) 0; font-size: var(--text-small-size); line-height: var(--text-small-line); color: var(--color-text-tertiary); }
+.nt-code-block__code {
+  display: block; margin: 0;
+  padding: var(--space-8) var(--space-16) var(--space-16);
+  font-family: var(--font-mono); font-size: var(--text-inline-code-size); line-height: var(--text-ui-line-loose);
+  color: var(--color-text-primary);
+  white-space: pre; overflow-x: auto; tab-size: 2;
+}
+
+/* 引用 [选定 D2]：analysis 写 can't tell；取先前应用的做法：正文色细竖条，无底色 */
+.nt-quote {
+  margin: 0; padding: 0 var(--space-12);
+  box-shadow: inset var(--size-quote-bar) 0 0 0 var(--color-quote-bar);
+  font-size: var(--text-body-size); line-height: var(--text-body-line); color: var(--color-text-primary);
+}
+
+/* 内容表 [推导]：套 DB 表格的细线网格（无外框、无斑马纹） */
+.nt-content-table { border-collapse: collapse; font-size: var(--text-ui-size); line-height: var(--text-ui-line); color: var(--color-text-primary); }
+.nt-content-table th, .nt-content-table td { padding: var(--pad-cell-y) var(--space-8); text-align: left; vertical-align: top; border: var(--border-hairline-width) solid var(--color-border-hairline); }
+.nt-content-table th { font-weight: var(--font-weight-regular); color: var(--color-text-secondary); }
+.nt-content-table tr:first-child > * { border-top: 0; }
+.nt-content-table tr:last-child > * { border-bottom: 0; }
+.nt-content-table tr > :first-child { border-left: 0; }
+.nt-content-table tr > :last-child { border-right: 0; }
+
+/* 页面大纲条（右缘） */
+.nt-toc { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-8); }
+.nt-toc__bar { width: var(--size-toc-bar-1); height: var(--size-toc-bar-h); border-radius: var(--radius-xs); background: var(--color-toc-bar); transition: background var(--duration-base) var(--ease-standard); }
+.nt-toc__bar--2 { width: var(--size-toc-bar-2); }
+.nt-toc__bar--3 { width: var(--size-toc-bar-3); }
+.nt-toc__bar.is-current { background: var(--color-toc-bar-active); }
+
+/* 渲染 Markdown / 富文本时的作用域：把原生元素映射到上面的块样式 */
+.nt-prose { font-size: var(--text-body-size); line-height: var(--text-body-line); color: var(--color-text-primary); }
+.nt-prose > * { margin: 0; padding-top: var(--block-space-text); }
+.nt-prose > :first-child { padding-top: 0; }
+.nt-prose h1 { padding-top: var(--block-space-h1); font-size: var(--text-h1-size); line-height: var(--text-h1-line); font-weight: var(--font-weight-semibold); }
+.nt-prose h2 { padding-top: var(--block-space-h2); font-size: var(--text-h2-size); line-height: var(--text-h2-line); font-weight: var(--font-weight-semibold); }
+.nt-prose h3 { padding-top: var(--block-space-h3); font-size: var(--text-h3-size); line-height: var(--text-h3-line); font-weight: var(--font-weight-semibold); }
+.nt-prose ul, .nt-prose ol { padding-left: var(--size-indent); }
+.nt-prose li + li { padding-top: var(--block-space-list); }
+/* 正文链接没有单独采到，和界面链接一致（DESIGN §4：蓝色 = 链接） */
+.nt-prose a { color: inherit; text-decoration: underline; text-decoration-color: var(--color-border-checkbox); } /* [选定 D7] 正文链接：继承文字色 + 灰色下划线 */
+.nt-prose :not(pre) > code {
+  font-family: var(--font-mono); font-size: var(--text-inline-code-size);
+  padding: var(--pad-inline-code-y) var(--pad-inline-code-x); border-radius: var(--radius-sm);
+  background: var(--color-bg-inline-code); color: var(--color-text-secondary);
+}
+.nt-prose pre {
+  padding: var(--space-16); border-radius: var(--radius-popover); background: var(--color-bg-code-block);
+  font-family: var(--font-mono); font-size: var(--text-inline-code-size); line-height: var(--text-ui-line-loose);
+  overflow-x: auto; tab-size: 2;
+}
+.nt-prose > pre { margin-top: var(--block-space-text); padding-top: var(--space-16); }
+.nt-prose blockquote { padding-left: var(--space-12); box-shadow: inset var(--size-quote-bar) 0 0 0 var(--color-quote-bar); }
+.nt-prose > blockquote { margin-top: var(--block-space-text); padding-top: 0; }
+.nt-prose table { border-collapse: collapse; font-size: var(--text-ui-size); line-height: var(--text-ui-line); }
+.nt-prose th, .nt-prose td { padding: var(--pad-cell-y) var(--space-8); text-align: left; border: var(--border-hairline-width) solid var(--color-border-hairline); }
+.nt-prose th { font-weight: var(--font-weight-regular); color: var(--color-text-secondary); }
+.nt-prose tr:first-child > * { border-top: 0; }
+.nt-prose tr:last-child > * { border-bottom: 0; }
+.nt-prose tr > :first-child { border-left: 0; }
+.nt-prose tr > :last-child { border-right: 0; }
+.nt-prose hr { height: var(--border-hairline-width); border: 0; background: var(--color-border-hairline); }
+
+/* ---------------------------------------------------------------------
+   19. 浮层定位层（只管位置和"点外面关闭"，没有任何外观）
+   --------------------------------------------------------------------- */
+/* 菜单 / 搜索放进 .nt-layer，就不会被侧栏等 overflow 容器裁掉。坐标由 JS 写进 --nt-x / --nt-y */
+.nt-layer { position: fixed; inset: 0; z-index: var(--z-overlay); pointer-events: none; }
+.nt-layer.is-open { pointer-events: auto; }
+.nt-layer__catcher { position: absolute; inset: 0; background: transparent; }
+.nt-layer__anchor { position: absolute; left: var(--nt-x, 0); top: calc(var(--nt-y, 0px) + var(--space-popover-offset)); }
+
+/* ---------------------------------------------------------------------
+   20. 减少动效：去掉缩放与位移，保留透明度；只有加载旋转（.nt-spin）保留
+   --------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .nt-popover, .nt-tooltip, .nt-toast, .nt-dialog, .nt-search, .nt-peek { transform: none; }
+  .nt-peek { transition: opacity var(--duration-peek) var(--ease-standard); opacity: 0; }
+  .nt-peek.is-open { opacity: 1; }
+  .nt-fab:hover, .nt-fab.is-hover { transform: none; }
+  .nt-disclosure, .nt-switch__knob { transition: none; }
+  .nt-skeleton::after, .nt-progress::after { animation: none; transform: none; }
+}
