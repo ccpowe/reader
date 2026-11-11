@@ -2,8 +2,8 @@
 
     source_scan        every APP_WORKER_POLL_INTERVAL_SECONDS: scan due sources
     title_translation  every APP_TITLE_TRANSLATION_INTERVAL_SECONDS: translate queued titles
-    cleanup            daily: prune articles, scan history, unused translations
-                       and ended sessions
+    cleanup            daily: prune articles, scan history, unused translations,
+                       unopened board snapshots and ended sessions
 
 Each loop records a heartbeat after every run; /worker-ready reads them.
 `reader-worker --once` runs every job one time and exits.
@@ -19,6 +19,7 @@ from collections.abc import Awaitable, Callable
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from reader.accounts.service import delete_ended_sessions
+from reader.boards.service import prune_snapshots
 from reader.core.db import build_engine, build_session_factory
 from reader.core.settings import Settings, get_settings
 from reader.ingestion.retention import prune_articles, prune_scan_runs
@@ -43,6 +44,7 @@ async def cleanup(factory: async_sessionmaker[AsyncSession], settings: Settings)
             "articles": await prune_articles(db, settings.articles_kept_per_source),
             "scan_runs": await prune_scan_runs(db, settings.scan_runs_kept_per_source),
             "translations": await prune_translations(db, settings.translation_unused_keep_days),
+            "board_snapshots": await prune_snapshots(db, settings.board_snapshot_keep_days),
             "sessions": await delete_ended_sessions(db),
         }
 

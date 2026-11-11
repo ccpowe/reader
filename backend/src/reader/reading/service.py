@@ -297,10 +297,12 @@ async def saved_page(
 
 async def save_article(db: AsyncSession, user_id: UUID, article_id: UUID) -> None:
     """Save an article from a followed source; saving twice changes nothing."""
+    # The row lock keeps the daily clean-up from deleting it mid-save (it skips locked rows).
     followed = await db.scalar(
         select(Article.id)
         .join(Subscription, Subscription.source_id == Article.source_id)
         .where(Article.id == article_id, Subscription.user_id == user_id)
+        .with_for_update(of=Article, key_share=True)
     )
     if followed is None:
         already = await db.scalar(

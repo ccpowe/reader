@@ -53,7 +53,13 @@ async def test_cleanup_job_runs_on_an_empty_database() -> None:
     finally:
         await engine.dispose()
 
-    assert result == {"articles": 0, "scan_runs": 0, "translations": 0, "sessions": 0}
+    assert result == {
+        "articles": 0,
+        "scan_runs": 0,
+        "translations": 0,
+        "board_snapshots": 0,
+        "sessions": 0,
+    }
 
 
 @pytest.mark.asyncio

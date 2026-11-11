@@ -5,28 +5,39 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Rows being saved right now are locked by the save; SKIP LOCKED leaves them alone
+# instead of deleting an article a moment before it becomes saved.
 _OLD_ARTICLES = text(
     """
-    DELETE FROM articles AS a
-    USING (
-        SELECT id, row_number() OVER (
-            PARTITION BY source_id ORDER BY first_seen_at DESC, id DESC
-        ) AS position
-        FROM articles
-        WHERE source_id IS NOT NULL
-    ) AS ranked
-    WHERE a.id = ranked.id
-      AND ranked.position > :keep
-      AND NOT EXISTS (SELECT 1 FROM saved_articles s WHERE s.article_id = a.id)
+    DELETE FROM articles
+    WHERE id IN (
+        SELECT a.id
+        FROM articles AS a
+        JOIN (
+            SELECT id, row_number() OVER (
+                PARTITION BY source_id ORDER BY first_seen_at DESC, id DESC
+            ) AS position
+            FROM articles
+            WHERE source_id IS NOT NULL
+        ) AS ranked ON ranked.id = a.id
+        WHERE ranked.position > :keep
+          AND NOT EXISTS (SELECT 1 FROM saved_articles s WHERE s.article_id = a.id)
+        FOR UPDATE OF a SKIP LOCKED
+    )
     """
 )
 
 # Items saved from a board belong to no source; once nobody keeps them, drop them.
 _UNSAVED_BOARD_ITEMS = text(
     """
-    DELETE FROM articles AS a
-    WHERE a.source_id IS NULL
-      AND NOT EXISTS (SELECT 1 FROM saved_articles s WHERE s.article_id = a.id)
+    DELETE FROM articles
+    WHERE id IN (
+        SELECT a.id
+        FROM articles AS a
+        WHERE a.source_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM saved_articles s WHERE s.article_id = a.id)
+        FOR UPDATE OF a SKIP LOCKED
+    )
     """
 )
 

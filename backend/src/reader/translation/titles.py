@@ -205,9 +205,13 @@ class TitleTranslation:
 
 
 async def title_translations(
-    db: AsyncSession, user_id: UUID, settings: Settings, titles: Iterable[str]
+    db: AsyncSession,
+    user_id: UUID,
+    settings: Settings,
+    titles: Iterable[str],
+    purpose: str = "title",
 ) -> dict[str, TitleTranslation]:
-    """Finished translations of these titles for the user's preference, by original title."""
+    """Finished translations of these texts for the user's preference, by original text."""
     preference = await load_preference(db, user_id, settings)
     if not preference.enabled or preference.engine is None:
         return {}
@@ -225,7 +229,7 @@ async def title_translations(
                 Translation.translated_text,
                 Translation.last_used_at,
             ).where(
-                Translation.purpose == "title",
+                Translation.purpose == purpose,
                 Translation.target_locale == preference.target_locale,
                 Translation.engine_fingerprint == fingerprint,
                 Translation.status == "succeeded",

@@ -64,7 +64,8 @@ class Settings(BaseSettings):
     board_fetch_wait_seconds: float = Field(default=10.0, ge=1.0, le=30.0)
     board_manual_refresh_cooldown_seconds: int = Field(default=60, ge=10, le=3600)
     board_snapshot_keep_days: int = Field(default=7, ge=1, le=90)
-    board_items: int = Field(default=30, ge=10, le=100)
+    # Entries kept per board (the app shows all; MCP returns the first 30).
+    board_items: int = Field(default=50, ge=10, le=100)
 
     # Translation
     translation_default_engine_id: str = Field(default="deepseek-v4-flash", max_length=64)

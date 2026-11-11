@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -365,6 +366,35 @@ async def test_only_followed_due_unleased_sources_are_claimed() -> None:
 
     assert [claim.source_id for claim in first] == [followed.id]
     assert second == []  # still leased
+
+
+@pytest.mark.asyncio
+async def test_retention_skips_an_article_that_is_being_saved() -> None:
+    async with _database() as (factory, _config):
+        async with factory() as db:
+            article = Article(
+                source_id=None,
+                native_id="b",
+                url="https://b",
+                url_hash="b",
+                kind="article",
+                title="Board item",
+                content_hash="h",
+            )
+            db.add(article)
+            await db.commit()
+        async with factory() as saving:
+            # A save in progress holds the row, as save_article / save_from_board do.
+            await saving.execute(
+                select(Article.id).where(Article.id == article.id).with_for_update(key_share=True)
+            )
+            async with factory() as cleanup:
+                skipped = await asyncio.wait_for(prune_articles(cleanup, 500), 5)
+            await saving.rollback()
+        async with factory() as cleanup:
+            removed = await prune_articles(cleanup, 500)
+
+    assert skipped == 0 and removed == 1
 
 
 @pytest.mark.asyncio

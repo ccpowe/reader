@@ -25,8 +25,10 @@ def ensure_response_size(response: httpx.Response, maximum_bytes: int) -> None:
 
 def provider_http_error_code(response: httpx.Response, provider: str) -> str:
     """Identify a challenge from upstream evidence, never from the status alone."""
-    if response.headers.get("cf-mitigated", "").strip().lower() == "challenge":
-        return f"{provider}_challenge_required"
+    # Cloudflare and Vercel mark a bot check this way; only a real browser passes it.
+    for header in ("cf-mitigated", "x-vercel-mitigated"):
+        if response.headers.get(header, "").strip().lower() == "challenge":
+            return f"{provider}_challenge_required"
     return f"{provider}_http_{response.status_code}"
 
 

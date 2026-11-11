@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from reader.accounts.api import auth_router, avatar_router, me_router
+from reader.boards.api import boards_router, saved_board_router
 from reader.core.db import build_engine, build_session_factory
 from reader.core.errors import install_error_handlers
 from reader.core.rate_limit import RateLimiter
@@ -29,11 +30,13 @@ async def lifespan(app: FastAPI):
     app.state.engine = engine
     app.state.session_factory = build_session_factory(engine) if engine else None
     app.state.translator = None
+    app.state.boards = None
     try:
         yield
     finally:
-        if app.state.translator is not None:
-            await app.state.translator.aclose()
+        for owner in (app.state.translator, app.state.boards):
+            if owner is not None:
+                await owner.aclose()
         if engine is not None:
             await engine.dispose()
 
@@ -90,7 +93,9 @@ def create_app() -> FastAPI:
         sources_router,
         feed_router,
         articles_router,
+        saved_board_router,
         saved_router,
+        boards_router,
         translations_router,
         preference_router,
     ):
