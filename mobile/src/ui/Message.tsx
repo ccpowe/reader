@@ -37,7 +37,7 @@ export function Message({
   // Every slot sits in a 28-high lane (the action button's height), so the icon, the first line
   // of text and the action share one center line; longer text wraps below.
   return (
-    <View className={cn('flex-row items-start gap-2', box[kind], bar ? 'px-6 py-1' : 'rounded-lg px-3 py-1.5')}>
+    <View className={cn('flex-row items-start gap-2', box[kind], bar ? 'px-6 py-1' : 'rounded-lg px-3 py-1.5')} testID={bar ? undefined : 'align-inset'}>
       <View className="h-7 justify-center">
         <Icon icon={glyph[kind]} tone={kind === 'info' ? 'neutral' : tone[kind]} />
       </View>

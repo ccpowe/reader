@@ -44,7 +44,7 @@ export function Input({
 export function SearchField({ inset = 'page', ...props }: TextInputProps & { inset?: 'page' | 'sheet' }) {
   const placeholder = useCSSVariable('--color-tertiary') as string | undefined;
   return (
-    <View className={cn('h-11 flex-row items-center gap-2 rounded-xl border border-subtle bg-tint px-3', inset === 'page' ? 'mx-6' : 'mx-4')}>
+    <View className={cn('h-11 flex-row items-center gap-2 rounded-xl border border-subtle bg-tint px-3', inset === 'page' ? 'mx-6' : 'mx-4')} testID="align-inset">
       <Icon icon={IconSearch} size="toolbar" />
       <TextInput className="h-full flex-1 text-body text-primary" placeholderTextColor={placeholder} {...props} />
     </View>

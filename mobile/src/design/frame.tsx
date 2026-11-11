@@ -28,8 +28,11 @@ export function TabFrame({ tab, children }: { tab: Tab; children: ReactNode }) {
 export function WithSheet({ page, title, subtitle, children }: { page: ReactNode; title: string; subtitle?: string; children: ReactNode }) {
   return (
     <View className="flex-1">
-      {page}
-      <Pressable className="absolute inset-0 bg-overlay" />
+      {/* Behind an open sheet the page is out of reach, as under the app's Modal (and the alignment check skips it). */}
+      <View className="flex-1" importantForAccessibility="no-hide-descendants">
+        {page}
+      </View>
+      <Pressable accessibilityLabel="关闭" className="absolute inset-0 bg-overlay" />
       <View className="absolute bottom-0 left-0 right-0">
         <SheetBody onClose={() => undefined} subtitle={subtitle} title={title}>{children}</SheetBody>
       </View>

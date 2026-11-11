@@ -57,7 +57,8 @@ export function Tabs<T extends string | null>({
           );
         })}
       </ScrollView>
-      {trailing ? <View className="pr-4 pl-1">{trailing}</View> : null}
+      {/* Icon buttons line up by their box, like everywhere else: the box ends on the content edge. */}
+      {trailing ? <View className={cn('pl-1', inset === 'page' ? 'pr-6' : 'pr-4')}>{trailing}</View> : null}
     </View>
   );
 }

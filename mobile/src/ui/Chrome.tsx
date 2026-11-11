@@ -60,7 +60,7 @@ export function PageHeader({
 /** Top bar of a pushed page (article, board item): back, a short context word, actions. */
 export function TopBar({ leading, title, actions }: { leading?: ReactNode; title?: string; actions?: ReactNode }) {
   return (
-    <View className="h-14 flex-row items-center gap-3 bg-sidebar px-4">
+    <View className="h-14 flex-row items-center gap-3 bg-sidebar px-6">
       {leading}
       <Text className="flex-1" level="section" numberOfLines={1}>
         {title}
@@ -88,7 +88,7 @@ export function TabBar<K extends string>({
 }) {
   const insets = useSafeAreaInsets();
   return (
-    <View className="flex-row border-t border-subtle bg-canvas" style={{ paddingBottom: insets.bottom }}>
+    <View className="flex-row border-t border-subtle bg-canvas" style={{ paddingBottom: insets.bottom }} testID="tab-bar">
       {tabs.map((tab) => {
         const active = tab.key === current;
         return (
@@ -118,6 +118,7 @@ export function Fab({ icon, label, onPress }: { icon: TablerIcon; label: string;
       className="absolute bottom-6 right-6 h-14 w-14 items-center justify-center rounded-full bg-accent active:bg-accent-pressed"
       onPress={onPress}
       style={shadow}
+      testID="align-ignore"
     >
       <Icon icon={icon} size="toolbar" tone="on-accent" />
     </Pressable>

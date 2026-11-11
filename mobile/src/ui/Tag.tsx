@@ -8,7 +8,7 @@ import { Text } from './Text';
 /** qp-tag (gray): a category or a count that must be read. `status` = qp-status pill shape. */
 export function Tag({ children, status = false }: { children: ReactNode; status?: boolean }) {
   return (
-    <View className={cn('h-6 flex-row items-center bg-tag-gray-bg px-1.5', status ? 'rounded-xl' : 'rounded-sm')}>
+    <View className={cn('h-6 flex-row items-center bg-tag-gray-bg px-1.5', status ? 'rounded-xl' : 'rounded-sm')} testID="align-inset">
       <Text className="text-tag-gray-text" level="ui">
         {children}
       </Text>

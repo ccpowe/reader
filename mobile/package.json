@@ -109,6 +109,7 @@
     "test:app-localization": "node ./scripts/test-app-localization.mjs",
     "test:reader-auth": "node ./scripts/test-reader-auth.mjs && node ./scripts/test-app-account-boundary.mjs",
     "storybook": "STORYBOOK_ENABLED=true STORYBOOK_DISABLE_TELEMETRY=1 expo start --go --max-workers 1",
+    "check:story-alignment": "node scripts/check-story-alignment.mjs",
     "typecheck:new": "tsc --noEmit -p tsconfig.new.json"
   },
   "private": true

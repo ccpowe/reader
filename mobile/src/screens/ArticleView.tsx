@@ -25,7 +25,7 @@ function FloatingTools({ bilingual, reader }: { bilingual: boolean; reader: bool
   const shadow = useShadow('md');
   const tool = (on: boolean) => cn('h-12 w-12 items-center justify-center rounded-full active:bg-pressed', on ? 'bg-selected' : '');
   return (
-    <View className="absolute right-2 top-1/2 rounded-full bg-raised p-1" style={shadow}>
+    <View className="absolute right-2 top-1/2 rounded-full bg-raised p-1" style={shadow} testID="align-ignore">
       <Pressable
         accessibilityLabel="双语对照"
         accessibilityRole="switch"

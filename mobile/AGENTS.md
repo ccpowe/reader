@@ -37,6 +37,7 @@
 | 指定行为检查 | 从 `package.json` 选择对应的 `pnpm run test:<名称>` |
 | 前端完整检查 | `pnpm test` |
 | Android 真机首页返回回归 | 先启动开发客户端 Metro，再运行 `maestro --device <adb-serial> test .maestro/flows/home-article-return.yaml` |
+| 设计原型对齐检查（真机，需先 `pnpm run storybook`） | `pnpm run check:story-alignment -- --device <adb-serial>`；只列可疑处，需对照截图确认 |
 | 更新网页／字幕注入资源 | `pnpm run generate:translation-runtime` |
 | 检查翻译运行时，含浏览器场景 | `pnpm run test:translation-runtime` |
 | 安装浏览器测试依赖 | `pnpm exec playwright install chromium` |

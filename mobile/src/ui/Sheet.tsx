@@ -52,7 +52,7 @@ export function SheetBody({
 }) {
   const shadow = useShadow('sheet');
   return (
-    <View className="rounded-t-3xl bg-raised px-4 pt-2" style={[shadow, { paddingBottom: 16 + bottomInset }]}>
+    <View className="rounded-t-3xl bg-raised px-4 pt-2" style={[shadow, { paddingBottom: 16 + bottomInset }]} testID="sheet">
       <View className="mb-3 h-1 w-9 self-center rounded-full bg-control" />
       {title ? (
         <View className="mb-4 flex-row items-start gap-2">

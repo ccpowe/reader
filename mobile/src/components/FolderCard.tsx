@@ -45,7 +45,8 @@ export function FolderCard({ name, items, onPress }: { name: string; items: Subs
           </View>
         ) : null}
       </View>
-      <View style={{ width: 100, height: 88 }}>
+      {/* align-ignore: the icon cluster is scattered on purpose (scripts/check-story-alignment.mjs) */}
+      <View style={{ width: 100, height: 88 }} testID="align-ignore">
         {shown.map((item, index) => (
           <View className="absolute rounded-xl border-2 border-panel" key={item.id} style={spots[index]}>
             <SourceMark avatarUrl={item.avatarUrl} kind={item.kind} raised size={40} />

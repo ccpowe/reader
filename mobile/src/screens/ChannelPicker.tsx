@@ -25,7 +25,7 @@ export function ChannelPicker({
   return (
     <View className="-mx-4" style={{ maxHeight: 560 }}>
       <SearchField inset="sheet" placeholder="搜索频道、网站或分类" />
-      <Pressable accessibilityRole="button" className="mx-4 mt-3 flex-row items-center gap-3 rounded-xl bg-tint p-3 active:bg-pressed">
+      <Pressable accessibilityRole="button" className="mx-4 mt-3 flex-row items-center gap-3 rounded-xl bg-tint p-3 active:bg-pressed" testID="align-inset">
         <View className="h-11 w-11 items-center justify-center rounded-xl bg-sunken">
           <Icon icon={IconLayoutGrid} size="toolbar" tone="strong" />
         </View>
