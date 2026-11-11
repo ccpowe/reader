@@ -15,14 +15,11 @@ from app.storage.database import build_engine, build_session_factory
 from .codex_auth import configure_parser as configure_codex_auth_parser
 from .codex_auth import run_codex_auth
 from .translation_quota import TranslationQuotaAdminError, TranslationQuotaAdminService
-from .users import configure_parser as configure_user_parser
-from .users import run_user_admin
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="reader-admin", description="Reader operations CLI.")
     commands = parser.add_subparsers(dest="command", required=True)
-    configure_user_parser(commands)
     configure_codex_auth_parser(commands)
     quota = commands.add_parser(
         "translation-quota",
@@ -70,7 +67,7 @@ async def _run(args: argparse.Namespace) -> int:
         result = await run_codex_auth(get_settings(), args)
         print(json.dumps(result, sort_keys=True))
         return 0 if result["available"] else 2
-    if args.command not in {"translation-quota", "users"}:
+    if args.command not in {"translation-quota"}:
         raise TranslationQuotaAdminError("unknown command")
     settings = get_settings()
     if not settings.database_url:
@@ -78,10 +75,6 @@ async def _run(args: argparse.Namespace) -> int:
     engine = build_engine(settings)
     session_factory = build_session_factory(engine)
     try:
-        if args.command == "users":
-            result = await run_user_admin(session_factory, args)
-            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-            return 0
         service = TranslationQuotaAdminService(session_factory)
         if args.action == "list":
             result = await service.list(include_disabled=args.include_disabled)

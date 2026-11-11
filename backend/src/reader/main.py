@@ -8,8 +8,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from reader.accounts.api import auth_router, avatar_router, me_router
 from reader.core.db import build_engine, build_session_factory
 from reader.core.errors import install_error_handlers
+from reader.core.rate_limit import RateLimiter
 from reader.core.server_access import ServerAccessMiddleware
 from reader.core.settings import get_settings
 from reader.system.api import router as system_router
@@ -42,7 +44,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     install_error_handlers(app)
-    app.include_router(system_router)
+    # Failed access-token checks, and every password-checking request, per client.
+    app.state.token_limiter = RateLimiter(
+        requests=settings.auth_rate_limit_requests_per_minute, window_seconds=60
+    )
+    app.state.password_limiter = RateLimiter(
+        requests=settings.auth_password_attempts_per_minute, window_seconds=60
+    )
+    for router in (system_router, auth_router, me_router, avatar_router):
+        app.include_router(router)
     return app
 
 

@@ -5,20 +5,16 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-import anyio
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.avatars import router as avatars_router
 from app.api.discovery import router as discovery_router
 from app.api.router import api_router
 from app.core.auth import AuthRateLimiter, ReaderJWTVerifier
-from app.core.passwords import PasswordService
 from app.core.server_access import ServerAccessMiddleware
 from app.core.settings import get_settings
-from app.services.auth import AuthService
 from app.storage.database import build_engine, build_session_factory
 from app.storage.schema import (
     REQUIRED_SCHEMA_CONTRACT,
@@ -46,8 +42,6 @@ async def lifespan(app: FastAPI):
     app.state.database_engine = engine
     app.state.session_factory = build_session_factory(engine) if engine else None
     app.state.jwt_verifier = ReaderJWTVerifier(settings, app.state.session_factory)
-    app.state.auth_service = AuthService(settings, PasswordService())
-    app.state.avatar_limiter = anyio.CapacityLimiter(1)
     app.state.password_rate_limiter = AuthRateLimiter(
         requests=settings.auth_password_attempts_per_minute,
         window_seconds=60,
@@ -116,7 +110,6 @@ def create_app() -> FastAPI:
     # The deployment token protects discovery and every /v1 route before routing.
     app.include_router(discovery_router)
     app.include_router(api_router)
-    app.include_router(avatars_router)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request, exc: RequestValidationError):

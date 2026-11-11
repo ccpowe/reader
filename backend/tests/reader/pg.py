@@ -7,6 +7,7 @@ token.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import secrets
@@ -16,6 +17,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import asyncpg
+import httpx
 import pytest
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -84,3 +86,41 @@ def alembic(*arguments: str, dsn: str) -> None:
     )
     if result.returncode:
         pytest.fail(f"alembic {' '.join(arguments)} failed:\n{result.stderr[-3000:]}")
+
+
+SERVER_TOKEN = "test-server-token"
+
+
+@contextlib.asynccontextmanager
+async def api_client(dsn: str, monkeypatch, **settings: str):
+    """The real app on a freshly migrated database, with the server token preset."""
+    from reader.core.db import build_engine, build_session_factory
+    from reader.core.settings import get_settings
+    from reader.main import create_app
+
+    await reset_schema(dsn)
+    values = {
+        "server_id": "test",
+        "server_access_token": SERVER_TOKEN,
+        "auth_jwt_secret": "j" * 40,
+        "database_url": dsn,
+        "database_ssl": "false",
+        **settings,
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(f"APP_{name.upper()}", value)
+    get_settings.cache_clear()
+    app = create_app()
+    app.state.engine = build_engine(get_settings())
+    app.state.session_factory = build_session_factory(app.state.engine)
+    transport = httpx.ASGITransport(app=app)
+    try:
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://reader.test",
+            headers={"X-Reader-Server-Token": SERVER_TOKEN},
+        ) as client:
+            client.app = app  # type: ignore[attr-defined]
+            yield client
+    finally:
+        await app.state.engine.dispose()
