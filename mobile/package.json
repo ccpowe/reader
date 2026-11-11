@@ -27,6 +27,7 @@
     "expo-image-picker": "~58.0.10",
     "expo-linking": "~58.0.16",
     "expo-localization": "~58.0.5",
+    "expo-network": "58.0.4",
     "expo-router": "~58.0.30",
     "expo-secure-store": "~58.0.2",
     "expo-splash-screen": "~58.0.13",
@@ -110,6 +111,8 @@
     "test:reader-auth": "node ./scripts/test-reader-auth.mjs && node ./scripts/test-app-account-boundary.mjs",
     "storybook": "STORYBOOK_ENABLED=true STORYBOOK_DISABLE_TELEMETRY=1 expo start --go --max-workers 1",
     "check:story-alignment": "node scripts/check-story-alignment.mjs",
+    "lint:new": "eslint src --max-warnings=0",
+    "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'src/**/*.test.ts'",
     "typecheck:new": "tsc --noEmit -p tsconfig.new.json"
   },
   "private": true

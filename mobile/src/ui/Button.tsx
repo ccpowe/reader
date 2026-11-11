@@ -1,14 +1,14 @@
 import type { Icon as TablerIcon } from '@tabler/icons-react-native';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useCSSVariable } from 'uniwind';
 
 import { cn } from '@/lib/cn';
 
 import { Icon, type IconTone } from './Icon';
 import { Text, type TextTone } from './Text';
-import { delayLoading, hitSlopFor, iconSize } from './theme';
-import { useDelayed } from './useDelayed';
+import { delayLoading, duration, hitSlopFor, iconSize } from './theme';
 
 /**
  * qp-btn. Choosing (DESIGN.md 3.1): primary = the one most important action of a view (at most
@@ -40,6 +40,18 @@ const icon: Record<ButtonVariant, IconTone> = {
   danger: 'on-danger',
 };
 
+const fadeIn = { from: { opacity: 0 }, to: { opacity: 1 } };
+const fadeOut = { from: { opacity: 1 }, to: { opacity: 0 } };
+/** A CSS animation that starts after --delay-loading and keeps its end state. */
+function afterDelay(keyframes: typeof fadeIn) {
+  return {
+    animationName: keyframes,
+    animationDuration: `${duration.fast}ms`,
+    animationDelay: `${delayLoading}ms`,
+    animationFillMode: 'both',
+  } as const;
+}
+
 const HEIGHT = 28; // --size-control
 const HEIGHT_LARGE = 44; // mobile: full-width form buttons (sign in, add subscription), old app scale
 
@@ -68,8 +80,6 @@ export function Button({
   const spinner = useCSSVariable(
     variant === 'primary' ? '--color-on-accent' : variant === 'danger' ? '--color-on-danger' : '--color-icon-neutral',
   ) as string | undefined;
-  // --delay-loading: work that finishes sooner shows no spinner; the label keeps the button's width.
-  const showSpinner = useDelayed(loading, delayLoading);
   const height = large ? HEIGHT_LARGE : HEIGHT;
   const inactive = disabled || loading;
   return (
@@ -88,23 +98,22 @@ export function Button({
       onPress={onPress}
       style={{ height }}
     >
-      {leading ? (
-        <View style={{ opacity: showSpinner ? 0 : 1 }}>
-          <Icon icon={leading} tone={disabled ? 'disabled' : on ? 'strong' : icon[variant]} />
-        </View>
-      ) : null}
-      <Text
-        level={large ? 'body-strong' : 'ui-strong'}
-        numberOfLines={1}
-        style={{ opacity: showSpinner ? 0 : 1 }}
-        tone={disabled ? 'disabled' : on && variant === 'ghost' ? 'primary' : label[variant]}
-      >
-        {title}
-      </Text>
-      {showSpinner ? (
-        <View className="absolute inset-0 items-center justify-center" pointerEvents="none">
+      {/* --delay-loading: work that finishes within 300ms shows no spinner. While loading, the label
+          fades out and the spinner in, both after the delay; the label keeps the button's width. */}
+      <Animated.View className="flex-row items-center gap-2" style={loading ? afterDelay(fadeOut) : undefined}>
+        {leading ? <Icon icon={leading} tone={disabled ? 'disabled' : on ? 'strong' : icon[variant]} /> : null}
+        <Text
+          level={large ? 'body-strong' : 'ui-strong'}
+          numberOfLines={1}
+          tone={disabled ? 'disabled' : on && variant === 'ghost' ? 'primary' : label[variant]}
+        >
+          {title}
+        </Text>
+      </Animated.View>
+      {loading ? (
+        <Animated.View className="absolute inset-0 items-center justify-center" pointerEvents="none" style={afterDelay(fadeIn)}>
           <ActivityIndicator color={spinner} size={iconSize.sm} />
-        </View>
+        </Animated.View>
       ) : null}
     </Pressable>
   );

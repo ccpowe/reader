@@ -35,7 +35,7 @@ Factory 禁用 `useEffect` 的做法（[no-use-effect](https://gist.github.com/a
 | 状态 | 持有者 | 写法 |
 |---|---|---|
 | 服务器数据（信息流、文章、榜单、订阅、收藏、我的资料与偏好） | Reader 服务器；App 只缓存 | TanStack Query（第 4 节），不在组件里手写请求 |
-| 连接与账户会话（服务器地址、身份、令牌、登录状态） | 连接会话 store（待建，从旧 `lib/connection/` 迁移） | `useSyncExternalStore(subscribe, snapshot)` 读取，不复制进 `useState` |
+| 连接与账户会话（服务器地址、身份、令牌、登录状态） | 会话 store：状态机 `src/lib/connection/session.ts`，持有者 `session-store.ts`，实例与 `useSession()` 在 `src/lib/app-session.ts` | `useSyncExternalStore(subscribe, snapshot)` 读取，不复制进 `useState` |
 | 页面流程（加载 → 操作中 → 成功 / 失败 / 结果未知） | 页面 | `useReducer` 写成状态机（第 2 节） |
 | 一次性操作结果（“收藏失败”“已取消订阅，撤销”） | 发起操作的那次页面访问 | 就地提示或 Toast；离开页面即失效，迟到的旧结果不显示；不存进全局 store |
 | 设备上的偏好（文件夹与频道筛选、列表位置） | 本机存储（AsyncStorage） | 一个模块持有读写，页面读它的快照 |
@@ -97,8 +97,9 @@ function reducer(state: State, event: Event): State {
 
 ## 3. 副作用：不直接使用 `useEffect`
 
-**规则**：`src/` 内不直接使用 `useEffect` / `useLayoutEffect`。用 ESLint 强制（待建：`eslint.config.js` 对 `src/**` 加
-`no-restricted-syntax` / `no-restricted-imports`，故事和测试也不例外）；唯一的实现例外是下表列出的几个封装 hook 的文件。
+**规则**：`src/` 内不直接使用 `useEffect` / `useLayoutEffect`，由 `eslint.config.js` 对 `src/**` 的
+`no-restricted-imports` / `no-restricted-syntax` 强制（故事和测试也不例外，`pnpm run lint:new`）；唯一的实现例外是
+`src/lib/use-mount-effect.ts`。延迟出现、闪动这类纯视觉的时间效果用 Reanimated 4 的 CSS 动画（例：`src/ui/Button.tsx` 的延迟转圈），不用 effect 加 state。
 新代码没有历史包袱，不设豁免基线。
 
 先按下表找替代写法：
@@ -112,7 +113,7 @@ function reducer(state: State, event: Event): State {
 | 对象（服务器、账户、文章 id）变化时重置组件 | 给组件加 `key` 让它重新挂载 |
 | 订阅外部 store（连接会话、本机偏好） | `useSyncExternalStore` |
 | 页面获得 / 失去焦点时开始 / 停止（返回键、聚焦刷新） | Expo Router 的 `useFocusEffect` |
-| 挂载时与外部系统同步一次（原生事件、AppState、第三方组件） | `useMountEffect`（待建 `src/lib/use-mount-effect.ts`，唯一的 `useEffect` 例外） |
+| 挂载时与外部系统同步一次（原生事件、AppState、网络状态、第三方组件） | `useMountEffect`（`src/lib/use-mount-effect.ts`，唯一的 `useEffect` 例外） |
 | 让异步回调读到最新值 | `useEffectEvent`；不要用 effect 写 ref |
 | WebView 注入脚本与桥接消息（阅读页翻译、阅读模式、YouTube 字幕） | 一个桥接模块持有消息收发与当前文章身份；页面只发命令、读它的快照。不在页面里散布处理消息的 effect |
 
@@ -137,10 +138,10 @@ function reducer(state: State, event: Event): State {
 
 **定义与身份**
 
-1. 同一资源只有一处 queryKey / options 定义（待建 `src/lib/queries.ts`），所有消费者共用。
+1. 同一资源只有一处 queryKey / options 定义（各资源随实现放进 `src/lib/queries/`），所有消费者共用；默认配置与 `key()` 在 `src/lib/query.ts`。
 2. queryKey 第一段是**连接身份**（服务器标识 + 账户 id）：换服务器或换账户时旧缓存自然不再命中，退出登录时按前缀清掉。
    不用 URL、令牌作身份；不跨身份使用 `placeholderData` / `initialData`。
-3. 请求函数把 query 的 `signal` 传进 API 客户端，离开页面或换参数时真正取消请求。
+3. 请求函数把 query 的 `signal` 传进 API 客户端（`session.api().request(path, { signal })`，`src/lib/api/client.ts`），离开页面或换参数时真正取消请求；超时与取消覆盖到读完响应体。
 4. 请求和响应类型只用从 OpenAPI 生成的类型（`contracts/openapi.json` → 生成文件），不手写一份接口类型。
 5. 重试、退避、哪些错误不重试（401、404、限流）以及 stale / focus / reconnect 策略在一处默认配置里定义；
    页面不各自调 `gcTime`、不 `removeQueries`。
@@ -150,7 +151,7 @@ function reducer(state: State, event: Event): State {
 6. 写操作（收藏、订阅、改偏好）成功后，在该操作的模块里按“操作 → 受影响的 key 前缀”失效或写回，页面不各自决定刷新哪些列表。
 7. 退出登录、换服务器时由连接会话一处清掉该身份的缓存。
 8. 留在导航栈里但失焦的页面不继续自动刷新；聚焦刷新用 `useFocusEffect` 调 `refetch({ cancelRefetch: false })` 合并在途请求。
-9. App、Storybook 故事与测试都挂载 QueryClient；原生 focus（AppState）与 online 状态只接一次、带清理。
+9. App、Storybook 故事与测试都挂载 QueryClient；原生 focus（AppState）与 online（expo-network，连上任何网络即算在线，局域网服务器也算）只在根布局接一次、带清理（`connectAppLifecycle`）。
 
 **页面里怎么用**
 
@@ -197,8 +198,8 @@ function reducer(state: State, event: Event): State {
 
 ## 8. 测试
 
-- **L1（纯逻辑）**：reducer、selector、格式化、翻译分段等纯函数，放在 `src/lib/` 旁的 `*.test.ts`，用 Node 内置测试运行
-  （`node --test`，Node 24 直接运行 TypeScript；被测模块用相对路径导入）。毫秒级，每次改动都跑。
+- **L1（纯逻辑）**：reducer、selector、格式化、翻译分段等纯函数，放在被测文件旁的 `*.test.ts`，`pnpm run test:unit`
+  （`node --test`，Node 24 直接运行 TypeScript）。被测模块不能依赖 React Native，互相导入用带 `.ts` 扩展名的相对路径。毫秒级，每次改动都跑。
 - **L2（页面与交互）**：Storybook 故事覆盖页面的各个状态（原型即测试数据）；需要真实交互的关键链路用 Maestro 在真机上跑。
 - **WebView 注入脚本**：沿用旧版的 Playwright 浏览器检查（`test:translation-runtime`），迁移时一起迁。
 - 行为测试与视觉验收分开报告；测试通过不能代替真机上的视觉确认（`mobile/AGENTS.md`）。

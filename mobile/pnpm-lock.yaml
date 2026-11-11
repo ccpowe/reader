@@ -74,6 +74,9 @@ importers:
       expo-localization:
         specifier: ~58.0.5
         version: 58.0.5(expo@58.0.23)(react@19.3.0)
+      expo-network:
+        specifier: 58.0.4
+        version: 58.0.4(expo@58.0.23)(react@19.3.0)
       expo-router:
         specifier: ~58.0.30
         version: 58.0.30(0a33c7151226b4f659fae04d223e784d)
@@ -3155,6 +3158,12 @@ packages:
 
   expo-modules-macros@0.29.0:
     resolution: {integrity: sha512-kpkJHrFnHMXfUfvFkDuKRXXqi+CUIIhJ6G8v/4rC09VjmXcdQ30imoY1oNDVEho6tPbJFV0Ux21sZ9wK0XYajQ==}
+
+  expo-network@58.0.4:
+    resolution: {integrity: sha512-E3dYtnku+LDal+4OtKdxGotX7DLjaq+GOvrtN0RiYDTNum8lhMB7dK4GqGgBqHjwsC0awEds5DhTkm+w7O1TtQ==}
+    peerDependencies:
+      expo: '*'
+      react: '*'
 
   expo-router@58.0.30:
     resolution: {integrity: sha512-GzwSjiDCJeSHDiH71jeCsncMCEksRyDhGweNcVjGfW5C7JMYtROUroMBudPGtrOpKkHUQ0lampFsb8jidT4lbg==}
@@ -8692,6 +8701,11 @@ snapshots:
       '@expo/modules-macros-linux-x64': 0.29.0
       '@expo/modules-macros-win32-arm64': 0.29.0
       '@expo/modules-macros-win32-x64': 0.29.0
+
+  expo-network@58.0.4(expo@58.0.23)(react@19.3.0):
+    dependencies:
+      expo: 58.0.23(83785552b2d2bebe4b7f5612dabb5ba0)
+      react: 19.3.0
 
   expo-router@58.0.30(0a33c7151226b4f659fae04d223e784d):
     dependencies:

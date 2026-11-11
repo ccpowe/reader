@@ -13,5 +13,4 @@ export { AttentionCount, Badge, Count, Dot, SolidCount, Tag } from './Tag';
 export { Tabs } from './Tabs';
 export { Text, type TextLevel, type TextTone } from './Text';
 export { hitSlopFor, iconSize, iconStroke, touchTarget } from './theme';
-export { useDelayed } from './useDelayed';
 export { useShadow } from './useShadow';

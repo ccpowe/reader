@@ -183,7 +183,7 @@ API 在 lifespan 内建立进程级数据库资源、认证服务、模型客户
 
 ## 接口与模型入口
 
-- **HTTP 契约**：后端路由及 Pydantic 请求／响应模型生成 [Reader API OpenAPI 快照](../contracts/openapi.json)；[export_openapi.py](../backend/scripts/export_openapi.py) 负责导出，[generate-api-types.mjs](../mobile/scripts/generate-api-types.mjs) 同步快照及 [前端类型](../mobile/lib/generated/api.ts)。接口字段以这条链路为准，更新规则见 [AGENTS.md](../AGENTS.md)，本文件不重复维护完整协议。
+- **HTTP 契约**：后端路由及 Pydantic 请求／响应模型生成 [Reader API OpenAPI 快照](../contracts/openapi.json)；[export_openapi.py](../backend/scripts/export_openapi.py) 负责导出，[generate-api-types.mjs](../mobile/scripts/generate-api-types.mjs) 同步快照及 [前端类型](../mobile/src/lib/api/schema.gen.ts)。接口字段以这条链路为准，更新规则见 [AGENTS.md](../AGENTS.md)，本文件不重复维护完整协议。
 - **数据库结构**：[ORM 模型](../backend/src/app/storage/models.py)、[账户模型](../backend/src/app/storage/auth_models.py)、[Alembic 迁移](../backend/migrations/) 与 [schema 就绪检查](../backend/src/app/storage/schema.py) 共同定义持久化结构与部署兼容条件。
 - **架构模型**：[architecture/workspace.dsl](../architecture/workspace.dsl) 集中维护 C1 系统上下文、C2 内部运行单元与外部依赖，以及客户端／API／Worker 的 C3 组件视图，共 6 张图。组件的 `sources` 属性指向仓库内代码；C4 直接查看源码。Dynamic View 和 Deployment View 按需要再增加。
 

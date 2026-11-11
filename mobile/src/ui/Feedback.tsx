@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Animated, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import Animated, { useReducedMotion } from 'react-native-reanimated';
 import { useCSSVariable } from 'uniwind';
 
 import { cn } from '@/lib/cn';
@@ -8,37 +9,22 @@ import { Text } from './Text';
 import { duration, iconSize } from './theme';
 import { useShadow } from './useShadow';
 
-/** qp-skeleton: placeholder lines while a list or preview loads (never a full-page spinner). */
+/**
+ * qp-skeleton: placeholder lines while a list or preview loads (never a full-page spinner).
+ * --duration-shimmer (1000ms) as a gentle pulse (RN has no gradient shimmer without a library);
+ * static when the system asks for reduced motion. A CSS animation: no effect, no state.
+ */
+const pulse = {
+  animationName: { from: { opacity: 1 }, to: { opacity: 0.5 } },
+  animationDuration: '500ms',
+  animationIterationCount: 'infinite',
+  animationDirection: 'alternate',
+} as const;
+
 export function Skeleton({ lines = 2, className }: { lines?: number; className?: string }) {
-  const opacity = useRef(new Animated.Value(1)).current;
-  const [reduceMotion, setReduceMotion] = useState(true);
-  useEffect(() => {
-    let alive = true;
-    AccessibilityInfo.isReduceMotionEnabled().then((on) => alive && setReduceMotion(on));
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => {
-      alive = false;
-      sub.remove();
-    };
-  }, []);
-  useEffect(() => {
-    // Reduced motion: static placeholder bars, no pulse.
-    if (reduceMotion) {
-      opacity.setValue(1);
-      return;
-    }
-    // --duration-shimmer (1000ms) as a gentle pulse; RN has no gradient shimmer without a library.
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.5, duration: 500, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1, duration: 500, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [opacity, reduceMotion]);
+  const reduceMotion = useReducedMotion();
   return (
-    <Animated.View className={cn('gap-2', className)} style={{ opacity }}>
+    <Animated.View className={cn('gap-2', className)} style={reduceMotion ? undefined : pulse}>
       {Array.from({ length: lines }, (_, index) => (
         <View
           className="h-4 rounded-sm bg-sunken"
