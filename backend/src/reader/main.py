@@ -15,6 +15,8 @@ from reader.core.errors import install_error_handlers
 from reader.core.rate_limit import RateLimiter
 from reader.core.server_access import ServerAccessMiddleware
 from reader.core.settings import get_settings
+from reader.subscriptions.api import router as subscriptions_router
+from reader.subscriptions.api import sources_router
 from reader.system.api import router as system_router
 
 
@@ -74,7 +76,14 @@ def create_app() -> FastAPI:
     app.state.password_limiter = RateLimiter(
         requests=settings.auth_password_attempts_per_minute, window_seconds=60
     )
-    for router in (system_router, auth_router, me_router, avatar_router):
+    for router in (
+        system_router,
+        auth_router,
+        me_router,
+        avatar_router,
+        subscriptions_router,
+        sources_router,
+    ):
         app.include_router(router)
     app.openapi = _openapi_with_combined_security(app)
     return app

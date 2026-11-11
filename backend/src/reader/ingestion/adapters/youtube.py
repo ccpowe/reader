@@ -41,6 +41,8 @@ class YouTubeAdapter:
         self._find_icon = find_icon
         # Set once the scan has to fall back; later pages stay on Atom.
         self.used_fallback = False
+        # Data API requests made (each costs one quota unit).
+        self.api_calls = 0
 
     async def fetch_page(self, cursor: str | None, limit: int) -> Page:
         if not self._api_key or self.used_fallback:
@@ -133,6 +135,7 @@ class YouTubeAdapter:
         }
 
     async def _get(self, resource: str, params: dict[str, str]) -> dict[str, Any]:
+        self.api_calls += 1
         response = await bounded_request(
             self._client,
             "GET",

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import undefer
@@ -239,3 +239,13 @@ async def get_avatar(db: AsyncSession, user_id: UUID, version: int) -> Avatar:
     if user is None or user.avatar_data is None or user.avatar_content_type is None:
         raise AppError(404, "avatar_not_found", "No such avatar.")
     return Avatar(data=user.avatar_data, content_type=user.avatar_content_type)
+
+
+async def delete_ended_sessions(db: AsyncSession) -> int:
+    """Remove sessions that expired or were revoked over a day ago (tokens cascade)."""
+    cutoff = datetime.now(UTC) - timedelta(days=1)
+    result = await db.execute(
+        delete(Session).where((Session.expires_at < cutoff) | (Session.revoked_at < cutoff))
+    )
+    await db.commit()
+    return result.rowcount

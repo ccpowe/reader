@@ -33,7 +33,7 @@ mcp = [
 ]
 
 [project.scripts]
-reader-worker = "app.workers.main:main"
+reader-worker = "reader.worker:main"
 reader-admin = "reader.cli:main"
 reader-mcp = "app.mcp.server:main"
 
