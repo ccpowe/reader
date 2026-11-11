@@ -132,7 +132,7 @@ async def list_subscriptions(
         (422, "invalid_reddit"),
         (422, "unsafe_url"),
         (422, "feed_not_found"),
-        (502, "website_unreachable"),
+        (502, "source_unreachable"),
     ),
 )
 async def subscribe(

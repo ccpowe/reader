@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from reader.ingestion.feed_discovery import discover_web_feed
-from reader.ingestion.url_safety import PublicAsyncClient, UnsafeSourceUrl
+from reader.ingestion.url_safety import PublicAsyncClient, UnresolvableHost, UnsafeSourceUrl
 
 RSS = b"""<?xml version="1.0"?><rss version="2.0"><channel>
 <title>Research</title><link>https://example.com/research</link><description>News</description>
@@ -388,7 +388,7 @@ async def test_dns_timeout_from_safe_fetcher_is_retryable(client):
     result = await discover_web_feed(
         url,
         client,
-        fetch=Fetcher({url: UnsafeSourceUrl("Source hostname resolution timed out.")}),
+        fetch=Fetcher({url: UnresolvableHost("Source hostname resolution timed out.")}),
     )
     assert result.status == "retry"
     assert result.evidence["attempts"][0]["result"] == "dns_error"

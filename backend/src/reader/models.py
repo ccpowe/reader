@@ -263,7 +263,11 @@ class Article(Base):
 
 class SavedArticle(Base):
     __tablename__ = "saved_articles"
-    __table_args__ = (Index("ix_saved_articles_user_saved", "user_id", "saved_at"),)
+    __table_args__ = (
+        Index("ix_saved_articles_user_saved", "user_id", "saved_at"),
+        # Retention checks "is this article saved by anyone" per article.
+        Index("ix_saved_articles_article", "article_id"),
+    )
 
     user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True

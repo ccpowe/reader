@@ -40,12 +40,14 @@ def upstream_errors(provider: str) -> Iterator[None]:
     """
     import httpx
 
-    from reader.ingestion.url_safety import UnsafeSourceUrl
+    from reader.ingestion.url_safety import UnresolvableHost, UnsafeSourceUrl
 
     try:
         yield
     except ScanError:
         raise
+    except UnresolvableHost as exc:
+        raise ScanError(f"{provider}_network_error", str(exc)) from exc
     except UnsafeSourceUrl as exc:
         raise ScanError("unsafe_url", str(exc), long_lived=True) from exc
     except httpx.TimeoutException as exc:

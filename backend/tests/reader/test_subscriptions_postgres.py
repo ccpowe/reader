@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select, update
 
 from reader.ingestion.feed_discovery import FeedDiscoveryResult
+from reader.ingestion.url_safety import UnresolvableHost
 from reader.models import Article, Source
 from reader.subscriptions import service
 from reader.subscriptions.icons import Icon
@@ -21,6 +22,8 @@ def offline(monkeypatch):
     """No real DNS, feed discovery or YouTube lookups."""
 
     async def public(url):
+        if "nodns" in url:
+            raise UnresolvableHost("Source hostname could not be resolved.")
         return url
 
     async def discover(url, _client, **_kwargs):
@@ -95,12 +98,14 @@ async def test_bad_input_and_feedless_websites_are_rejected(monkeypatch) -> None
 
         no_feed = await post("website", "https://nofeed.example.com/")
         down = await post("website", "https://down.example.com/")
+        no_dns = await post("rss", "https://nodns.example.com/feed")
         bad_x = await post("x", "not a handle!")
         bad_reddit = await post("reddit", "r/x")
         bad_type = await post("web", "https://e.com/")
 
     assert _code(no_feed) == (422, "feed_not_found")
-    assert _code(down) == (502, "website_unreachable")
+    assert _code(down) == (502, "source_unreachable")
+    assert _code(no_dns) == (502, "source_unreachable")
     assert _code(bad_x) == (422, "invalid_x")
     assert _code(bad_reddit) == (422, "invalid_reddit")
     assert _code(bad_type) == (422, "invalid_request")

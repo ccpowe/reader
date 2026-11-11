@@ -25,7 +25,12 @@ from reader.ingestion.identity import (
     canonical_x_identity,
     canonical_youtube_identity,
 )
-from reader.ingestion.url_safety import PublicAsyncClient, UnsafeSourceUrl, validate_public_http_url
+from reader.ingestion.url_safety import (
+    PublicAsyncClient,
+    UnresolvableHost,
+    UnsafeSourceUrl,
+    validate_public_http_url,
+)
 from reader.ingestion.youtube import resolve_youtube_channel_id
 from reader.models import Article, Source, Subscription
 
@@ -72,6 +77,8 @@ async def resolve_source(kind: SubscriptionType, value: str) -> ResolvedSource:
         identity = canonical_reddit_identity(value)
         subreddit = identity.canonical_url.rstrip("/").rsplit("/", 1)[-1]
         return ResolvedSource(identity, f"r/{subreddit}", {"subreddit": subreddit})
+    except UnresolvableHost as exc:
+        raise AppError(502, "source_unreachable", "The address could not be reached.") from exc
     except UnsafeSourceUrl as exc:
         raise AppError(422, "unsafe_url", str(exc)) from exc
     except ValueError as exc:
@@ -84,7 +91,7 @@ async def _resolve_website(url: str) -> ResolvedSource:
     async with PublicAsyncClient() as client:
         result = await discover_web_feed(url, client)
     if result.status in {"retry", "blocked"}:
-        raise AppError(502, "website_unreachable", "The website could not be reached.")
+        raise AppError(502, "source_unreachable", "The address could not be reached.")
     if result.status != "found" or result.feed_url is None:
         raise AppError(422, "feed_not_found", "This website has no RSS/Atom feed.")
     identity = canonical_rss_identity(result.feed_url)

@@ -207,6 +207,43 @@ async def test_a_known_pinned_post_does_not_end_the_scan(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_failure_on_a_later_page_writes_nothing_so_the_retry_sees_everything(
+    monkeypatch,
+) -> None:
+    async with _database(scan_initial_items=1) as (factory, config):
+        await _followed_source(factory)
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page(_items(1))}))
+        pages = {None: Page(_items(5, 4), next_cursor="p2"), "p2": Page(_items(3, 2, 1))}
+
+        class SecondPageFails(ScriptedAdapter):
+            async def fetch_page(self, cursor, limit):
+                if cursor == "p2":
+                    raise ScanError("rss_http_500", "boom")
+                return await super().fetch_page(cursor, limit)
+
+        await _scan(factory, config, monkeypatch, SecondPageFails(pages))
+        source, articles, _ = await _state(factory)
+        assert articles == [("id-1", None)] and source.latest_sequence == 0
+
+        await _scan(factory, config, monkeypatch, ScriptedAdapter(pages))
+        source, articles, _ = await _state(factory)
+
+    assert articles[1:] == [("id-2", 1), ("id-3", 2), ("id-4", 3), ("id-5", 4)]
+    assert not source.may_have_gap
+
+
+@pytest.mark.asyncio
+async def test_an_empty_page_is_not_a_gap(monkeypatch) -> None:
+    async with _database(scan_initial_items=1) as (factory, config):
+        await _followed_source(factory)
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page(_items(1))}))
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page([])}))
+        source, _, _ = await _state(factory)
+
+    assert source.last_new_items == 0 and not source.may_have_gap
+
+
+@pytest.mark.asyncio
 async def test_popularity_lists_never_flag_a_gap(monkeypatch) -> None:
     async with _database(scan_initial_items=2) as (factory, config):
         await _followed_source(factory, kind="reddit", config={"subreddit": "python"})
@@ -303,9 +340,11 @@ async def test_a_scan_that_lost_its_lease_writes_nothing(monkeypatch) -> None:
         async with factory() as db:
             count = await db.scalar(select(func.count()).select_from(Article))
             source = await db.scalar(select(Source))
+            run = await db.scalar(select(SourceScanRun))
 
     assert count == 0
     assert source.lease_token is not None and not source.initial_scan_done
+    assert (run.status, run.error_code) == ("failed", "lease_lost")
 
 
 @pytest.mark.asyncio

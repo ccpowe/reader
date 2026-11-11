@@ -31,6 +31,10 @@ class UnsafeSourceUrl(ValueError):
     """Raised when a source URL could target a non-public destination."""
 
 
+class UnresolvableHost(UnsafeSourceUrl):
+    """DNS lookup failed or timed out: the host is unreachable now, not known unsafe."""
+
+
 logger = logging.getLogger(__name__)
 _MIHOMO_FAKE_IP_NETWORK = ipaddress.ip_network("198.18.0.0/15")
 _DNS_MAX_WORKERS = 4
@@ -224,9 +228,9 @@ async def _resolve_public_addresses(
             async with asyncio.timeout(resolution_timeout):
                 resolved = await _DNS_RESOLVER.getaddrinfo(normalized_host, port)
         except TimeoutError as exc:
-            raise UnsafeSourceUrl("Source hostname resolution timed out.") from exc
+            raise UnresolvableHost("Source hostname resolution timed out.") from exc
         except (UnicodeError, socket.gaierror) as exc:
-            raise UnsafeSourceUrl("Source hostname could not be resolved.") from exc
+            raise UnresolvableHost("Source hostname could not be resolved.") from exc
         raw_addresses = [ipaddress.ip_address(result[4][0].split("%", 1)[0]) for result in resolved]
 
     addresses = tuple(dict.fromkeys(raw_addresses))

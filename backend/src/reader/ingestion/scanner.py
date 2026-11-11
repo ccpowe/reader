@@ -2,18 +2,18 @@
 
 One scan of one source:
   1. Claim: set a lease on the source row, so no other scan touches it.
-  2. Read pages newest first. Every item on a page is checked; the next page is
-     fetched only if no known item was seen and fewer than `scan_max_items`
-     were read. A first scan reads one page of `scan_initial_items` as a
-     baseline that never counts as new.
-  3. Each page is written in its own transaction, under the source row lock:
-     new items get the source's next sequence number (the new-content badge),
-     changed items are updated in place without a new sequence.
-  4. Finish: release the lease and schedule the next scan, or record the failure
-     and back off.
+  2. Read pages newest first, writing nothing. Every item on a page is checked
+     against the database; the next page is fetched only if no known item was
+     seen and fewer than `scan_max_items` were read. A first scan reads one page
+     of `scan_initial_items` as a baseline that never counts as new.
+  3. Store everything in one transaction under the source row lock: new items get
+     the source's next sequence numbers (the new-content badge), changed items are
+     updated in place, and the scan is marked finished. A failure anywhere before
+     this point writes nothing, so a retry reads the same pages again.
+  4. On failure, record the error and back off.
 
-The lease is checked before every write, so a scan that outlived its lease
-(and was claimed again by another worker) can no longer write.
+The lease is checked when storing, so a scan that outlived its lease (and was
+claimed again by another worker) writes nothing.
 """
 
 from __future__ import annotations
@@ -65,7 +65,6 @@ class ScanResult:
     new_items: int = 0
     reached_known: bool = False
     chronological: bool = True
-    hit_limit: bool = False
 
 
 # --- Claiming ---------------------------------------------------------------------
@@ -125,13 +124,14 @@ async def scan_source(
             async with _http_client(snapshot.kind) as client:
                 adapter = _build_adapter(snapshot, client, settings, youtube_budget > 0)
                 try:
-                    result = await _read_and_store(factory, settings, claim, snapshot, adapter)
+                    pages, result = await _read_pages(factory, settings, snapshot, adapter)
                 finally:
                     if isinstance(adapter, YouTubeAdapter) and adapter.api_calls:
                         await _record_youtube_usage(factory, adapter.api_calls)
+            await _store_scan(factory, claim, run_id, snapshot, pages, result)
     except LeaseLost:
         logger.warning("Scan lease lost: source_id=%s", claim.source_id)
-        return
+        await _close_run(factory, run_id, "lease_lost", "Another scan took over this source.")
     except TimeoutError:
         await _finish_failed(
             factory, claim, run_id, ScanError("scan_timeout", "Scan took too long.")
@@ -143,8 +143,6 @@ async def scan_source(
         await _finish_failed(
             factory, claim, run_id, ScanError("internal_error", "Unexpected scan failure.")
         )
-    else:
-        await _finish_succeeded(factory, settings, claim, run_id, snapshot, result)
 
 
 @dataclass(frozen=True)
@@ -213,72 +211,45 @@ def _build_adapter(
     raise ScanError("unsupported_source", f"No scanner for source kind {source.kind}.")
 
 
-async def _read_and_store(
+async def _read_pages(
     factory: async_sessionmaker[AsyncSession],
     settings: Settings,
-    claim: Claim,
     source: _SourceSnapshot,
     adapter: Adapter,
-) -> ScanResult:
+) -> tuple[list[Page], ScanResult]:
+    """Fetch pages until a known item, the item limit or the last page. Writes nothing."""
     budget = settings.scan_initial_items if source.initial else settings.scan_max_items
     result = ScanResult()
+    pages: list[Page] = []
     cursor: str | None = None
     while True:
         page = await adapter.fetch_page(cursor, budget - result.items_read)
+        pages.append(page)
         result.items_read += len(page.items)
         result.chronological = page.chronological
-        new, reached_known = await _store_page(factory, claim, page, initial=source.initial)
-        result.new_items += new
-        result.reached_known = result.reached_known or reached_known
+        if not source.initial and page.items:
+            known = await _known_ids(factory, source.id, [item.native_id for item in page.items])
+            if any(item.native_id in known and not item.pinned for item in page.items):
+                result.reached_known = True
         if source.initial or result.reached_known or not page.next_cursor:
             break
         if result.items_read >= budget:
-            result.hit_limit = True
             break
         cursor = page.next_cursor
-    return result
+    return pages, result
 
 
-async def _store_page(
-    factory: async_sessionmaker[AsyncSession], claim: Claim, page: Page, *, initial: bool
-) -> tuple[int, bool]:
-    """Write one page in one transaction; return (new items, saw a known item)."""
-    items = _unique(page.items)
+async def _known_ids(
+    factory: async_sessionmaker[AsyncSession], source_id: UUID, native_ids: list[str]
+) -> set[str]:
     async with factory() as db:
-        source = await _lock_owned_source(db, claim)
-        existing = (
-            {
-                article.native_id: article
-                for article in await db.scalars(
-                    select(Article).where(
-                        Article.source_id == source.id,
-                        Article.native_id.in_([item.native_id for item in items]),
-                    )
+        return set(
+            await db.scalars(
+                select(Article.native_id).where(
+                    Article.source_id == source_id, Article.native_id.in_(native_ids)
                 )
-            }
-            if items
-            else {}
+            )
         )
-        reached_known = False
-        new_items: list[Item] = []
-        for item in items:
-            article = existing.get(item.native_id)
-            if article is None:
-                new_items.append(item)
-                continue
-            if not item.pinned:
-                reached_known = True
-            _update_article(article, item)
-        # Oldest first, so newer items get higher sequence numbers.
-        for item in reversed(new_items):
-            sequence = None
-            if not initial:
-                source.latest_sequence += 1
-                sequence = source.latest_sequence
-            db.add(_new_article(source.id, item, sequence))
-        _apply_source_metadata(source, page)
-        await db.commit()
-        return (0 if initial else len(new_items)), reached_known
 
 
 async def _lock_owned_source(db: AsyncSession, claim: Claim) -> Source:
@@ -353,20 +324,50 @@ def _apply_source_metadata(source: Source, page: Page) -> None:
 # --- Finishing --------------------------------------------------------------------
 
 
-async def _finish_succeeded(
+async def _store_scan(
     factory: async_sessionmaker[AsyncSession],
-    settings: Settings,
     claim: Claim,
     run_id: UUID,
     snapshot: _SourceSnapshot,
+    pages: list[Page],
     result: ScanResult,
 ) -> None:
+    """Write every article and finish the scan in one transaction."""
     now = datetime.now(UTC)
+    items = _unique([item for page in pages for item in page.items])
     async with factory() as db:
-        try:
-            source = await _lock_owned_source(db, claim)
-        except LeaseLost:
-            return
+        source = await _lock_owned_source(db, claim)
+        existing = (
+            {
+                article.native_id: article
+                for article in await db.scalars(
+                    select(Article).where(
+                        Article.source_id == source.id,
+                        Article.native_id.in_([item.native_id for item in items]),
+                    )
+                )
+            }
+            if items
+            else {}
+        )
+        new_items = []
+        for item in items:
+            article = existing.get(item.native_id)
+            if article is None:
+                new_items.append(item)
+            else:
+                _update_article(article, item)
+        # Oldest first, so newer items get higher sequence numbers.
+        for item in reversed(new_items):
+            sequence = None
+            if not snapshot.initial:
+                source.latest_sequence += 1
+                sequence = source.latest_sequence
+            db.add(_new_article(source.id, item, sequence))
+        for page in pages:
+            _apply_source_metadata(source, page)
+
+        result.new_items = 0 if snapshot.initial else len(new_items)
         source.initial_scan_done = True
         source.status = "active" if source.status == "pending" else source.status
         source.last_success_at = now
@@ -374,9 +375,13 @@ async def _finish_succeeded(
         source.last_error_code = source.last_error_message = None
         source.last_new_items = result.new_items
         source.unchanged_scans = 0 if result.new_items else source.unchanged_scans + 1
-        # Only a time-ordered source that never reached a known item can have missed some.
+        # Only a time-ordered source that returned items but never reached a known one
+        # can have missed some.
         source.may_have_gap = (
-            not snapshot.initial and result.chronological and not result.reached_known
+            not snapshot.initial
+            and result.chronological
+            and result.items_read > 0
+            and not result.reached_known
         )
         source.next_scan_at = now + next_scan_delay(source)
         source.lease_token = source.lease_expires_at = None
@@ -393,6 +398,24 @@ async def _finish_succeeded(
         await db.commit()
 
 
+async def _close_run(
+    factory: async_sessionmaker[AsyncSession], run_id: UUID, code: str, message: str
+) -> None:
+    """End a run record without touching the source (another scan may own it now)."""
+    async with factory() as db:
+        await db.execute(
+            update(SourceScanRun)
+            .where(SourceScanRun.id == run_id)
+            .values(
+                status="failed",
+                finished_at=datetime.now(UTC),
+                error_code=code,
+                error_message=message,
+            )
+        )
+        await db.commit()
+
+
 async def _finish_failed(
     factory: async_sessionmaker[AsyncSession], claim: Claim, run_id: UUID, error: ScanError
 ) -> None:
@@ -401,6 +424,10 @@ async def _finish_failed(
         try:
             source = await _lock_owned_source(db, claim)
         except LeaseLost:
+            source = None
+        if source is None:
+            await db.rollback()
+            await _close_run(factory, run_id, "lease_lost", "Another scan took over this source.")
             return
         source.consecutive_failures += 1
         source.last_error_code = error.code[:120]

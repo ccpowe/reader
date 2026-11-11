@@ -22,7 +22,7 @@ router = APIRouter(tags=["system"])
 # Bumped whenever the client and server stop understanding each other.
 PROTOCOL_VERSION = 3
 # The Alembic revision this build expects; /ready fails on any other.
-SCHEMA_REVISION = "0001_baseline"
+SCHEMA_REVISION = "0002_saved_article_index"
 
 
 class DiscoveryResponse(BaseModel):

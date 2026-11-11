@@ -17,7 +17,12 @@ from bs4 import BeautifulSoup
 
 from reader.ingestion.errors import ScanError
 from reader.ingestion.http import provider_http_error_code
-from reader.ingestion.url_safety import UnsafeSourceUrl, safe_get, validate_http_url
+from reader.ingestion.url_safety import (
+    UnresolvableHost,
+    UnsafeSourceUrl,
+    safe_get,
+    validate_http_url,
+)
 
 _FEED_TYPES = {"application/rss+xml", "application/atom+xml"}
 _FEED_LABEL = re.compile(r"\b(?:rss|atom)\b", re.IGNORECASE)
@@ -285,17 +290,12 @@ async def discover_web_feed(
         except httpx.RequestError:
             attempt["result"] = "network_error"
             transient_failure |= candidate.origin != "guess"
-        except UnsafeSourceUrl as exc:
-            # The shared safe fetcher also wraps bounded DNS failures in this
-            # exception. Those are unknown discovery results, not absent RSS.
-            if str(exc) in {
-                "Source hostname resolution timed out.",
-                "Source hostname could not be resolved.",
-            }:
-                attempt["result"] = "dns_error"
-                transient_failure |= candidate.origin != "guess"
-            else:
-                attempt["result"] = "unsafe_url"
+        except UnresolvableHost:
+            # Unknown result, not a missing feed.
+            attempt["result"] = "dns_error"
+            transient_failure |= candidate.origin != "guess"
+        except UnsafeSourceUrl:
+            attempt["result"] = "unsafe_url"
         except ScanError as exc:
             attempt["result"] = exc.code
             transient_failure |= candidate.origin != "guess"
