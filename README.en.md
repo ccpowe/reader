@@ -30,7 +30,7 @@ Reader is a self-hosted information aggregation app. Bring blogs, communities, w
 > [!WARNING]
 > Reader is currently a development preview, not a production release. Known issues remain, and parts of the experience are still being refined.
 
-- **Web extraction:** The web extraction rules Agent still needs improvement to recognize and parse a wider range of pages. Some websites may not return article lists or content correctly.
+- **Website subscriptions:** Only websites that publish RSS / Atom are supported for now; sites without a feed are planned for a separate web-crawling service.
 - **X sign-in:** The Android client now uses the same OAuth popup mechanism as Reddit; whether completing or cancelling Google sign-in reliably returns to the original X page still requires real-device verification.
 - **Interaction quality:** Page interactions, transition animations, and loading feedback still need further refinement.
 
@@ -76,7 +76,7 @@ The API listens on `127.0.0.1:8000` by default. `token` prints the connection to
 
 If some articles are missing a title or link while others can still be fetched, the subscription screen reports that updates are working but some articles could not be parsed. If nothing can be parsed, it continues to show an error state.
 
-**Web and RSS articles open in the original in-app web page by default**, preserving the website's content and interactions. Select Reader Mode to extract the main content from the currently loaded page and display it in a consistent layout. You can switch back to the original page at any time or open it in the system browser.
+**RSS and website articles open in the original in-app web page by default**, preserving the website's content and interactions. Select Reader Mode to extract the main content from the currently loaded page and display it in a consistent layout. You can switch back to the original page at any time or open it in the system browser.
 
 Reader Mode uses the current web page; it does not switch content sources based on whether the RSS feed contains a full article. If the page cannot be extracted or has not finished loading, Reader keeps the original page available and explains why, without stopping subscription updates. Extracted content is only used for the current reading session—it is not automatically saved for offline use or synchronized to other devices.
 
@@ -119,12 +119,10 @@ Saved X ranking entries retain their original text and media information even af
 | Source | What you can follow | Requirements |
 | --- | --- | --- |
 | **RSS / Atom** | Blogs, news sites, and public feeds | Add the feed URL |
-| **Websites** | Article lists from public blogs | Reader first looks for RSS / Atom. If no usable feed is available and a rules Agent is configured on the server, it attempts to discover article updates. Sites requiring sign-in or using anti-bot protections may not work; not every website is supported |
+| **Websites** | Article lists from public blogs | Enter a website address and Reader finds and subscribes to its RSS / Atom feed; sites without a feed are not supported yet |
 | **Reddit** | Community posts | Add a community source |
 | **YouTube** | Channel updates | Optionally configure the YouTube Data API; otherwise Reader uses the public Atom feed |
 | **X** | Public posts from an account | Uses Scweet and a dedicated secondary-account cookie; platform policy, rate-limit, and account-restriction risks apply |
-
-A website subscription may initially discover only currently available articles, and historical coverage can be limited. The backend stores the rules Agent's decisions and limitations for administrators to inspect. Main-content extraction does not determine whether a subscription succeeds.
 
 ## Let an AI client use Reader through MCP
 
@@ -179,7 +177,7 @@ Web translation can be affected by site layouts, sign-in state, dynamic loading,
 | --- | --- |
 | Deploy a Reader service | [Docker Compose deployment](docs/docker-deployment.md) · [General deployment guide](docs/deployment.md) · [Backend documentation](backend/README.md) |
 | Develop or build the client | [Repository development guidelines](AGENTS.md) · [Frontend and APK builds](mobile/AGENTS.md) · [Backend development](backend/AGENTS.md) |
-| Understand the system design | [Architecture overview](docs/ARCHITECTURE.md) · [Backend architecture atlas (Chinese)](docs/backend-architecture.md) · [C4 model](architecture/workspace.dsl) |
+| Understand the system design | [Architecture overview](docs/ARCHITECTURE.md) · [C4 model](architecture/workspace.dsl) |
 | Inspect the API | [Reader API OpenAPI](contracts/openapi.json) |
 
 When reporting a problem, include the app version, reproduction steps, and the affected screen. For web-page or subtitle issues, attach a public URL and screenshot when possible, without including credentials or private content.

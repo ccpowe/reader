@@ -1,5 +1,5 @@
 // Reader 当前实现的结构模型；职责、数据约束与运行流程见 ../docs/ARCHITECTURE.md。
-// 一个 model 生成 C1、C2 和按容器展开的 C3；后端关键实现图见 ../docs/backend-architecture.md，符号与细节以源码为准。
+// 一个 model 生成 C1、C2 和按容器展开的 C3；符号与细节以源码为准。
 // sources 属性中的路径相对仓库根目录。组件表示稳定职责，不逐文件/函数建模。
 // 元素、职责边界或依赖变化时同步更新；普通内部重构只需修正源码入口。
 // 同一源码可在 API、Worker 中分别实例化，不因此建立跨进程调用关系。
@@ -11,19 +11,18 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
 
     model {
         reader = person "读者" "连接 Reader 服务，订阅、浏览、收藏、阅读和翻译内容。"
-        operator = person "管理员" "通过管理命令维护用户、翻译配额、网页规则任务及 Codex 订阅凭据。"
+        operator = person "管理员" "通过管理命令维护用户、翻译配额及 Codex 订阅凭据。"
         aiHost = softwareSystem "AI 宿主" "通过本地 stdio MCP 查询 Reader、读取公开字幕并按用户要求添加订阅；模型筛选和简报编排属于宿主。" "External"
 
         websites = softwareSystem "内容网站与 RSS" "提供文章、RSS/Atom、来源头像和可提取网页。" "External"
         youtube = softwareSystem "YouTube" "提供频道、视频、播放器及字幕。" "External"
         x = softwareSystem "X" "Scweet 采集的上游社交平台，也提供客户端阅读的原网页。" "External"
-        apify = softwareSystem "Apify" "选择 Apify 时提供 X 内容采集结果。" "External,Optional"
         reddit = softwareSystem "Reddit" "提供 subreddit 榜单 RSS；hot 快照也驱动已订阅内容入库。" "External"
         hackerNews = softwareSystem "Hacker News" "通过 Firebase API 提供榜单与条目。" "External"
         github = softwareSystem "GitHub" "通过 Trending 页面提供排行。" "External"
         techTwitter = softwareSystem "TechTwitter" "提供 X 技术热门 TRENDING 前 50 条；独立于 X 账号订阅采集。" "External"
         productHunt = softwareSystem "Product Hunt" "可选官方 GraphQL API；按洛杉矶日期提供每日发布记录及 RANKING 排序，不承诺还原历史结榜名次。" "External,Optional"
-        models = softwareSystem "模型提供方" "DeepSeek、OpenRouter 执行翻译及可选网页规则生成；Codex 订阅仅执行翻译。" "External" {
+        models = softwareSystem "模型提供方" "DeepSeek、OpenRouter 与 Codex 订阅执行翻译。" "External" {
             properties {
                 "sources" "backend/src/app/llm/factory.py"
             }
@@ -95,7 +94,6 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                 }
             }
 
-
             api = container "Reader API" "服务发现、认证和用户业务；直接处理交互翻译，也建立持久工作。" "Python / FastAPI" {
                 properties {
                     "sources" "backend/src/app/main.py; backend/src/app/api/router.py"
@@ -138,7 +136,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                 }
             }
 
-            worker = container "Reader Worker" "执行来源扫描、候选入库、排行刷新、持久翻译、规则任务与清理。" "Python / asyncio" {
+            worker = container "Reader Worker" "执行来源扫描、候选入库、排行刷新、持久翻译与清理。" "Python / asyncio" {
                 properties {
                     "sources" "backend/src/app/workers/main.py"
                     "persistence" "与 API 共用 storage/、业务源码和 PostgreSQL；各自拥有运行时实例，不通过 RPC 互相调度。"
@@ -148,9 +146,9 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                         "sources" "backend/src/app/workers/main.py; backend/src/app/workers/health.py"
                     }
                 }
-                scan = component "来源扫描与接入" "领取来源租约，选择 RSS/Web/YouTube/X adapter，发现 feed 或网页列表并写入候选；不逐篇补抓网页正文。" "Python / HTTPX / Crawl4AI" {
+                scan = component "来源扫描与接入" "领取来源租约，选择 RSS/YouTube/X adapter 并写入候选；不逐篇补抓网页正文。" "Python / HTTPX" {
                     properties {
-                        "sources" "backend/src/app/workers/sync.py; backend/src/app/services/scan_state.py; backend/src/app/services/web_scan_health.py; backend/src/app/ingestion/candidate_queue.py; backend/src/app/ingestion/sources/; backend/src/app/ingestion/feed_discovery.py; backend/src/app/services/web_feeds.py; backend/src/app/ingestion/web_crawl.py; backend/src/app/ingestion/url_safety.py"
+                        "sources" "backend/src/app/workers/sync.py; backend/src/app/services/scan_state.py; backend/src/app/ingestion/candidate_queue.py; backend/src/app/ingestion/sources/; backend/src/app/ingestion/url_safety.py"
                     }
                 }
                 candidates = component "候选入库" "领取持久候选，去重并写入内容、来源条目与媒体；按配置建立标题翻译 Work。" "Python / SQLAlchemy" {
@@ -168,21 +166,6 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                         "sources" "backend/src/app/translation/executor.py; backend/src/app/translation/store.py; backend/src/app/translation/notifier.py; backend/src/app/translation/providers/langchain.py; backend/src/app/llm/factory.py"
                     }
                 }
-                ruleJobs = component "网页规则任务与激活" "宿主收拢提交、扫描忙等待、凭据过期重执行及重启恢复；持久服务管理租约与预算，校验执行凭据和来源版本后原子激活。" "Python / SQLAlchemy" {
-                    properties {
-                        "sources" "backend/src/app/workers/web_rules.py; backend/src/app/web_rule_agent/handoff.py; backend/src/app/web_rule_agent/store.py; backend/src/app/services/web_rule_jobs.py; backend/src/app/services/web_rules.py"
-                    }
-                }
-                ruleAgent = component "网页规则 Agent" "自动作者默认停用；启用后保存有界证据，根据 DOM 和真实执行结果评估、修正列表规则并交接。" "LangChain / Crawl4AI" "Optional" {
-                    properties {
-                        "sources" "backend/src/app/web_rule_agent/runtime.py; backend/src/app/web_rule_agent/context.py; backend/src/app/web_rule_agent/tools.py; backend/src/app/web_rule_agent/memory.py; backend/src/app/web_rule_agent/store.py; backend/src/app/ingestion/web_rules.py; backend/src/app/llm/factory.py"
-                    }
-                }
-                ruleBrowser = component "受控网页执行客户端" "本机模式直接管理受隔离的 Lightpanda；容器模式申请 explore/render 任务并通过类型化内部接口执行，静态规则仍走 HTTP。" "Python / HTTPX / Crawl4AI" {
-                    properties {
-                        "sources" "backend/src/app/browser_tasks/client.py; backend/src/app/web_rule_agent/cli_browser.py; backend/src/app/web_rule_agent/cli_process.py; backend/src/app/web_rule_agent/cli_bridge.py; backend/src/app/ingestion/browser_runtime.py; backend/src/app/ingestion/web_crawl.py; backend/src/app/ingestion/url_safety.py"
-                    }
-                }
                 cleanup = component "保留与清理" "清理孤立来源、过量未收藏内容和过期翻译，保护收藏及仍有效的引用。" "Python / SQLAlchemy" {
                     properties {
                         "sources" "backend/src/app/workers/cleanup.py; backend/src/app/workers/content_retention.py; backend/src/app/translation/lifecycle.py"
@@ -190,37 +173,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                 }
             }
 
-            browserManager = container "浏览器任务管理器" "可选容器部署的可信控制面；核验固定镜像身份，持久化任务状态并创建、续租、关闭任务资源。" "Python / FastAPI / Docker Engine API" "Optional" {
-                properties {
-                    "sources" "backend/src/app/browser_tasks/manager_app.py; backend/src/app/browser_tasks/controller.py; backend/src/app/browser_tasks/docker_runtime.py; backend/src/app/browser_tasks/state.py"
-                    "deployment" "仅控制网络；持有 Docker socket、控制令牌与 capability HMAC key，并与 Reaper 共享状态目录。"
-                }
-            }
-            browserReaper = container "浏览器任务回收器" "独立监督过期租约、硬期限和残留资源；原子领取清理权后回收本部署的两个任务容器与任务控制卷。" "Python / Docker Engine API" "Optional" {
-                properties {
-                    "sources" "backend/src/app/browser_tasks/reaper.py; backend/src/app/browser_tasks/docker_runtime.py; backend/src/app/browser_tasks/state.py"
-                    "deployment" "没有控制或 capability 密钥；持有 Docker socket并与 Manager 共享任务状态目录。"
-                }
-            }
-            browserState = container "浏览器任务状态" "保存请求幂等、nonce、租约、硬期限、资源身份与清理状态；Manager 和 Reaper 通过原子状态转换协调。" "SQLite" "Database,Optional" {
-                properties {
-                    "sources" "backend/src/app/browser_tasks/state.py"
-                }
-            }
-            browserAdapter = container "浏览器任务 Adapter" "每任务短期数据面；校验 task capability，通过 safe_get/robots/预算获取公网页面，并经专属 Unix socket 驱动浏览器。" "Python / FastAPI / Crawl4AI" "Optional,Ephemeral" {
-                properties {
-                    "sources" "backend/src/app/browser_tasks/adapter_app.py; backend/src/app/browser_tasks/adapter_runtime.py; backend/src/app/browser_tasks/protocol.py"
-                    "deployment" "仅任务 data 与受控 egress 网络；没有 Docker socket、Manager 令牌、数据库或模型凭据。"
-                }
-            }
-            browserSandbox = container "无网络浏览器任务" "每任务运行固定版 Lightpanda 与 agent-browser；只通过任务 Unix socket 接收 adapter 控制，不能发起 IP 网络连接。" "Lightpanda 0.4.0 / agent-browser 0.37.1" "Optional,Ephemeral" {
-                properties {
-                    "sources" "services/browser_runtime/Dockerfile.browser; services/browser_runtime/browser-entrypoint.sh; services/browser_runtime/agent-browser.json"
-                    "deployment" "network none、非 root、只读文件系统、cap_drop ALL、no-new-privileges；不挂载 Reader 源码或凭据。"
-                }
-            }
-
-            database = container "Reader 数据库" "业务与用户数据、翻译 Artifact/Work、候选、规则任务、租约、配额及心跳。" "PostgreSQL" "Database" {
+            database = container "Reader 数据库" "业务与用户数据、翻译 Artifact/Work、候选、租约、配额及心跳。" "PostgreSQL" "Database" {
                 properties {
                     "sources" "backend/src/app/storage/; backend/migrations/; backend/src/app/translation/notifier.py"
                 }
@@ -230,7 +183,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
                     "sources" "backend/src/app/llm/codex_auth.py; backend/src/app/admin/codex_auth.py; compose.yaml"
                 }
             }
-            admin = container "Reader 管理 CLI" "按需运行，管理用户、翻译配额和网页规则任务；Codex 凭据命令直接访问独立文件库，无需数据库。" "Python / argparse" {
+            admin = container "Reader 管理 CLI" "按需运行，管理用户和翻译配额；Codex 凭据命令直接访问独立文件库，无需数据库。" "Python / argparse" {
                 properties {
                     "sources" "backend/src/app/admin/cli.py; backend/pyproject.toml"
                 }
@@ -249,19 +202,18 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
 
         // C1：系统边界与外部依赖。只描述 Reader 实际使用的外部能力。
         reader -> system "订阅、浏览、收藏、阅读和翻译"
-        operator -> system "维护用户、配额和规则任务"
+        operator -> system "维护用户和配额"
         reader -> aiHost "请求信息筛选、简报与追问"
         aiHost -> system "通过 MCP 查询信息和添加订阅"
         system -> websites "获取内容、feed 与头像；加载阅读页面"
         system -> youtube "获取频道内容，播放视频并读取字幕"
         system -> x "加载原网页；选择 Scweet 时采集内容"
-        system -> apify "获取 X 采集结果（选择 Apify 时）"
         system -> reddit "获取榜单及订阅热门内容，加载原网页"
         system -> hackerNews "获取榜单条目"
         system -> github "获取 Trending 排行"
         system -> techTwitter "读取 X 技术热门排行"
         system -> productHunt "按日期读取每日热门发布（需配置令牌）"
-        system -> models "请求翻译；按配置生成网页规则"
+        system -> models "请求翻译"
         system -> codexIdentity "按需刷新 Codex 订阅凭据"
 
         // C2：运行单元与数据存储。数据库工作队列不是另一套消息服务。
@@ -277,7 +229,7 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.client -> x "加载原网页" "HTTPS / 原生 WebView" "ContainerRelationship"
         system.client -> reddit "加载原网页" "HTTPS / 原生 WebView" "ContainerRelationship"
         system.api -> system.database "读写业务、会话、配额及翻译状态，发布通知" "SQL / NOTIFY" "ContainerRelationship"
-        system.api -> websites "代理来源头像" "HTTPS" "ContainerRelationship"
+        system.api -> websites "代理来源头像；添加网站时查找 RSS／Atom" "HTTPS" "ContainerRelationship"
         system.api -> youtube "解析频道" "HTTPS" "ContainerRelationship"
         system.api -> reddit "刷新榜单" "HTTPS / RSS" "ContainerRelationship"
         system.api -> hackerNews "刷新榜单" "HTTPS / Firebase JSON API" "ContainerRelationship"
@@ -286,27 +238,16 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.api -> productHunt "初始化或刷新日期榜单" "HTTPS / GraphQL / Bearer" "ContainerRelationship"
         system.api -> models "直接和实时翻译" "HTTPS / 模型 API" "ContainerRelationship"
         system.worker -> system.database "领取任务、读写内容和结果，监听通知" "SQL / LISTEN / NOTIFY" "ContainerRelationship"
-        system.worker -> websites "发现和抓取 feed、扫描列表及规则探索与验证页面" "HTTPS / RSS / HTML" "ContainerRelationship"
+        system.worker -> websites "抓取 RSS／Atom feed" "HTTPS / RSS" "ContainerRelationship"
         system.worker -> youtube "扫描频道" "HTTPS / Data API / 回退抓取" "ContainerRelationship"
-        system.worker -> system.scweet "采集 X（x_provider=scweet）" "HTTP / 内部令牌" "ContainerRelationship"
-        system.worker -> apify "采集 X（x_provider=apify）" "HTTPS / API" "ContainerRelationship"
+        system.worker -> system.scweet "采集 X" "HTTP / 内部令牌" "ContainerRelationship"
         system.worker -> reddit "刷新榜单并产生订阅候选" "HTTPS / RSS" "ContainerRelationship"
         system.worker -> hackerNews "刷新榜单" "HTTPS / Firebase JSON API" "ContainerRelationship"
         system.worker -> github "刷新榜单" "HTTPS / HTML" "ContainerRelationship"
         system.worker -> techTwitter "每 15 分钟刷新共享榜单" "HTTPS / JSON API" "ContainerRelationship"
         system.worker -> productHunt "每 30 分钟刷新当天发布榜单" "HTTPS / GraphQL / Bearer" "ContainerRelationship"
-        system.worker -> models "持久翻译；启用时编写网页规则" "HTTPS / 模型 API" "ContainerRelationship"
-        system.worker -> system.browserManager "申请、续租和关闭浏览器任务（容器模式）" "内部 HTTP / Bearer" "ContainerRelationship"
-        system.worker -> system.browserAdapter "执行 explore CLI 或一次性 render（容器模式）" "内部 HTTP / Task capability" "ContainerRelationship"
-        system.browserManager -> system.browserAdapter "创建、核验健康并回收任务容器" "Docker Engine" "ContainerRelationship"
-        system.browserManager -> system.browserSandbox "创建、核验健康并回收无网络浏览器" "Docker Engine" "ContainerRelationship"
-        system.browserManager -> system.browserState "记录创建、租约、幂等与清理状态" "SQLite" "ContainerRelationship"
-        system.browserReaper -> system.browserState "原子领取过期任务并记录清理结果" "SQLite" "ContainerRelationship"
-        system.browserReaper -> system.browserAdapter "回收过期或残留 adapter" "Docker Engine" "ContainerRelationship"
-        system.browserReaper -> system.browserSandbox "回收过期或残留 browser 与任务控制卷" "Docker Engine" "ContainerRelationship"
-        system.browserAdapter -> system.browserSandbox "经任务专属 Unix socket 提供 CDP 与 CLI 控制" "Unix sockets" "ContainerRelationship"
-        system.browserAdapter -> websites "以受控公网传输获取页面" "HTTPS / safe_get" "ContainerRelationship"
-        system.admin -> system.database "管理用户、配额及规则任务" "SQL" "ContainerRelationship"
+        system.worker -> models "持久翻译" "HTTPS / 模型 API" "ContainerRelationship"
+        system.admin -> system.database "管理用户及配额" "SQL" "ContainerRelationship"
         system.api -> system.codexCredentials "读取并按需原子更新订阅凭据" "File / Lock" "ContainerRelationship"
         system.worker -> system.codexCredentials "读取并按需原子更新订阅凭据" "File / Lock" "ContainerRelationship"
         system.admin -> system.codexCredentials "导入、检查和按需刷新独立登录" "File / Lock" "ContainerRelationship"
@@ -377,15 +318,12 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.worker.loops -> system.worker.candidates "运行候选处理循环" "asyncio"
         system.worker.loops -> system.worker.rankings "运行排行刷新循环" "asyncio"
         system.worker.loops -> system.worker.translation "监督前台/后台翻译 lane" "asyncio"
-        system.worker.loops -> system.worker.ruleJobs "运行规则任务循环" "asyncio"
         system.worker.loops -> system.worker.cleanup "运行清理循环" "asyncio"
         system.worker.loops -> system.database "记录 Worker 心跳" "SQL"
-        system.worker.scan -> system.database "领取来源租约，读规则并写入候选/规则任务" "SQL"
-        system.worker.scan -> system.worker.ruleBrowser "执行网页规则，共用动态浏览器与传输限制" "Python / async"
-        system.worker.scan -> websites "发现并抓取 feed，按有效规则提取页面" "HTTPS / RSS / HTML"
+        system.worker.scan -> system.database "领取来源租约并写入候选" "SQL"
+        system.worker.scan -> websites "抓取 RSS／Atom feed" "HTTPS / RSS"
         system.worker.scan -> youtube "扫描频道内容" "HTTPS / Data API / 回退抓取"
         system.worker.scan -> system.scweet "采集 X（选择 Scweet 时）" "HTTP / 内部令牌"
-        system.worker.scan -> apify "采集 X（选择 Apify 时）" "HTTPS / API"
         system.worker.candidates -> system.database "领取候选并入库；按配置建立标题 Work" "SQL / NOTIFY"
         system.worker.rankings -> system.database "发布快照及适用 Reddit hot 候选" "SQL"
         system.worker.rankings -> reddit "获取 subreddit 榜单" "HTTPS / RSS"
@@ -397,16 +335,6 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         system.worker.translation -> models "执行持久翻译" "HTTPS / 模型 API"
         system.worker.translation -> system.codexCredentials "锁内刷新并原子写回订阅凭据" "File / Lock"
         system.worker.translation -> codexIdentity "按需续期；401 后有界重试" "HTTPS / OAuth"
-        system.worker.ruleJobs -> system.database "管理任务、预算、租约并激活有效规则" "SQL"
-        system.worker.ruleJobs -> websites "预检旧规则是否已恢复" "HTTPS / 抓取与验证"
-        system.worker.ruleJobs -> system.worker.ruleAgent "启用时编写并验证候选" "Python / async"
-        system.worker.ruleAgent -> system.worker.ruleJobs "记录预算、发现、执行事实与模型判断及凭据，提交激活交接" "Python / JobStore"
-        system.worker.ruleAgent -> system.worker.ruleBrowser "执行单条 CLI 命令并读取有界真实结果" "Python / async"
-        system.worker.ruleBrowser -> websites "安全传输获取页面并执行有界动作" "HTTPS / safe_get / Crawl4AI"
-        system.worker.ruleBrowser -> system.browserManager "申请、续租和关闭任务（容器模式）" "内部 HTTP / Bearer"
-        system.worker.ruleBrowser -> system.browserAdapter "执行类型化 CLI/render 请求（容器模式）" "内部 HTTP / Task capability"
-        system.worker.ruleAgent -> websites "用真实执行器取得列表及续读事实" "HTTPS / Crawl4AI / Lightpanda（动态）"
-        system.worker.ruleAgent -> models "生成结构化候选规则（启用时）" "HTTPS / 模型 API"
         system.worker.cleanup -> system.database "清理孤立状态并保护有效引用" "SQL"
     }
 
@@ -418,12 +346,12 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         }
         container system "C2-Containers" {
             title "C2 · Reader 运行单元与数据存储"
-            include reader operator aiHost system.client system.localState system.mcp system.api system.worker system.browserManager system.browserReaper system.browserState system.browserAdapter system.browserSandbox system.database system.codexCredentials system.admin system.scweet system.scweetState
+            include reader operator aiHost system.client system.localState system.mcp system.api system.worker system.database system.codexCredentials system.admin system.scweet system.scweetState
             autoLayout lr 350 80
         }
         container system "C2-ExternalDependencies" {
             title "C2 · Reader 外部依赖"
-            include system.client system.mcp system.api system.worker system.browserManager system.browserReaper system.browserAdapter system.browserSandbox system.scweet aiHost websites youtube x apify reddit hackerNews github techTwitter productHunt models codexIdentity
+            include system.client system.mcp system.api system.worker system.scweet aiHost websites youtube x reddit hackerNews github techTwitter productHunt models codexIdentity
             autoLayout lr 350 80
         }
         component system.client "C3-Client" {

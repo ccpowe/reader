@@ -2,7 +2,7 @@
 
 适用于 `backend/`，包含 API、Worker、管理命令和数据库迁移。先读取并遵守[根目录约定](../AGENTS.md)。本文维护后端目录导航、环境与命令、后端开发及验证做法；跨端协作、接口生成、文档审查和共享资源调度由根目录统一维护。
 
-后端使用 Python、FastAPI、SQLAlchemy 和 PostgreSQL。API 与 Worker 的职责、数据归属和运行边界见 [ARCHITECTURE.md](../docs/ARCHITECTURE.md)，分层模块、事务和内部实现图见[后端架构图谱](../docs/backend-architecture.md)；本文不另写架构说明、完整协议或部署历史。
+后端使用 Python、FastAPI、SQLAlchemy 和 PostgreSQL。API 与 Worker 的职责、数据归属和运行边界见 [ARCHITECTURE.md](../docs/ARCHITECTURE.md)；本文不另写架构说明、完整协议或部署历史。
 
 ## 目录导航
 
@@ -11,16 +11,14 @@
 | 路径 | 内容与入口 |
 | --- | --- |
 | `src/app/main.py`、`src/app/api/router.py` | FastAPI 应用与路由装配 |
-| `src/app/api/`、`src/app/services/` | HTTP 路由、请求／响应模型与业务服务；订阅事务入口为 `services/subscriptions.py`，来源健康查询为 `services/source_health.py` |
+| `src/app/api/`、`src/app/services/` | HTTP 路由、请求／响应模型与业务服务；订阅事务入口为 `services/subscriptions.py` |
 | `src/app/domain/` | 共享枚举与不依赖数据库的领域表示；`x_relations.py` 提供 X 关系规范化、合并与预览，供接入、入库及 API 共用 |
 | `src/app/core/` | 配置和认证；入口为 `settings.py`、`auth.py`、`server_access.py` |
 | `src/app/storage/` | 数据库会话、业务与账户模型、锁和 schema 就绪检查；入口为 `database.py`、`models.py`、`auth_models.py`、`schema.py` |
-| `src/app/workers/` | 后台循环，入口为 `main.py`；`sync.py` 负责来源扫描 I/O 与事务，`services/scan_state.py` 集中扫描状态迁移，`services/web_scan_health.py` 处理 Web 结构健康与修复触发；`candidates.py` 处理候选，`health.py` 维护 Worker 健康状态 |
-| `src/app/ingestion/` | 内容源接入、抓取与提取；`models.py` 定义包含可用性与观察范围的候选载荷，`sources/` 为来源适配，`web_rules.py` 为规则 schema 与真实执行反馈，`feed_discovery.py` 为 feed 探测，`browser_runtime.py` 为可选浏览器进程与隔离入口 |
-| `src/app/web_rule_agent/`、`src/app/workers/web_rules.py` | 网页规则 Agent 与 Worker 交接；`runtime.py` 为模型执行入口，`handoff.py` 管理宿主提交、等待与恢复激活，`store.py` 封装持久服务的短事务；`cli_browser.py` 运行任务内持久 CLI 探索，`memory.py` 管理工作证据、执行结果与读取进度 |
-| `src/app/browser_tasks/` | 可选容器浏览器任务的内部协议、Worker 客户端、adapter、控制器和回收器；公共 DTO 入口为 `protocol.py` |
+| `src/app/workers/` | 后台循环，入口为 `main.py`；`sync.py` 负责来源扫描 I/O 与事务，`services/scan_state.py` 集中扫描状态迁移；`candidates.py` 处理候选，`health.py` 维护 Worker 健康状态 |
+| `src/app/ingestion/` | 内容源接入、抓取与提取；`models.py` 定义包含可用性的候选载荷，`sources/` 为来源适配（RSS、YouTube、Scweet X），`feed_discovery.py` 在添加网站时查找 RSS／Atom，`url_safety.py` 负责公网目的地校验与有界读取 |
 | `src/app/translation/`、`src/app/llm/` | 翻译请求入口为 `translation/requests.py`，只读／需求创建入口为 `translation/projection.py`，实时执行为 `translation/realtime.py`；公共模型入口为 `llm/factory.py` |
-| `src/app/admin/cli.py`、`src/app/ingestion/web_rule_cli.py` | 管理与网页规则诊断命令 |
+| `src/app/admin/cli.py` | 用户、翻译配额与 Codex 凭据管理命令 |
 | `src/app/mcp/` | 可选本地 stdio MCP；`server.py` 注册六个工具，`client.py` 管理 Reader HTTP 会话，榜单和字幕分页仅存在于进程内存 |
 | `migrations/` | Alembic 迁移，版本位于 `versions/` |
 | `tests/`、`scripts/` | 后端测试及接口导出、数据库验证等脚本；标记与测试配置见 `pyproject.toml` |
@@ -46,8 +44,6 @@
 | lint | `uv run ruff check src tests` |
 | 导入／检查 Codex 订阅登录，不依赖数据库 | `uv run reader-admin codex-auth import --source /path/to/dedicated/auth.json` / `uv run reader-admin codex-auth status` |
 | 格式化本次修改的 Python 文件 | `uv run ruff format <文件路径>` |
-| 生成容器浏览器内部契约 | `uv run python scripts/export_browser_openapi.py` |
-| 检查容器浏览器内部契约 | `uv run python scripts/export_browser_openapi.py --check` |
 | 临时 PostgreSQL 集成检查 | `bash scripts/test-postgres-migrations.sh` |
 
 接口快照与前端类型的生成、检查统一见[根目录接口规则](../AGENTS.md#环境与常用命令)，从仓库的 `mobile/` 执行对应命令，不手改生成文件。
@@ -56,12 +52,9 @@
 
 - 修改 HTTP 行为时一起核对路由、请求／响应模型、业务服务和调用方。复用已有认证依赖、用户范围过滤和错误处理；接口字段只在源码声明中维护，按根目录规则生成契约。
 - 修改 API 与 Worker 共用的业务模块时核对两侧调用、异常传播和资源生命周期。当前模块调用和事务范围以代码为准，不仅凭目录名假定独立服务或严格分层；架构依据见[模块职责与依赖](../docs/ARCHITECTURE.md#模块职责与依赖)。
-- 改动持久化行为时核对 ORM、数据库约束、迁移与 `src/app/storage/schema.py` 的兼容要求。已用于部署的迁移通过新迁移演进，不为新行为改写旧迁移；去重、删除或归并同时检查相关数据引用，依据见[数据归属](../docs/ARCHITECTURE.md#数据归属)。
+- 改动持久化行为时核对 ORM、数据库约束、迁移与 `src/app/storage/schema.py` 的兼容要求。迁移历史已于 2026-11-10 合并为单一基线 `migrations/versions/20261110_01_baseline`，之后的结构变化通过新迁移演进；去重、删除或归并同时检查相关数据引用，依据见[数据归属](../docs/ARCHITECTURE.md#数据归属)。
 - 修改后台任务时检查领取条件、事务、租约、重试与重启恢复，以及 Worker 心跳和错误传播；不要只验证正常执行一次。外部调用涉及连接或锁占用时，核对等待期间的资源生命周期。
-- 修改来源抓取、网页规则或模型工具时，同时核对 URL／传输限制、规则验证和 Worker 激活路径；复用现有抓取、真实 scanner 和版本／租约交接入口，依据见[必须保持的边界](../docs/ARCHITECTURE.md#必须保持的边界)。
-- 修改浏览器路径时同时核对 Agent 探索、规则试跑和 Worker 周期扫描共用的 Lightpanda 传输、进程清理及环境身份；保留静态 HTTP，正常路径不回退 Chromium。引擎安装及配置见[部署说明](../docs/deployment.md#6-后端-web-规则-agent)，执行遵守根目录的[共享资源调度](../AGENTS.md#验证与资源调度)。
-- 修改容器浏览器任务的控制或数据接口时，以 `browser_tasks/protocol.py` 和两个 FastAPI app 为单一来源，重新生成 `contracts/browser-controller-openapi.json` 与 `contracts/browser-adapter-openapi.json`；它们是 Reader 内部部署接口，不并入公开 Reader API。
-- `inspect_web_page(argv)` 使用 `web_rule_agent/cli_browser.py` 的任务内持久 CLI 会话；其固定版 CLI 和 Lightpanda 要求见[部署说明](../docs/deployment.md#6-后端-web-规则-agent)。修改该组件时一起检查 namespace 内客户端／daemon、受控 CDP bridge 与 Lightpanda 的回收，以及最终输出限长后的可见链接授权。
+- 修改来源抓取时，同时核对 URL／传输限制与真实 scanner 路径；复用 `url_safety.py` 的公网校验与有界读取，依据见[必须保持的边界](../docs/ARCHITECTURE.md#必须保持的边界)。
 - 新增或修改运行配置时核对 `src/app/core/settings.py`、`.env.example`、使用方及配置测试。模型客户端的公共配置复用 `src/app/llm/factory.py`，调用方的职责与限额仍按架构和实际实现核对。
 
 ## 验证与审查重点

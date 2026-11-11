@@ -9,18 +9,9 @@ from app.core.settings import Settings, get_settings
 
 
 @pytest.fixture(autouse=True)
-def isolated_runtime_settings(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
-    if (
-        request.node.get_closest_marker("live_provider") is not None
-        and os.environ.get("READER_RUN_LIVE_WEB_RULE_AGENT") == "1"
-    ):
-        # This separately opted-in test still requires the disposable PG guard.
-        get_settings.cache_clear()
-        yield
-        get_settings.cache_clear()
-        return
-    # Crawl4AI loads .env into os.environ when imported during test collection.
-    # _env_file=None alone therefore does not isolate a Settings instance.
+def isolated_runtime_settings(monkeypatch: pytest.MonkeyPatch):
+    # Third-party imports may load .env into os.environ during test collection,
+    # so _env_file=None alone does not isolate a Settings instance.
     aliases = {
         choice
         for field in Settings.model_fields.values()

@@ -396,10 +396,9 @@ pruned automatically.
 
 ## Source ingestion
 
-Migration `20260802_09` moves scheduling and checkpoints into
-`source_sync_states`, adds the durable `ingestion_candidates` queue and Web
-Frontier, and removes the old per-source schedule fields. Configure the
-backend-only safety cap and YouTube key in `backend/.env`:
+Scheduling and checkpoints live in `source_sync_states`; scanned items go
+through the durable `ingestion_candidates` queue. Configure the backend-only
+safety cap and YouTube key in `backend/.env`:
 
 ```env
 APP_INGESTION_MAX_ITEMS_PER_SYNC=40
@@ -407,7 +406,6 @@ APP_INGESTION_DNS_TIMEOUT_SECONDS=3
 APP_INGESTION_CONNECT_ATTEMPT_TIMEOUT_SECONDS=1.5
 APP_YOUTUBE_DATA_API_KEY=...
 APP_YOUTUBE_DAILY_QUOTA_SOFT_LIMIT=8000
-APP_X_PROVIDER=scweet
 APP_REDDIT_SUBSCRIPTION_LIMIT_PER_USER=20
 APP_RANKING_PROVIDER_REFRESHES_PER_MINUTE=30
 APP_REDDIT_RANKING_REFRESHES_PER_MINUTE=1
@@ -420,159 +418,23 @@ The mobile subscription API has no item-limit option. See
 [the ingestion flow](../docs/ARCHITECTURE.md#订阅扫描与内容入库) and its linked code
 for current source handling and recovery behavior.
 
-Web sources without a usable native rule first probe the webpage for RSS/Atom.
-A verified feed uses the existing RSS adapter with the original Web source identity
-and article-URL deduplication. Otherwise, Crawl4AI 0.9.3 provides page acquisition
-and native JSON/CSS extraction.
-The Reader adapter owns robots policy, checkpoints, replayed native continuations,
-the Candidate Queue and shared-source deduplication. There is no Sitemap or generic
-extraction fallback. Explicit RSS remains an independent source kind.
-The HTTP crawler strategy uses Reader's pinned-public transport. Browser recipes
-use Crawl4AI's Playwright strategy with all GET requests routed through that same
-transport; arbitrary JavaScript in rules, POSTs, WebSockets and browser-direct
-networking are disabled. A single in-process execution slot, 60-second page
-limit, 80-request/20-MiB transfer limit and rendered-DOM size limit bound execution.
-
-Install the locked dependencies with `uv sync --dev`. On a new host that will
-execute dynamic rules, run `uv run playwright install --with-deps chromium` once.
-An existing compatible Playwright Chromium cache is reused. Static recipes do not
-launch Chromium. No model downloads or model API keys are required for scheduled scans.
-
-New rules contain `listing.extraction`, passed directly to Crawl4AI's native
-`JsonCssExtractionStrategy`. Required fields are `url` (attribute) and `title`
-(text); optional fields include `excerpt`, `published_at`, `image_url`, and
-`author`. `listing.render_js` enables rendering; bounded `click`, `wait` and
-`scroll` actions run before extraction. `next_page_selector` connects normal
-pagination to the existing replayable continuation. Scanning and validation use
-listing items only; the legacy `article` recipe remains parseable but no longer
-schedules detail requests. Metadata available only on detail pages is not fetched
-by this path. Existing body content is retained; listing metadata and cover media
-continue to update from scan results. Content supplied by RSS is also retained.
-Web/RSS articles open the original page in the client; reading mode extracts
-that current WebView's DOM on demand, without a body-fetch worker. Only native
-listing recipes are accepted; old flat selectors and built-in site profiles are
-removed. No site-specific Python adapter is needed.
-
-New and migrated missing-rule Web sources are scheduled for RSS discovery even when
-the Agent is disabled. Temporary probe errors retry; only confirmed absence queues
-rule authoring and waits for an accepted native rule. Two consecutive structural
-failures of a selected feed trigger rediscovery; network failures retain that feed.
-See [the ingestion flow](../docs/ARCHITECTURE.md#订阅扫描与内容入库),
-[feed discovery](src/app/ingestion/feed_discovery.py) and
-[feed selection state](src/app/services/web_feeds.py).
-The backend owns durable authoring jobs: select
-`APP_WEB_RULE_AGENT_ENGINE_ID=deepseek-v4-flash` or `openrouter-minimax-m3` to
-activate the `reader-worker` LangChain loop. The default is `disabled`. Provider
-credentials and configured model names are shared with translation; personal
-translation preferences and the translation default engine do not select the author.
-
-The Agent directly calls Python schema, structured inspection, evidence lookup,
-findings and validation tools. Inspection matches CSS against the original DOM and
-returns bounded nodes, attributes, parent context and links using zero-based
-`node_start` / `node_limit`, not character offsets. A source-bound session caches
-at most two bounded DOMs; it owns no browser process while the model is waiting.
-The default exploration backend is Crawl4AI/Chromium. Optional Lightpanda 0.4.0
-requires an explicit binary path and Linux/bubblewrap isolation; it never replaces
-the Chromium path used for real rule validation and ordinary dynamic scans. See
-[browser deployment](../docs/deployment.md#6-后端-web-规则-agent) for configuration,
-failure behavior and the explicit local-fixture check.
-
-Message history retains complete AI/tool batches within a bounded window. Separate
-working evidence and candidate state survive that trimming; a single bounded
-checkpoint in job diagnostics restores untrusted findings after restart, not old
-page permissions. Protected coverage evidence remains in the validation report.
-Previously observed possible article links cannot be silently filtered out to pass
-validation; current complete DOM evidence must resolve them. This check covers the
-observed scope, not the whole site. Missing or over-capacity evidence fails explicitly.
-
-Budget-aware phases restrict tools before model requests and again at execution,
-reserving the remaining opportunity for a candidate, targeted repair and validation.
-After validation it returns `FinalWebRule` (rule + receipt) through LangChain ToolStrategy;
-the host checks the typed final rule against the trusted candidate before activation.
-When actual evidence cannot support a rule, `RuleAuthoringFailure` ends without activation.
-A successful validation produces a task-bound receipt; activation checks its lease,
-source revision and candidate hash and commits the rule and job completion together.
-A busy scan hands activation back to the worker without more model calls. Accepted
-rules retain five versions. Invalid candidates never replace the current rule.
-The scanner executes stored rules without a model. Two consecutive structural
-homepage failures enqueue a repair; transient network errors and absent article
-bodies do not. The worker first rechecks the old rule without a model.
-
-Jobs have two cumulative quotas: 3,000,000 recorded input + output tokens (including
-cached input) and 80 model requests. Model requests are durably reserved before
-execution, including failed/unknown requests, Goal continuations and retries. Neither
-allowance resets on recovery. Tool/validation/Goal/attempt counts remain diagnostics,
-with no separate quotas, overall deadline or context-byte rejection. Before each model
-request, check both the model-call count and actual usage plus prior unknown consumption. A last response may
-cross the threshold; it prevents the next model call, not host activation of a
-validated final rule. UTF-8 estimates charge only requests with missing usage.
-Goal continuations and crash recovery retain the same ledger. Individual network
-operations still time out; one global slot, serial tools, leases and bounded tool
-results/diagnostics remain. See `.env.example` for operational settings.
-401/402 and configuration failures pause the author independently of ingestion.
-The backend requires no Ruyi, Web-rule MCP server, agent-browser daemon or additional
-long-running browser service.
-
-The local diagnostic CLI still calls the same crawler functions directly:
-
-```sh
-uv run reader-web-rule schema
-uv run reader-web-rule inspect --source-url https://example.com/blog --selector main
-uv run reader-web-rule validate --source-url https://example.com/blog --rule rule.json
-```
-
-See [rule authoring and activation](../docs/ARCHITECTURE.md#网页规则编写与激活)
-for the current execution flow and validation boundary.
+Adding a website (`POST /v1/sources/web`) looks for its RSS/Atom feed during the
+request and subscribes to that feed as an ordinary RSS source. Websites without
+a usable feed are rejected with `feed_not_found`; Reader itself does not crawl
+web pages. A separate crawling service is planned for such sites.
 
 ## Deployment and outbound-network safety
 
-Migration `20260811_17` intentionally discards provenance-ambiguous content
-instead of guessing which old source supplied it. It deletes `contents`, all
-ingestion candidates regardless of status, and Web Frontier rows. Database
-cascades also delete old
-Source Entries, media, saved-content rows, and reading state. Sources and
-subscriptions survive, their checkpoints are reset, and the new Candidate Worker
-rebuilds source-owned Content. Take a backup first if those projections or user
-states must be retained. Downgrading revision 17 performs the same reset.
-
-Because an old Candidate Worker does not write the new non-null authority field,
-this release requires a controlled worker cutover:
-
-1. Stop every old worker and drain or terminate in-flight Candidate work. Verify
-   that no engine-ID-only Translation Worker or old Candidate Worker remains.
-2. Apply migrations `20260810_16` and `20260811_17` while workers are stopped.
-3. Verify revision 17, the `reader-runtime-v17` schema contract, and zero
-   `contents.authority_source_id IS NULL` rows.
-4. Start only the new worker. It routes Translation Work by complete fingerprint,
-   supports both legacy `v1` and current `v2-caption-context`, and rebuilds Content
-   independently for each source.
-5. Deploy the backend and wait for the management-only `GET /ready` probe to
-   return 200. A later additive migration may advance Alembic head without making
-   this build unready; readiness checks its minimum contract, not exact head.
-6. Deploy the mobile client.
-
-Migration `20260828_20` is additive. It creates the worker heartbeat table,
-advances the minimum schema contract to `reader-runtime-v18`, and normalises old
-`pending` extraction rows that had no runnable extraction stage. Apply it before
-deploying this API or worker build:
+The migration history was squashed into a single baseline revision
+(`migrations/versions/20261110_01_baseline`) on 2026-11-10. Databases created
+before that revision cannot be upgraded and must be recreated. Apply the schema
+before starting the API or worker:
 
 ```bash
 uv run alembic upgrade head
 ```
 
-Migration `20260902_21_translation_quotas.py` adds ranking/heartbeat
-`last_metrics`, fixed-window quota buckets, per-user UUID overrides, and
-append-only redacted audit rows. The additive `20260902_22_translation_quota_audit_states.py`
-migration extends those audit rows with safe before/after snapshots and an
-operator reference, then installs schema contract `reader-runtime-v20`.
-Migration `20260902_23_profile_storage.py` installed the historical profile
-contract. Later revisions update managed models (24), retire old Web rules (25),
-add rule authoring (26) and durable Goal resumption (27). Revision `20260912_28`
-replaces Supabase account/storage integration with Reader tables. Check the
-current storage/schema.py contract and `uv run alembic heads` before deployment.
-There must be one head, not a parallel quota migration.
-
-After the migration, start the new worker and API build. Keep public traffic
+Then start the worker and API. Keep public traffic
 closed until the API's `GET /ready` and `GET /worker-ready` management probes
 both return 200.
 
@@ -583,7 +445,7 @@ uv run ruff check src tests
 PYTHON_DOTENV_DISABLED=1 uv run pytest -q -m 'not postgres'
 ```
 
-Crawl4AI/LiteLLM imports otherwise copy the developer's `.env` into the process
+Some third-party imports otherwise copy the developer's `.env` into the process
 environment, invalidating tests that explicitly request missing settings.
 Pydantic's explicitly configured settings files remain supported; this flag
 does not disable the application's settings parser.
