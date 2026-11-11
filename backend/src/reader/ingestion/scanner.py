@@ -8,7 +8,8 @@ One scan of one source:
      of `scan_initial_items` as a baseline that never counts as new.
   3. Store everything in one transaction under the source row lock: new items get
      the source's next sequence numbers (the new-content badge), changed items are
-     updated in place, and the scan is marked finished. A failure anywhere before
+     updated in place, new or changed titles are queued for translation, and the
+     scan is marked finished. A failure anywhere before
      this point writes nothing, so a retry reads the same pages again.
   4. On failure, record the error and back off.
 
@@ -46,6 +47,7 @@ from reader.ingestion.x_relations import (
     with_thread_root,
 )
 from reader.models import Article, ProviderUsage, Source, SourceScanRun, Subscription
+from reader.translation.titles import request_titles
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +135,7 @@ async def scan_source(
                 finally:
                     if isinstance(adapter, YouTubeAdapter) and adapter.api_calls:
                         await _record_youtube_usage(factory, adapter.api_calls)
-            await _store_scan(factory, claim, run_id, snapshot, pages, result)
+            await _store_scan(factory, settings, claim, run_id, snapshot, pages, result)
     except LeaseLost:
         logger.warning("Scan lease lost: source_id=%s", claim.source_id)
         await _close_run(factory, run_id, "lease_lost", "Another scan took over this source.")
@@ -385,6 +387,7 @@ def _apply_source_metadata(source: Source, page: Page) -> None:
 
 async def _store_scan(
     factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
     claim: Claim,
     run_id: UUID,
     snapshot: _SourceSnapshot,
@@ -412,12 +415,17 @@ async def _store_scan(
             else {}
         )
         new_items = []
+        titles = []  # new or changed titles, to translate in the background
         for item in items:
             article = existing.get(item.native_id)
             if article is None:
                 new_items.append(item)
+                titles.append(item.title[:1000])
             else:
+                old_title = article.title
                 _update_article(article, item)
+                if article.title != old_title:
+                    titles.append(article.title)
         # Oldest first, so newer items get higher sequence numbers.
         for item in reversed(new_items):
             sequence = None
@@ -427,6 +435,7 @@ async def _store_scan(
             db.add(_new_article(source.id, item, sequence))
         for page in pages:
             _apply_source_metadata(source, page)
+        await request_titles(db, settings, source.id, titles)
 
         result.new_items = 0 if snapshot.initial else len(new_items)
         source.initial_scan_done = True

@@ -1,5 +1,7 @@
 """The worker's heartbeat bookkeeping against a real database."""
 
+import asyncio
+
 import pytest
 
 from reader import worker
@@ -51,4 +53,42 @@ async def test_cleanup_job_runs_on_an_empty_database() -> None:
     finally:
         await engine.dispose()
 
-    assert result == {"articles": 0, "scan_runs": 0, "sessions": 0}
+    assert result == {"articles": 0, "scan_runs": 0, "translations": 0, "sessions": 0}
+
+
+@pytest.mark.asyncio
+async def test_a_long_job_keeps_its_heartbeat_fresh(monkeypatch) -> None:
+    from sqlalchemy import select
+
+    from reader.models import WorkerHeartbeat
+
+    dsn = postgres_dsn()
+    await reset_schema(dsn)
+    engine = build_engine(Settings(database_url=dsn, database_ssl=False))
+    factory = build_session_factory(engine)
+    monkeypatch.setattr(worker, "ALIVE_INTERVAL_SECONDS", 0.05)
+
+    async def updated_at():
+        async with factory() as db:
+            return await db.scalar(select(WorkerHeartbeat.updated_at))
+
+    seen = []
+
+    async def long_job():
+        seen.append(await updated_at())
+        await asyncio.sleep(0.3)
+        seen.append(await updated_at())
+
+    try:
+        assert await worker.run_once(factory, "title_translation", 5, long_job)
+    finally:
+        await engine.dispose()
+
+    assert seen[1] > seen[0]
+
+
+def test_every_required_loop_is_scheduled() -> None:
+    from reader.system.heartbeats import REQUIRED_LOOPS
+
+    loops = worker.jobs(None, Settings(_env_file=None), None)
+    assert set(loops) == set(REQUIRED_LOOPS)

@@ -35,6 +35,11 @@ async def record_loop_start(session: AsyncSession, loop_name: str, interval_seco
     )
 
 
+async def record_loop_alive(session: AsyncSession, loop_name: str, interval_seconds: int) -> None:
+    """A long run is still going: refresh the heartbeat without a result."""
+    await _upsert(session, loop_name, {"expected_interval_seconds": max(interval_seconds, 1)})
+
+
 async def record_loop_result(
     session: AsyncSession, loop_name: str, interval_seconds: int, *, error_code: str | None
 ) -> None:
@@ -69,7 +74,9 @@ def summarize(
     if row is None:
         return LoopReport(loop_name, "missing")
     current = now or datetime.now(UTC)
-    stale_after = max(row.expected_interval_seconds * 3, 60)
+    # A single run may outlast a short interval (a slow model, a long scan): allow at
+    # least 5 minutes, the same limit after which their work is taken over.
+    stale_after = max(row.expected_interval_seconds * 3, 300)
     failed_last = row.last_failed_at is not None and (
         row.last_succeeded_at is None or row.last_failed_at > row.last_succeeded_at
     )

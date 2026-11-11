@@ -121,7 +121,9 @@ def _row(**values) -> WorkerHeartbeat:
     ("values", "seconds_later", "state"),
     [
         ({}, 10, "healthy"),
-        ({}, 181, "stale"),
+        ({}, 299, "healthy"),  # a long run within 5 minutes is not stuck
+        ({}, 301, "stale"),
+        ({"expected_interval_seconds": 3600}, 3 * 3600 + 1, "stale"),
         ({"last_succeeded_at": None}, 10, "starting"),
         ({"last_failed_at": datetime(2026, 11, 10, 12, 0, 5, tzinfo=UTC)}, 10, "failing"),
     ],

@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     translation_chars_per_minute: int = Field(default=500_000, ge=0)
     translation_chars_per_day: int = Field(default=2_000_000, ge=0)
     translation_unused_keep_days: int = Field(default=30, ge=1, le=365)
+    # How often the worker looks for titles to translate, and how many it takes.
+    title_translation_interval_seconds: int = Field(default=5, ge=1, le=300)
+    title_translation_batch: int = Field(default=100, ge=1, le=1000)
 
     # Model providers
     deepseek_api_key: SecretStr | None = None

@@ -14,8 +14,9 @@ from reader.core.errors import AppError, error_responses
 from reader.core.server_access import document_server_token
 from reader.core.settings import Settings, get_settings
 from reader.models import TranslationPreference
-from reader.translation.engines import Engine, catalog, find_engine
+from reader.translation.engines import catalog
 from reader.translation.service import Translator
+from reader.translation.titles import Preference, load_preference
 
 translations_router = APIRouter(
     prefix="/translations", tags=["translation"], dependencies=[Depends(document_server_token)]
@@ -80,19 +81,8 @@ class UpdatePreferenceRequest(BaseModel):
     engine_id: str | None = Field(default=None, max_length=64)
 
 
-async def load_preference(
-    db: AsyncSession, user_id, settings: Settings
-) -> tuple[str, bool, Engine | None]:
-    """(target locale, enabled, engine) with server defaults filled in."""
-    row = await db.get(TranslationPreference, user_id)
-    locale = row.target_locale if row else settings.translation_default_target_locale
-    enabled = row.enabled if row else True
-    return locale, enabled, find_engine(settings, row.engine_id if row else None)
-
-
-def _preference_response(
-    locale: str, enabled: bool, engine: Engine | None, settings: Settings
-) -> PreferenceResponse:
+def _preference_response(preference: Preference, settings: Settings) -> PreferenceResponse:
+    locale, enabled, engine = preference.target_locale, preference.enabled, preference.engine
     if engine is None:
         raise AppError(503, "translation_unavailable", "No translation engine is configured.")
     return PreferenceResponse(
@@ -115,7 +105,7 @@ async def get_preference(
     settings: Settings = Depends(get_settings),
     db: AsyncSession = Depends(get_session),
 ):
-    return _preference_response(*await load_preference(db, user.id, settings), settings)
+    return _preference_response(await load_preference(db, user.id, settings), settings)
 
 
 @preference_router.patch(
@@ -150,7 +140,7 @@ async def update_preference(
                 raise AppError(422, "engine_unavailable", "This engine is not configured.")
             row.engine_id = engine.id
     await db.commit()
-    return _preference_response(*await load_preference(db, user.id, settings), settings)
+    return _preference_response(await load_preference(db, user.id, settings), settings)
 
 
 # --- Translations -----------------------------------------------------------------
@@ -198,7 +188,8 @@ async def translate(
 ):
     """Translate texts with your engine. Waits a few seconds; unfinished items are
     `pending` and the same request a little later returns them once done."""
-    locale, _enabled, engine = await load_preference(db, user.id, settings)
+    preference = await load_preference(db, user.id, settings)
+    locale, engine = preference.target_locale, preference.engine
     # Release the connection before waiting on the model.
     await db.rollback()
     if engine is None or not engine.available:

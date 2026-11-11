@@ -72,7 +72,7 @@ class Outcome:
 
 
 @dataclass(frozen=True)
-class _Claimed:
+class Claimed:
     id: UUID
     text: str
     attempt: int
@@ -121,7 +121,7 @@ class Translator:
 
     async def _claim(
         self, by_hash: dict[str, str], purpose: str, locale: str, engine: Engine
-    ) -> list[_Claimed]:
+    ) -> list[Claimed]:
         now = datetime.now(UTC)
         identity = {
             "purpose": purpose,
@@ -160,7 +160,7 @@ class Translator:
                 ).returning(Translation.id, Translation.attempts)
                 row = (await db.execute(statement)).first()
                 if row is not None:
-                    claimed.append(_Claimed(row.id, text, row.attempts))
+                    claimed.append(Claimed(row.id, text, row.attempts))
             await db.commit()
         # Back to reading order: the model may use neighbouring texts for context.
         order = {text: index for index, text in enumerate(by_hash.values())}
@@ -209,7 +209,13 @@ class Translator:
 
     # --- Running --------------------------------------------------------------------
 
-    async def run(self, claimed: list[_Claimed], purpose: str, locale: str, engine: Engine) -> None:
+    async def fail_claimed(self, claimed: list[Claimed], code: str) -> None:
+        """Give up rows claimed elsewhere (e.g. by the worker) without running them."""
+        await self._fail(
+            {row.id: row.attempt for row in claimed}, [row.id for row in claimed], code
+        )
+
+    async def run(self, claimed: list[Claimed], purpose: str, locale: str, engine: Engine) -> None:
         """Translate claimed rows; every row still held ends succeeded or failed."""
         held = {row.id: row.attempt for row in claimed}
         items = [PromptItem(str(row.id), row.text) for row in claimed]

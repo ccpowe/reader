@@ -21,6 +21,7 @@ from reader.models import Article, Source, Subscription
 from reader.reading import service
 from reader.reading.service import FeedScope
 from reader.subscriptions.api import source_icon_url
+from reader.translation.titles import TitleTranslation, title_translations
 
 feed_router = APIRouter(
     prefix="/feed", tags=["reading"], dependencies=[Depends(document_server_token)]
@@ -49,6 +50,11 @@ class SourceRef(BaseModel):
     icon_url: str | None
 
 
+class TitleTranslationOut(BaseModel):
+    text: str
+    engine_fingerprint: str
+
+
 class FeedItem(BaseModel):
     id: str
     source: SourceRef | None
@@ -64,6 +70,9 @@ class FeedItem(BaseModel):
     # Badge sequence; empty for first-scan baseline items and board items.
     sequence: int | None
     is_saved: bool
+    # The title in your target language, once translated with your current engine.
+    # Missing ones can be asked for with POST /translations (purpose "title").
+    title_translation: TitleTranslationOut | None = None
     x: XPreview | None = None
 
 
@@ -125,6 +134,7 @@ def _item_fields(
     thread_count: int,
     request: Request,
     settings: Settings,
+    translations: dict[str, TitleTranslation],
     full: bool = False,
 ) -> dict[str, Any]:
     summary = article.summary
@@ -144,6 +154,9 @@ def _item_fields(
         "image_url": _first_image(article),
         "sequence": article.sequence,
         "is_saved": is_saved,
+        "title_translation": TitleTranslationOut(**vars(found))
+        if (found := translations.get(article.title))
+        else None,
         "x": x_preview(article.extra or {}, thread_count, quote_limit=None if full else 80)
         if is_x
         else None,
@@ -183,6 +196,9 @@ async def get_feed(
     """
     scope = FeedScope(subscription_id=subscription, group=group, since=since, until=until)
     rows, has_more = await service.feed_page(db, user.id, scope, after=_after(cursor), limit=limit)
+    translations = await title_translations(
+        db, user.id, settings, [row.article.title for row in rows]
+    )
     items = [
         FeedItem(
             **_item_fields(
@@ -193,6 +209,7 @@ async def get_feed(
                 thread_count=row.thread_count,
                 request=request,
                 settings=settings,
+                translations=translations,
             )
         )
         for row in rows
@@ -245,6 +262,9 @@ async def get_article(
 ):
     """One article in full. Opens when you follow its source or have saved it."""
     view = await service.get_article(db, user.id, article_id)
+    translations = await title_translations(
+        db, user.id, settings, [view.article.title, *(post.title for post in view.thread)]
+    )
 
     def fields(article: Article, *, thread_count: int = 1) -> dict[str, Any]:
         return _item_fields(
@@ -257,6 +277,7 @@ async def get_article(
             thread_count=thread_count,
             request=request,
             settings=settings,
+            translations=translations,
             full=True,
         )
 
@@ -282,6 +303,9 @@ async def list_saved(
     rows, has_more = await service.saved_page(
         db, user.id, q=(q or "").strip() or None, after=_after(cursor), limit=limit
     )
+    translations = await title_translations(
+        db, user.id, settings, [row.article.title for row in rows]
+    )
     items = [
         SavedItem(
             **_item_fields(
@@ -292,6 +316,7 @@ async def list_saved(
                 thread_count=1,
                 request=request,
                 settings=settings,
+                translations=translations,
             ),
             saved_at=row.saved_at,
         )
