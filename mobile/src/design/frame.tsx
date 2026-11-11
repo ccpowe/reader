@@ -25,13 +25,13 @@ export function TabFrame({ tab, children }: { tab: Tab; children: ReactNode }) {
 }
 
 /** A sheet drawn over the page (static, for review; the app uses <Sheet> in a Modal). */
-export function WithSheet({ page, title, children }: { page: ReactNode; title: string; children: ReactNode }) {
+export function WithSheet({ page, title, subtitle, children }: { page: ReactNode; title: string; subtitle?: string; children: ReactNode }) {
   return (
     <View className="flex-1">
       {page}
       <Pressable className="absolute inset-0 bg-overlay" />
       <View className="absolute bottom-0 left-0 right-0">
-        <SheetBody title={title}>{children}</SheetBody>
+        <SheetBody onClose={() => undefined} subtitle={subtitle} title={title}>{children}</SheetBody>
       </View>
     </View>
   );

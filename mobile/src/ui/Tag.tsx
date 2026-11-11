@@ -8,8 +8,8 @@ import { Text } from './Text';
 /** qp-tag (gray): a category or a count that must be read. `status` = qp-status pill shape. */
 export function Tag({ children, status = false }: { children: ReactNode; status?: boolean }) {
   return (
-    <View className={cn('h-5 flex-row items-center px-1 bg-tag-gray-bg', status ? 'rounded-xl' : 'rounded-sm')}>
-      <Text className="text-tag-gray-text" level="caption">
+    <View className={cn('h-6 flex-row items-center bg-tag-gray-bg px-1.5', status ? 'rounded-xl' : 'rounded-sm')}>
+      <Text className="text-tag-gray-text" level="ui">
         {children}
       </Text>
     </View>
@@ -22,6 +22,20 @@ export function Count({ value }: { value: number }) {
     <Text level="caption" style={{ fontVariant: ['tabular-nums'] }} tone="tertiary">
       {value}
     </Text>
+  );
+}
+
+/**
+ * A count on a solid accent pill (old app: channel picker, filter button). Only where the number
+ * is the point of the control; elsewhere use Count. Shows 999+ past 999.
+ */
+export function SolidCount({ value }: { value: number }) {
+  return (
+    <View className="h-6 min-w-6 items-center justify-center rounded-full bg-accent px-1.5">
+      <Text level="caption-strong" numberOfLines={1} style={{ fontVariant: ['tabular-nums'] }} tone="on-accent">
+        {value > 999 ? '999+' : value}
+      </Text>
+    </View>
   );
 }
 

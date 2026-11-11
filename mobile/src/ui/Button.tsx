@@ -1,4 +1,5 @@
 import type { Icon as TablerIcon } from '@tabler/icons-react-native';
+import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
@@ -6,7 +7,8 @@ import { cn } from '@/lib/cn';
 
 import { Icon, type IconTone } from './Icon';
 import { Text, type TextTone } from './Text';
-import { hitSlopFor, iconSize } from './theme';
+import { delayLoading, hitSlopFor, iconSize } from './theme';
+import { useDelayed } from './useDelayed';
 
 /**
  * qp-btn. Choosing (DESIGN.md 3.1): primary = the one most important action of a view (at most
@@ -28,18 +30,18 @@ const label: Record<ButtonVariant, TextTone> = {
   soft: 'accent-soft',
   secondary: 'primary',
   ghost: 'secondary',
-  danger: 'on-accent',
+  danger: 'on-danger',
 };
 const icon: Record<ButtonVariant, IconTone> = {
   primary: 'on-accent',
   soft: 'accent-soft-text',
   secondary: 'neutral',
   ghost: 'neutral',
-  danger: 'on-accent',
+  danger: 'on-danger',
 };
 
 const HEIGHT = 28; // --size-control
-const HEIGHT_LARGE = 40; // mobile: full-width form buttons (sign in, add subscription)
+const HEIGHT_LARGE = 44; // mobile: full-width form buttons (sign in, add subscription), old app scale
 
 export function Button({
   title,
@@ -64,8 +66,10 @@ export function Button({
   className?: string;
 }) {
   const spinner = useCSSVariable(
-    variant === 'primary' || variant === 'danger' ? '--color-on-accent' : '--color-icon-neutral',
+    variant === 'primary' ? '--color-on-accent' : variant === 'danger' ? '--color-on-danger' : '--color-icon-neutral',
   ) as string | undefined;
+  // --delay-loading: work that finishes sooner shows no spinner; the label keeps the button's width.
+  const showSpinner = useDelayed(loading, delayLoading);
   const height = large ? HEIGHT_LARGE : HEIGHT;
   const inactive = disabled || loading;
   return (
@@ -73,7 +77,8 @@ export function Button({
       accessibilityRole="button"
       accessibilityState={{ disabled: inactive, busy: loading, selected: on }}
       className={cn(
-        'flex-row items-center justify-center gap-2 rounded-md px-2',
+        'flex-row items-center justify-center gap-2 px-2',
+        large ? 'rounded-lg px-4' : 'rounded-md',
         disabled && variant === 'primary' ? 'bg-sunken' : box[variant],
         on && variant === 'ghost' ? 'bg-selected' : '',
         className,
@@ -83,18 +88,24 @@ export function Button({
       onPress={onPress}
       style={{ height }}
     >
-      {loading ? (
-        <ActivityIndicator color={spinner} size={iconSize.sm} />
-      ) : leading ? (
-        <Icon icon={leading} tone={disabled ? 'disabled' : on ? 'strong' : icon[variant]} />
+      {leading ? (
+        <View style={{ opacity: showSpinner ? 0 : 1 }}>
+          <Icon icon={leading} tone={disabled ? 'disabled' : on ? 'strong' : icon[variant]} />
+        </View>
       ) : null}
       <Text
-        level="ui-strong"
+        level={large ? 'body-strong' : 'ui-strong'}
         numberOfLines={1}
+        style={{ opacity: showSpinner ? 0 : 1 }}
         tone={disabled ? 'disabled' : on && variant === 'ghost' ? 'primary' : label[variant]}
       >
         {title}
       </Text>
+      {showSpinner ? (
+        <View className="absolute inset-0 items-center justify-center" pointerEvents="none">
+          <ActivityIndicator color={spinner} size={iconSize.sm} />
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -109,6 +120,8 @@ export function IconButton({
   on = false,
   disabled = false,
   size = 'toolbar',
+  plain = false,
+  badge,
   onPress,
 }: {
   icon: TablerIcon;
@@ -116,6 +129,10 @@ export function IconButton({
   on?: boolean;
   disabled?: boolean;
   size?: 'toolbar' | 'sm';
+  /** toggle shown by the glyph alone (filled bookmark), no selected background */
+  plain?: boolean;
+  /** a count on the button's corner (old app: the channel filter) */
+  badge?: ReactNode;
   onPress?: () => void;
 }) {
   const box = size === 'toolbar' ? 32 : 24;
@@ -124,7 +141,7 @@ export function IconButton({
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
       accessibilityState={{ disabled, selected: on }}
-      className={cn('items-center justify-center rounded-md active:bg-pressed', on ? 'bg-selected' : '')}
+      className={cn('items-center justify-center rounded-md active:bg-pressed', on && !plain ? 'bg-selected' : '')}
       disabled={disabled}
       hitSlop={hitSlopFor(box)}
       onPress={onPress}
@@ -133,6 +150,11 @@ export function IconButton({
       <View pointerEvents="none">
         <Icon icon={Glyph} size={size} tone={disabled ? 'disabled' : on ? 'strong' : 'neutral'} />
       </View>
+      {badge ? (
+        <View className="absolute -top-4 right-0 w-12 items-end" pointerEvents="none">
+          {badge}
+        </View>
+      ) : null}
     </Pressable>
   );
 }

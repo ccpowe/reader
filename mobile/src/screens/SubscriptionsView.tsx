@@ -1,60 +1,101 @@
 /**
- * 订阅 (PRODUCT §3.3): search, subscriptions grouped by folder with health lines (P23 R4-B),
- * add a subscription from the header. Unsubscribing asks first (PRODUCT; overrides the style
- * pack's "act + Undo" default — see design/reports/step5-REPORT.md).
+ * 订阅 (PRODUCT §3.3), old app layout (device screenshots) at P25 values: search, "我的分类" with
+ * the total, a card per folder; opening a folder lists its subscriptions with health lines (P23
+ * R4-B). The floating + adds a subscription. Searching lists matching subscriptions directly.
+ * Unsubscribing asks first (PRODUCT; overrides the style pack's "act + Undo" default).
  */
-import { IconPlus } from '@tabler/icons-react-native';
-import { ScrollView, View } from 'react-native';
+import { IconChevronLeft, IconPlus } from '@tabler/icons-react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
+import { FolderCard } from '@/components/FolderCard';
 import { SubscriptionRow, type SubscriptionItem } from '@/components/SubscriptionRow';
-import { Button, Divider, EmptyState, IconButton, Input, Message, PageHeader, SearchField, SectionHeading, Tabs } from '@/ui';
+import { Button, EmptyState, Fab, Icon, Input, Message, PageHeader, SearchField, SectionHeading, Tabs, Text } from '@/ui';
+
+type Folder = { name: string; items: SubscriptionItem[] };
+
+function FolderBar({ name, count, onBack }: { name: string; count: number; onBack?: () => void }) {
+  return (
+    <View className="h-14 flex-row items-center px-6">
+      <Pressable accessibilityRole="button" className="h-11 flex-row items-center gap-1 active:opacity-60" onPress={onBack}>
+        <Icon icon={IconChevronLeft} />
+        <Text level="ui-strong">全部分类</Text>
+      </Pressable>
+      <View className="flex-1" />
+      <Text level="caption" numberOfLines={1} tone="tertiary">
+        {name} · {count}
+      </Text>
+    </View>
+  );
+}
 
 export function SubscriptionsView({
+  user,
   folders,
+  openFolder,
   expandedId,
   query = '',
   onAdd,
+  onOpenFolder,
+  onCloseFolder,
   onToggleRow,
 }: {
-  folders: { name: string; items: SubscriptionItem[] }[];
+  user: { name: string; avatarUrl?: string | null };
+  folders: Folder[];
+  /** the folder being shown; none = the folder cards */
+  openFolder?: string | null;
   expandedId?: string | null;
   query?: string;
   onAdd?: () => void;
+  onOpenFolder?: (name: string) => void;
+  onCloseFolder?: () => void;
   onToggleRow?: (id: string) => void;
 }) {
+  const total = folders.reduce((sum, folder) => sum + folder.items.length, 0);
   const needle = query.trim().toLowerCase();
-  const visible = folders
-    .map((folder) => ({ ...folder, items: folder.items.filter((item) => item.name.toLowerCase().includes(needle)) }))
-    .filter((folder) => folder.items.length > 0);
-  const empty = folders.every((folder) => folder.items.length === 0);
+  const matches = needle
+    ? folders.flatMap((folder) => folder.items).filter((item) => `${item.name} ${item.address}`.toLowerCase().includes(needle))
+    : [];
+  const current = openFolder ? folders.find((folder) => folder.name === openFolder) : undefined;
+  const rows = (items: SubscriptionItem[]) =>
+    items.map((item) => <SubscriptionRow expanded={expandedId === item.id} item={item} key={item.id} onPress={() => onToggleRow?.(item.id)} />);
+
   return (
     <View className="flex-1 bg-canvas">
-      <PageHeader actions={<IconButton icon={IconPlus} label="添加订阅" onPress={onAdd} />} title="订阅" />
-      {empty ? (
+      <PageHeader title="订阅" user={user} />
+      {total === 0 ? (
         <EmptyState
           action={<Button large onPress={onAdd} title="添加订阅" variant="primary" />}
           description="可以添加 RSS、网站（自动找 RSS）、YouTube 频道、X 账号或 Reddit 社区。"
           title="还没有订阅"
         />
       ) : (
-        <ScrollView>
-          <View className="pb-2">
-            <SearchField defaultValue={query} placeholder="搜索订阅" />
+        <ScrollView contentContainerClassName="pb-24">
+          <View className="pb-2 pt-2">
+            <SearchField defaultValue={query} placeholder="搜索订阅源" />
           </View>
-          {visible.length === 0 ? <EmptyState title="没有匹配的订阅" /> : null}
-          {visible.map((folder) => (
-            <View key={folder.name}>
-              <SectionHeading title={folder.name} />
-              {folder.items.map((item, index) => (
-                <View key={item.id}>
-                  {index > 0 ? <Divider inset /> : null}
-                  <SubscriptionRow expanded={expandedId === item.id} item={item} onPress={() => onToggleRow?.(item.id)} />
-                </View>
-              ))}
-            </View>
-          ))}
+          {needle ? (
+            <>
+              <SectionHeading aside={`${matches.length} 个`} title="搜索结果" />
+              {matches.length === 0 ? <EmptyState title="没有匹配的订阅源" /> : rows(matches)}
+            </>
+          ) : current ? (
+            <>
+              <FolderBar count={current.items.length} name={current.name} onBack={onCloseFolder} />
+              {rows(current.items)}
+            </>
+          ) : (
+            <>
+              <SectionHeading aside={`${total} 个订阅源`} title="我的分类" />
+              <View className="gap-3">
+                {folders.map((folder) => (
+                  <FolderCard items={folder.items} key={folder.name} name={folder.name} onPress={() => onOpenFolder?.(folder.name)} />
+                ))}
+              </View>
+            </>
+          )}
         </ScrollView>
       )}
+      {total > 0 ? <Fab icon={IconPlus} label="添加订阅" onPress={onAdd} /> : null}
     </View>
   );
 }
@@ -90,7 +131,7 @@ export function AddSubscriptionForm({
   return (
     <View className="gap-3">
       <View className="-mx-4">
-        <Tabs onSelect={(key) => onType?.(key)} options={types.map(({ key, label }) => ({ key, label }))} selected={type} />
+        <Tabs inset="sheet" onSelect={(key) => onType?.(key)} options={types.map(({ key, label }) => ({ key, label }))} selected={type} />
       </View>
       <Input
         autoCapitalize="none"
@@ -102,8 +143,8 @@ export function AddSubscriptionForm({
         placeholder={current.placeholder}
       />
       <View className="-mx-4">
-        <SectionHeading strong title="文件夹" />
-        <Tabs onSelect={() => undefined} options={[{ key: null, label: '不放进文件夹' }, ...folders.map((name) => ({ key: name, label: name }))]} selected={folder} />
+        <SectionHeading inset="sheet" title="分类" />
+        <Tabs inset="sheet" onSelect={() => undefined} options={[{ key: null, label: '未分类' }, ...folders.map((name) => ({ key: name, label: name }))]} selected={folder} />
       </View>
       {submitting ? <Message>正在查找并添加……</Message> : null}
       <Button large loading={submitting} title="添加" variant="primary" />

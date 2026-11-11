@@ -9,6 +9,7 @@ export type IconTone =
   | 'disabled'
   | 'danger'
   | 'on-accent'
+  | 'on-danger'
   | 'accent-soft-text'
   | 'success'
   | 'warning'
@@ -20,6 +21,7 @@ const toneVariable: Record<IconTone, string> = {
   disabled: '--color-icon-disabled',
   danger: '--color-icon-danger',
   'on-accent': '--color-on-accent',
+  'on-danger': '--color-on-danger',
   'accent-soft-text': '--color-accent-soft-text',
   success: '--color-success',
   warning: '--color-warning',

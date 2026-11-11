@@ -7,8 +7,9 @@ const preview: Preview = {
   decorators: [
     (Story, context) => (
       <SafeAreaProvider>
-        <View className="flex-1 bg-background">
-          <SafeAreaView style={{ flex: 1 }}>
+        <View className="flex-1 bg-canvas">
+          {/* The bottom inset belongs to the tab bar (or the page), not to the frame. */}
+          <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1 }}>
             <View className={context.parameters.fullScreen ? 'flex-1' : 'flex-1 p-4'}>
               <Story />
             </View>

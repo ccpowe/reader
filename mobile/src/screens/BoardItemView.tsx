@@ -31,14 +31,14 @@ export function BoardItemView({
         actions={
           <>
             <IconButton icon={IconLanguage} label="翻译" />
-            <IconButton icon={saved ? IconBookmarkFilled : IconBookmark} label={saved ? '取消收藏' : '收藏'} on={saved} />
+            <IconButton icon={saved ? IconBookmarkFilled : IconBookmark} label={saved ? '取消收藏' : '收藏'} on={saved} plain />
           </>
         }
         leading={<IconButton icon={IconArrowLeft} label="返回" />}
         title={board}
       />
-      <ScrollView contentContainerClassName="gap-3 px-5 py-4">
-        <Text level="h3">{translatedTitle ?? title}</Text>
+      <ScrollView contentContainerClassName="gap-3 px-6 py-6">
+        <Text level="h2">{translatedTitle ?? title}</Text>
         {translatedTitle ? <Text tone="secondary">{title}</Text> : null}
         {imageUrl ? <Image className="h-48 w-full rounded-xl bg-sunken" source={{ uri: imageUrl }} /> : null}
         {description ? <Text level="body">{description}</Text> : null}

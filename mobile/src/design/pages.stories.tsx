@@ -14,7 +14,7 @@ import { SavedView } from '@/screens/SavedView';
 import { AddSubscriptionForm, SubscriptionsView } from '@/screens/SubscriptionsView';
 import { TodayView } from '@/screens/TodayView';
 
-import { article, boardEntries, feed, folders, subscriptions } from './fixtures';
+import { article, boardEntries, feed, folders, subscriptions, user } from './fixtures';
 import { TabFrame, WithSheet } from './frame';
 
 const meta: Meta = { title: '页面', parameters: { fullScreen: true } };
@@ -27,54 +27,55 @@ const story = (name: string, render: () => React.ReactElement): Story => ({ name
 
 export const Today = story('今天 · 正常', () => (
   <TabFrame tab="today">
-    <TodayView folder={null} folders={folders} state={{ kind: 'ready', items: feed }} />
+    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder={null} folders={folders} state={{ kind: 'ready', items: feed }} />
   </TabFrame>
 ));
 export const TodayFolder = story('今天 · 选了文件夹', () => (
   <TabFrame tab="today">
-    <TodayView folder="AI" folders={folders} state={{ kind: 'ready', items: feed.slice(0, 4) }} />
+    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder="AI" folders={folders} state={{ kind: 'ready', items: feed.slice(0, 4) }} />
   </TabFrame>
 ));
 export const TodayChannel = story('今天 · 只看一个订阅', () => (
   <TabFrame tab="today">
-    <TodayView channel="Simon Willison" folder={null} folders={folders} state={{ kind: 'ready', items: [feed[0], feed[3]] }} />
+    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} channel="Simon Willison" folder={null} folders={folders} state={{ kind: 'ready', items: [feed[0], feed[3]] }} />
   </TabFrame>
 ));
 export const TodayLoading = story('今天 · 加载中', () => (
   <TabFrame tab="today">
-    <TodayView folder={null} folders={folders} state={{ kind: 'loading' }} />
+    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder={null} folders={folders} state={{ kind: 'loading' }} />
   </TabFrame>
 ));
 export const TodayFailed = story('今天 · 加载失败（保留旧内容）', () => (
   <TabFrame tab="today">
-    <TodayView folder={null} folders={folders} state={{ kind: 'ready', items: feed, loadFailed: true }} />
+    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder={null} folders={folders} state={{ kind: 'ready', items: feed, loadFailed: true }} />
   </TabFrame>
 ));
 export const TodayNoSubscriptions = story('今天 · 还没有订阅', () => (
   <TabFrame tab="today">
-    <TodayView folder={null} folders={[]} state={{ kind: 'no-subscriptions' }} />
+    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder={null} folders={[]} state={{ kind: 'no-subscriptions' }} />
   </TabFrame>
 ));
 export const TodayEmpty = story('今天 · 没有新内容', () => (
   <TabFrame tab="today">
-    <TodayView folder="编程" folders={folders} state={{ kind: 'ready', items: [] }} />
+    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder="编程" folders={folders} state={{ kind: 'ready', items: [] }} />
   </TabFrame>
 ));
 export const TodayBanner = story('今天 · 连接断开横幅', () => (
   <TabFrame tab="today">
-    <TodayView banner="连不上服务器，显示的是之前的内容。" folder={null} folders={folders} state={{ kind: 'ready', items: feed }} />
+    <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} banner="连不上服务器，显示的是之前的内容。" folder={null} folders={folders} state={{ kind: 'ready', items: feed }} />
   </TabFrame>
 ));
 export const TodayChannelPicker = story('今天 · 频道选择弹层', () => (
   <WithSheet
     page={
       <TabFrame tab="today">
-        <TodayView folder={null} folders={folders} state={{ kind: 'ready', items: feed }} />
+        <TodayView channelCount={1520} date="11 月 11 日 · 星期三" user={user} folder={null} folders={folders} state={{ kind: 'ready', items: feed }} />
       </TabFrame>
     }
+    subtitle="勾选的频道显示在全部中"
     title="选择频道"
   >
-    <ChannelPicker folders={subscriptions} />
+    <ChannelPicker folders={subscriptions} hidden={['s3']} />
   </WithSheet>
 ));
 
@@ -82,51 +83,51 @@ export const TodayChannelPicker = story('今天 · 频道选择弹层', () => (
 
 export const BoardsGithub = story('榜单 · GitHub 周榜', () => (
   <TabFrame tab="boards">
-    <BoardsView board="github" state={{ kind: 'ready', entries: boardEntries.github, freshness: { kind: 'fresh', age: '2 分钟前' }, variantLabel: '周榜' }} />
+    <BoardsView board="github" state={{ kind: 'ready', entries: boardEntries.github, freshness: { kind: 'fresh', age: '2 分钟前' } }} user={user} variantLabel="周榜" />
   </TabFrame>
 ));
 export const BoardsHn = story('榜单 · Hacker News', () => (
   <TabFrame tab="boards">
-    <BoardsView board="hn" state={{ kind: 'ready', entries: boardEntries.hn, freshness: { kind: 'fresh', age: '刚刚' } }} />
+    <BoardsView user={user} board="hn" state={{ kind: 'ready', entries: boardEntries.hn, freshness: { kind: 'fresh', age: '刚刚' } }} />
   </TabFrame>
 ));
 export const BoardsPh = story('榜单 · Product Hunt 今天', () => (
   <TabFrame tab="boards">
-    <BoardsView board="product_hunt" state={{ kind: 'ready', entries: boardEntries.product_hunt, freshness: { kind: 'fresh', age: '12 分钟前' }, variantLabel: '今天' }} />
+    <BoardsView board="product_hunt" state={{ kind: 'ready', entries: boardEntries.product_hunt, freshness: { kind: 'fresh', age: '12 分钟前' } }} user={user} variantLabel="今天" />
   </TabFrame>
 ));
 export const BoardsRedditPaused = story('榜单 · Reddit 暂停中', () => (
   <TabFrame tab="boards">
-    <BoardsView board="reddit" state={{ kind: 'ready', entries: boardEntries.reddit, freshness: { kind: 'paused', reason: '被限流', resumesIn: '约 8 分钟' }, variantLabel: 'r/python · 热门' }} />
+    <BoardsView board="reddit" state={{ kind: 'ready', entries: boardEntries.reddit, freshness: { kind: 'paused', reason: '被限流', resumesIn: '约 8 分钟' } }} user={user} variantLabel="r / codex · 热门" />
   </TabFrame>
 ));
 export const BoardsStale = story('榜单 · 已过期（刷新失败）', () => (
   <TabFrame tab="boards">
-    <BoardsView board="hn" state={{ kind: 'ready', entries: boardEntries.hn, freshness: { kind: 'stale', age: '48 分钟前' } }} />
+    <BoardsView user={user} board="hn" state={{ kind: 'ready', entries: boardEntries.hn, freshness: { kind: 'stale', age: '48 分钟前' } }} />
   </TabFrame>
 ));
 export const BoardsTechTwitter = story('榜单 · TechTwitter 暂不可用', () => (
   <TabFrame tab="boards">
-    <BoardsView board="techtwitter" state={{ kind: 'unavailable', reason: '对方开启了浏览器验证，服务器暂时抓不到' }} />
+    <BoardsView user={user} board="techtwitter" state={{ kind: 'unavailable', reason: '对方开启了浏览器验证，服务器暂时抓不到' }} />
   </TabFrame>
 ));
 export const BoardsLoading = story('榜单 · 加载中', () => (
   <TabFrame tab="boards">
-    <BoardsView board="github" state={{ kind: 'loading' }} />
+    <BoardsView user={user} board="github" state={{ kind: 'loading' }} />
   </TabFrame>
 ));
 export const BoardsOptionsGithub = story('榜单 · 调整弹层（GitHub）', () => (
-  <WithSheet page={<TabFrame tab="boards"><BoardsView board="github" state={{ kind: 'loading' }} /></TabFrame>} title="调整 GitHub">
+  <WithSheet page={<TabFrame tab="boards"><BoardsView user={user} board="github" state={{ kind: 'loading' }} /></TabFrame>} title="调整 GitHub">
     <BoardOptions board="github" variant="weekly" />
   </WithSheet>
 ));
 export const BoardsOptionsPh = story('榜单 · 调整弹层（Product Hunt）', () => (
-  <WithSheet page={<TabFrame tab="boards"><BoardsView board="product_hunt" state={{ kind: 'loading' }} /></TabFrame>} title="调整 Product Hunt">
+  <WithSheet page={<TabFrame tab="boards"><BoardsView user={user} board="product_hunt" state={{ kind: 'loading' }} /></TabFrame>} title="调整 Product Hunt">
     <BoardOptions board="product_hunt" variant="today" />
   </WithSheet>
 ));
 export const BoardsOptionsReddit = story('榜单 · 调整弹层（Reddit）', () => (
-  <WithSheet page={<TabFrame tab="boards"><BoardsView board="reddit" state={{ kind: 'loading' }} /></TabFrame>} title="调整 Reddit">
+  <WithSheet page={<TabFrame tab="boards"><BoardsView user={user} board="reddit" state={{ kind: 'loading' }} /></TabFrame>} title="调整 Reddit">
     <BoardOptions board="reddit" subreddit="python" subscribedCommunities={['python', 'rust', 'MachineLearning']} variant="hot" />
   </WithSheet>
 ));
@@ -135,36 +136,46 @@ export const BoardsOptionsReddit = story('榜单 · 调整弹层（Reddit）', (
 
 export const Subscriptions = story('订阅 · 正常（含有问题的订阅）', () => (
   <TabFrame tab="subscriptions">
-    <SubscriptionsView folders={subscriptions} />
+    <SubscriptionsView user={user} folders={subscriptions} />
+  </TabFrame>
+));
+export const SubscriptionsFolder = story('订阅 · 打开分类', () => (
+  <TabFrame tab="subscriptions">
+    <SubscriptionsView user={user} folders={subscriptions} openFolder="AI" />
   </TabFrame>
 ));
 export const SubscriptionsExpanded = story('订阅 · 展开问题说明', () => (
   <TabFrame tab="subscriptions">
-    <SubscriptionsView expandedId="s2" folders={subscriptions} />
+    <SubscriptionsView user={user} expandedId="s2" folders={subscriptions} openFolder="AI" />
+  </TabFrame>
+));
+export const SubscriptionsSearch = story('订阅 · 搜索', () => (
+  <TabFrame tab="subscriptions">
+    <SubscriptionsView user={user} folders={subscriptions} query="reddit" />
   </TabFrame>
 ));
 export const SubscriptionsNoMatch = story('订阅 · 搜索无结果', () => (
   <TabFrame tab="subscriptions">
-    <SubscriptionsView folders={subscriptions} query="zzz" />
+    <SubscriptionsView user={user} folders={subscriptions} query="zzz" />
   </TabFrame>
 ));
 export const SubscriptionsEmpty = story('订阅 · 还没有订阅', () => (
   <TabFrame tab="subscriptions">
-    <SubscriptionsView folders={[]} />
+    <SubscriptionsView user={user} folders={[]} />
   </TabFrame>
 ));
 export const SubscriptionsAdd = story('订阅 · 添加弹层（网站）', () => (
-  <WithSheet page={<TabFrame tab="subscriptions"><SubscriptionsView folders={subscriptions} /></TabFrame>} title="添加订阅">
+  <WithSheet page={<TabFrame tab="subscriptions"><SubscriptionsView user={user} folders={subscriptions} /></TabFrame>} title="添加订阅">
     <AddSubscriptionForm folder="AI" folders={folders} type="website" value="https://simonwillison.net" />
   </WithSheet>
 ));
 export const SubscriptionsAddError = story('订阅 · 添加失败', () => (
-  <WithSheet page={<TabFrame tab="subscriptions"><SubscriptionsView folders={subscriptions} /></TabFrame>} title="添加订阅">
+  <WithSheet page={<TabFrame tab="subscriptions"><SubscriptionsView user={user} folders={subscriptions} /></TabFrame>} title="添加订阅">
     <AddSubscriptionForm error="这个网站没有找到 RSS / Atom。可以试试直接填它的 RSS 地址。" folder={null} folders={folders} type="website" value="https://example.com" />
   </WithSheet>
 ));
 export const SubscriptionsAdding = story('订阅 · 添加中', () => (
-  <WithSheet page={<TabFrame tab="subscriptions"><SubscriptionsView folders={subscriptions} /></TabFrame>} title="添加订阅">
+  <WithSheet page={<TabFrame tab="subscriptions"><SubscriptionsView user={user} folders={subscriptions} /></TabFrame>} title="添加订阅">
     <AddSubscriptionForm folder={null} folders={folders} submitting type="youtube" value="@TwoMinutePapers" />
   </WithSheet>
 ));
@@ -173,17 +184,22 @@ export const SubscriptionsAdding = story('订阅 · 添加中', () => (
 
 export const Saved = story('收藏 · 正常', () => (
   <TabFrame tab="saved">
-    <SavedView folder={null} folders={folders} items={feed.filter((item) => item.isSaved).concat(feed.slice(0, 2).map((item) => ({ ...item, id: `${item.id}-s`, isSaved: true })))} />
+    <SavedView user={user} folder={null} folders={folders} items={feed.filter((item) => item.isSaved).concat(feed.slice(0, 2).map((item) => ({ ...item, id: `${item.id}-s`, isSaved: true })))} />
+  </TabFrame>
+));
+export const SavedFolder = story('收藏 · 选了分类', () => (
+  <TabFrame tab="saved">
+    <SavedView user={user} folder="AI" folders={folders} items={feed.filter((item) => item.isSaved)} />
   </TabFrame>
 ));
 export const SavedEmpty = story('收藏 · 还没有收藏', () => (
   <TabFrame tab="saved">
-    <SavedView folder={null} folders={folders} items={[]} />
+    <SavedView user={user} folder={null} folders={folders} items={[]} />
   </TabFrame>
 ));
 export const SavedNoMatch = story('收藏 · 搜索无结果', () => (
   <TabFrame tab="saved">
-    <SavedView folder={null} folders={folders} items={[]} query="量子" />
+    <SavedView user={user} folder={null} folders={folders} items={[]} query="量子" />
   </TabFrame>
 ));
 
@@ -191,7 +207,7 @@ export const SavedNoMatch = story('收藏 · 搜索无结果', () => (
 
 export const Me = story('我的', () => (
   <TabFrame tab="me">
-    <MeView email="me@example.com" engine="DeepSeek · deepseek-flash" interfaceLanguage="跟随系统" name="Chai" server="reader.example.com" targetLanguage="简体中文" translationEnabled />
+    <MeView email="me@example.com" engine="DeepSeek · deepseek-flash" interfaceLanguage="简体中文" server="reader.example.com" targetLanguage="简体中文" translationEnabled user={user} />
   </TabFrame>
 ));
 

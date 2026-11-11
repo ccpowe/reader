@@ -1,16 +1,32 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import { ActivityIndicator, Animated, View } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Animated, View } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
 import { cn } from '@/lib/cn';
 
 import { Text } from './Text';
 import { duration, iconSize } from './theme';
+import { useShadow } from './useShadow';
 
 /** qp-skeleton: placeholder lines while a list or preview loads (never a full-page spinner). */
 export function Skeleton({ lines = 2, className }: { lines?: number; className?: string }) {
   const opacity = useRef(new Animated.Value(1)).current;
+  const [reduceMotion, setReduceMotion] = useState(true);
   useEffect(() => {
+    let alive = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((on) => alive && setReduceMotion(on));
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      alive = false;
+      sub.remove();
+    };
+  }, []);
+  useEffect(() => {
+    // Reduced motion: static placeholder bars, no pulse.
+    if (reduceMotion) {
+      opacity.setValue(1);
+      return;
+    }
     // --duration-shimmer (1000ms) as a gentle pulse; RN has no gradient shimmer without a library.
     const loop = Animated.loop(
       Animated.sequence([
@@ -20,7 +36,7 @@ export function Skeleton({ lines = 2, className }: { lines?: number; className?:
     );
     loop.start();
     return () => loop.stop();
-  }, [opacity]);
+  }, [opacity, reduceMotion]);
   return (
     <Animated.View className={cn('gap-2', className)} style={{ opacity }}>
       {Array.from({ length: lines }, (_, index) => (
@@ -59,9 +75,12 @@ export function EmptyState({ title, description, action }: { title: string; desc
 
 /** qp-toast: a result outside the viewport, with Undo when it can be undone. */
 export function Toast({ message, action }: { message: string; action?: ReactNode }) {
+  const shadow = useShadow('lg');
   return (
-    <View className="flex-row items-center gap-2 self-center rounded-xl bg-raised px-3 py-1.5 shadow-lg">
-      <Text numberOfLines={1}>{message}</Text>
+    <View className="mx-6 max-w-full flex-row items-center gap-2 self-center rounded-xl bg-raised px-3 py-1.5" style={shadow}>
+      <Text className="shrink" numberOfLines={2}>
+        {message}
+      </Text>
       {action}
     </View>
   );

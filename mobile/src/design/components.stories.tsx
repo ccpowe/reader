@@ -3,12 +3,12 @@ import type { Meta, StoryObj } from '@storybook/react-native';
 import { IconBookmark, IconPlus, IconRefresh } from '@tabler/icons-react-native';
 import { ScrollView, View } from 'react-native';
 
-import { AttentionCount, Avatar, Badge, Button, Callout, Count, Dot, EmptyState, IconButton, Input, Message, SearchField, SectionHeading, Skeleton, Switch, Tabs, Tag, Text, Toast } from '@/ui';
+import { AttentionCount, Avatar, Badge, Button, Callout, Checkbox, Count, SolidCount, Dot, EmptyState, IconButton, Input, Message, SearchField, SectionHeading, Skeleton, Switch, Tabs, Tag, Text, Toast } from '@/ui';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View className="gap-2 pb-4">
-      <SectionHeading strong title={title} />
+      <SectionHeading title={title} />
       <View className="gap-2 px-4">{children}</View>
     </View>
   );
@@ -23,8 +23,12 @@ export const Gallery: Story = {
   render: () => (
     <ScrollView className="flex-1 bg-canvas">
       <Section title="文字层级">
-        <Text level="h2">页面标题 h2</Text>
-        <Text level="h3">卡片标题 h3</Text>
+        <Text level="page">页面标题 page 34</Text>
+        <Text level="h2">分类名 h2 24</Text>
+        <Text level="card">卡片标题 card 18 / 28</Text>
+        <Text level="read" tone="secondary">
+          摘要 read 14 / 22（secondary）
+        </Text>
         <Text level="body-strong">正文加粗 body 600</Text>
         <Text level="body">正文 body 16 / 24</Text>
         <Text>界面 ui 14 / 20</Text>
@@ -58,6 +62,9 @@ export const Gallery: Story = {
           <Tag status>运行中</Tag>
           <Count value={12} />
           <AttentionCount value={2} />
+          <SolidCount value={88} />
+          <Checkbox checked label="选中" />
+          <Checkbox checked={false} label="未选" />
           <Badge>共 7 条</Badge>
           <View className="flex-row items-center gap-1">
             <Dot tone="green" />

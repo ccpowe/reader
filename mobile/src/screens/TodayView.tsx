@@ -1,13 +1,13 @@
 /**
- * 今天 (PRODUCT §3.1): the feed of followed subscriptions, newest first by when Reader saw it
- * (P8). Folder tabs on top, swipe between folders (current behavior, wired later); the channel
- * picker narrows to one subscription. Presentational: data and callbacks come from the route.
+ * 今天 (PRODUCT §3.1), old app layout at P25 values: READER header with the date, folder tabs with
+ * the channel filter on the right (count badge = subscriptions picked), then the feed, newest
+ * first by when Reader saw it (P8). Presentational: data and callbacks come from the route.
  */
-import { IconLayoutList, IconX } from '@tabler/icons-react-native';
+import { IconAdjustmentsHorizontal, IconX } from '@tabler/icons-react-native';
 import { FlatList, View } from 'react-native';
 
 import { FeedCard, type FeedCardItem } from '@/components/FeedCard';
-import { Button, Divider, EmptyState, IconButton, Message, PageHeader, Skeleton, Tabs, Text } from '@/ui';
+import { Button, EmptyState, IconButton, Message, PageHeader, Skeleton, SolidCount, Tabs, Text } from '@/ui';
 
 export type TodayState =
   | { kind: 'loading' }
@@ -15,9 +15,12 @@ export type TodayState =
   | { kind: 'ready'; items: FeedCardItem[]; loadFailed?: boolean };
 
 export function TodayView({
+  date,
+  user,
   folders,
   folder,
   channel,
+  channelCount,
   state,
   banner,
   onSelectFolder,
@@ -26,10 +29,15 @@ export function TodayView({
   onAddSubscription,
   onRetry,
 }: {
+  /** e.g. "11 月 11 日 · 星期三" */
+  date: string;
+  user: { name: string; avatarUrl?: string | null };
   folders: string[];
   folder: string | null;
   /** the one subscription being shown, if any */
   channel?: string | null;
+  /** how many subscriptions the channel picker has ticked for 全部 */
+  channelCount?: number;
   state: TodayState;
   /** view-level problem (disconnected, signed out), one at a time */
   banner?: string | null;
@@ -39,6 +47,14 @@ export function TodayView({
   onAddSubscription?: () => void;
   onRetry?: () => void;
 }) {
+  const filter = (
+    <IconButton
+      badge={channelCount ? <SolidCount value={channelCount} /> : null}
+      icon={IconAdjustmentsHorizontal}
+      label="选择频道"
+      onPress={onOpenChannels}
+    />
+  );
   return (
     <View className="flex-1 bg-canvas">
       {banner ? (
@@ -46,30 +62,25 @@ export function TodayView({
           {banner}
         </Message>
       ) : null}
-      <PageHeader
-        actions={<IconButton icon={IconLayoutList} label="选择频道" onPress={onOpenChannels} />}
-        detail={
-          channel ? (
-            <View className="flex-row items-center gap-1">
-              <Text tone="secondary">只看「{channel}」</Text>
-              <IconButton icon={IconX} label="清除" onPress={onClearChannel} size="sm" />
-            </View>
-          ) : null
-        }
-        title="今天"
-      />
-      {channel ? null : (
-        <View className="pb-2">
-          <Tabs
-            onSelect={(key) => onSelectFolder?.(key)}
-            options={[{ key: null, label: '全部' }, ...folders.map((name) => ({ key: name, label: name }))]}
-            selected={folder}
-          />
+      <PageHeader aside={date} title="今日" user={user} />
+      {channel ? (
+        <View className="h-11 flex-row items-center gap-2 border-b border-subtle px-6">
+          <Text className="flex-1" numberOfLines={1} tone="secondary">
+            只看「{channel}」
+          </Text>
+          <IconButton icon={IconX} label="返回分类内容" onPress={onClearChannel} size="sm" />
         </View>
+      ) : (
+        <Tabs
+          bordered
+          onSelect={(key) => onSelectFolder?.(key)}
+          options={[{ key: null, label: '全部' }, ...folders.map((name) => ({ key: name, label: name }))]}
+          selected={folder}
+          trailing={filter}
+        />
       )}
-      <Divider />
       {state.kind === 'loading' ? (
-        <View className="gap-6 p-4">
+        <View className="gap-8 px-6 py-6">
           {[0, 1, 2, 3].map((index) => (
             <Skeleton key={index} lines={3} />
           ))}
@@ -82,11 +93,10 @@ export function TodayView({
         />
       ) : (
         <FlatList
-          ItemSeparatorComponent={() => <Divider />}
           ListEmptyComponent={<EmptyState description="订阅有新内容时会出现在这里。" title="还没有新内容" />}
           ListHeaderComponent={
             state.loadFailed ? (
-              <View className="p-4">
+              <View className="px-6 pt-4">
                 <Message action={<Button onPress={onRetry} title="重试" variant="ghost" />} kind="danger">
                   加载失败，显示的是之前的内容。
                 </Message>

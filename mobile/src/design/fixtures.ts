@@ -11,7 +11,7 @@ const image = (seed: string) => `https://picsum.photos/seed/${seed}/400/400`;
 export const feed: FeedCardItem[] = [
   {
     id: 'a1',
-    source: { name: 'Simon Willison' },
+    source: { name: 'Simon Willison', kind: 'rss' },
     seenAgo: '12 分钟前',
     title: '把模型评测做成每天跑的测试',
     summary: '与其在发布前一次性评测，不如把关键用例写成每天都跑的测试：失败时能立刻知道是哪个改动引起的，也能看到能力随时间的变化。',
@@ -19,8 +19,17 @@ export const feed: FeedCardItem[] = [
     isSaved: false,
   },
   {
+    id: 'r1',
+    source: { name: 'r/MachineLearning', kind: 'reddit', byline: '/u/council_of_desires' },
+    seenAgo: '25 分钟前',
+    title: '寻求研究合作伙伴与资金支持：探索生物智能与神经计算 [D]',
+    summary: 'Can living neural systems provide new insights into computation, adaptation, and intelligence? We are developing a platform for this.',
+    imageUrl: null,
+    isSaved: false,
+  },
+  {
     id: 'x3',
-    source: { name: 'swyx' },
+    source: { name: 'swyx', kind: 'x' },
     seenAgo: '40 分钟前',
     title: '',
     summary: null,
@@ -34,7 +43,7 @@ export const feed: FeedCardItem[] = [
   },
   {
     id: 'a2',
-    source: { name: 'The Verge' },
+    source: { name: 'The Verge', kind: 'rss' },
     seenAgo: '1 小时前',
     title: 'OpenAI 发布更快的开放权重推理模型，在多个编程基准上接近闭源旗舰，同时把推理成本降到原来的三分之一',
     summary: '新模型采用混合专家结构，激活参数更少；官方称在长上下文任务上也有明显提升。',
@@ -43,7 +52,7 @@ export const feed: FeedCardItem[] = [
   },
   {
     id: 'x2',
-    source: { name: 'Simon Willison' },
+    source: { name: 'Simon Willison', kind: 'x' },
     seenAgo: '2 小时前',
     title: '',
     summary: null,
@@ -57,7 +66,7 @@ export const feed: FeedCardItem[] = [
   },
   {
     id: 'a3',
-    source: { name: '一个名字特别长的独立开发者技术博客（每周更新）' },
+    source: { name: '一个名字特别长的独立开发者技术博客（每周更新）', kind: 'web' },
     seenAgo: '3 小时前',
     title: '我们是如何把一个十年历史的单体应用拆成可以独立部署的模块的：从依赖梳理、数据库所有权划分、灰度发布到回滚预案，一年里踩过的坑和最后留下来的几条规则',
     summary:
@@ -67,7 +76,7 @@ export const feed: FeedCardItem[] = [
   },
   {
     id: 'x1',
-    source: { name: 'Andrej Karpathy' },
+    source: { name: 'Andrej Karpathy', kind: 'x' },
     seenAgo: '5 小时前',
     title: '',
     summary: null,
@@ -87,54 +96,63 @@ export const subscriptions: { name: string; items: SubscriptionItem[] }[] = [
   {
     name: 'AI',
     items: [
-      { id: 's1', name: 'Simon Willison', type: 'rss', newCount: 3, health: { kind: 'ok' } },
-      { id: 's2', name: 'Andrej Karpathy', type: 'x', newCount: 1, health: { kind: 'failing', reason: 'X 服务没有配置', since: '3 小时前' } },
-      { id: 's3', name: 'Two Minute Papers', type: 'youtube', newCount: 0, health: { kind: 'ok' } },
-      { id: 's4', name: 'swyx', type: 'x', newCount: 12, health: { kind: 'gap', detail: '两次扫描之间更新超过 120 条' } },
+      { id: 's1', name: 'Simon Willison', kind: 'rss', address: 'simonwillison.net/atom/everything', newCount: 3, health: { kind: 'ok' } },
+      { id: 's2', name: 'Andrej Karpathy', kind: 'x', address: '@karpathy', newCount: 1, health: { kind: 'failing', reason: 'X 服务没有配置', since: '3 小时前' } },
+      { id: 's3', name: 'Two Minute Papers', kind: 'youtube', address: 'youtube.com/@TwoMinutePapers', newCount: 0, health: { kind: 'ok' } },
+      { id: 's4', name: 'swyx', kind: 'x', address: '@swyx', newCount: 12, health: { kind: 'gap', detail: '两次扫描之间更新超过 120 条' } },
+      { id: 's11', name: 'OpenAI News', kind: 'rss', address: 'openai.com/news/rss.xml', newCount: 2, health: { kind: 'ok' } },
+      { id: 's12', name: 'r/MachineLearning', kind: 'reddit', address: 'reddit.com/r/MachineLearning', newCount: 1520, health: { kind: 'ok' } },
     ],
   },
   {
     name: '新闻',
     items: [
-      { id: 's5', name: 'The Verge', type: 'rss', newCount: 8, health: { kind: 'ok' } },
-      { id: 's6', name: '一个名字特别长的独立开发者技术博客（每周更新）', type: 'rss', newCount: 0, health: { kind: 'failing', reason: '网站连不上', since: '昨天' } },
-      { id: 's7', name: 'Hacker News Daily', type: 'rss', newCount: 2, health: { kind: 'ok' } },
+      { id: 's5', name: 'The Verge', kind: 'rss', address: 'theverge.com/rss/index.xml', newCount: 8, health: { kind: 'ok' } },
+      { id: 's6', name: '一个名字特别长的独立开发者技术博客（每周更新）', kind: 'web', address: 'example.com/blog/feed.xml', newCount: 0, health: { kind: 'failing', reason: '网站连不上', since: '昨天' } },
+      { id: 's7', name: 'Hacker News Daily', kind: 'rss', address: 'hn.algolia.com/daily.rss', newCount: 2, health: { kind: 'ok' } },
     ],
+  },
+  {
+    name: '项目动态',
+    items: [{ id: 's9', name: 'Release notes from claude-code', kind: 'github', address: 'github.com/anthropics/claude-code/releases.atom', newCount: 10, health: { kind: 'ok' } }],
   },
   {
     name: '编程',
     items: [
-      { id: 's8', name: 'r/python', type: 'reddit', newCount: 5, health: { kind: 'ok' } },
-      { id: 's9', name: 'Julia Evans', type: 'rss', newCount: 0, health: { kind: 'ok' } },
-      { id: 's10', name: 'Fireship', type: 'youtube', newCount: 1, health: { kind: 'ok' } },
+      { id: 's8', name: 'r/python', kind: 'reddit', address: 'reddit.com/r/python', newCount: 5, health: { kind: 'ok' } },
+      { id: 's10', name: 'Fireship', kind: 'youtube', address: 'youtube.com/@Fireship', newCount: 1, health: { kind: 'ok' } },
     ],
   },
 ];
 
+const people = (...names: string[]) => names.map((name) => ({ name }));
+
 export const boardEntries: Record<'hn' | 'github' | 'product_hunt' | 'reddit' | 'techtwitter', BoardEntryItem[]> = {
   hn: [
-    { rank: 1, title: 'Protecting SSH keys with the macOS Secure Enclave', meta: ['github.com', '412 分', '128 评论'], isSaved: false },
-    { rank: 2, title: 'Show HN: A tiny database that fits in a single file and survives power loss', meta: ['sqlite.org', '298 分', '76 评论'], isSaved: true },
-    { rank: 3, title: 'Why your build is slow', meta: ['jvns.ca', '201 分', '45 评论'], isSaved: false },
-    { rank: 4, title: 'The quiet death of the RSS reader, and why it keeps coming back', meta: ['example.com', '156 分', '230 评论'], isSaved: false },
+    { rank: 1, title: '用 macOS 安全隔区保护 SSH 密钥', byline: 'gatezh.com', score: '260', comments: '93' },
+    { rank: 2, title: 'Smart home devices should work without the internet', byline: 'docodethatmatters.com', score: '1.0k', comments: '365' },
+    { rank: 3, title: '.name Grandfathered', byline: 'neil.fraser.name', score: '878', comments: '191' },
+    { rank: 4, title: 'Show HN: 一个只有单个文件、断电也不会坏的小数据库，以及我们为了让它在各种文件系统上都可靠而做的十几项测试', byline: 'sqlite.org', score: '24', comments: '4' },
   ],
   github: [
-    { rank: 1, title: 'NVIDIA/auto-ontology', description: 'Build knowledge graphs from documents with LLMs.', meta: ['Python', '★ 4,210', '本周 +1,832'], isSaved: false },
-    { rank: 2, title: 'astral-sh/ty', description: 'An extremely fast Python type checker, written in Rust.', meta: ['Rust', '★ 12,004', '本周 +960'], isSaved: false },
-    { rank: 3, title: 'someone/very-long-repository-name-for-testing-overflow', description: 'A description that runs a little longer than the others so we can see how two lines wrap on a narrow phone screen.', meta: ['TypeScript', '★ 980', '本周 +411'], isSaved: true },
+    { rank: 1, title: 'NVIDIA/auto-ontology', description: 'Auto Ontology is a Python framework for building semantic, graph-based reasoning layers over data. It enables deterministic query generation.', language: 'Python', stars: '12k', forks: '958', contributors: people('a', 'b', 'c') },
+    { rank: 2, title: 'anthropics/skills', description: 'Public repository for Agent Skills', language: 'Python', stars: '193k', forks: '23k', contributors: people('d', 'e', 'f') },
+    { rank: 3, title: 'someone/very-long-repository-name-for-testing-overflow', description: 'Computer use CLI for AI agents', language: 'Rust', stars: '22k', forks: '1.6k', contributors: people('g', 'h') },
   ],
   product_hunt: [
-    { rank: 1, title: 'Claude Sheets', description: 'Spreadsheets you can talk to', meta: ['▲ 812', '96 评论'], imageUrl: image('ph1'), isSaved: false },
-    { rank: 2, title: 'NovaAtom Lite', description: 'A smaller, faster on-device model for notes', meta: ['▲ 503', '41 评论'], imageUrl: image('ph2'), isSaved: false },
+    { rank: 1, title: 'Claude Sheets', description: 'Spreadsheets you can talk to', score: '812', comments: '96', imageUrl: image('ph1') },
+    { rank: 2, title: 'NovaAtom Lite', description: 'A smaller, faster on-device model for notes', score: '503', comments: '41', imageUrl: image('ph2') },
   ],
   reddit: [
-    { rank: 1, title: 'Python 3.15 will ship with a JIT enabled by default', meta: ['r/python', 'u/someone'], imageUrl: image('reddit1'), isSaved: false },
-    { rank: 2, title: 'What is your favourite underrated standard library module?', meta: ['r/python', 'u/curious'], isSaved: false },
+    { rank: 1, title: 'Codex 使用与运行讨论 - 最后更新于 11 月 9 日', description: '请在此处提出您对 Codex 使用限制和模型性能的疑虑、问题与讨论。本聚合帖（Megathread）的目的是集中讨论。', byline: 'u/codex-megathread' },
+    { rank: 2, title: '也许很快就要重置了？', description: 'submitted by /u/rubanbhatia [link] [comments]', byline: 'u/rubanbhatia', imageUrl: image('reddit1') },
   ],
   techtwitter: [
-    { rank: 1, title: 'Claude Adds Whiteboards, Sheets and Data Tools', description: 'Claude is rolling out Whiteboards, Sheets and Data, bringing planning, tracking and data storytelling into one workspace.', meta: ['质量 8'], tags: ['AI', 'productivity'], isSaved: false },
+    { rank: 1, title: 'Claude 新增白板、表格和数据工具', description: 'Claude is rolling out Whiteboards, Sheets and Data, bringing planning, tracking and data storytelling into one workspace.', tags: ['AI', 'productivity'] },
   ],
 };
+
+export const user = { name: 'Lin' };
 
 export const article = {
   host: 'simonwillison.net',

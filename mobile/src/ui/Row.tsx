@@ -6,8 +6,9 @@ import { cn } from '@/lib/cn';
 import { Text } from './Text';
 
 /**
- * A list row (qp-row on a phone): leading graphic, a label (+ optional second line), trailing
- * hint / count / control. Pressed = state-pressed overlay. Single-line labels ellipsize.
+ * A list row (qp-row on a phone, old app scale P25): leading graphic, a label with an optional
+ * second line under it, trailing hint / count / control. 24 from the screen edge, at least 56
+ * high. Pressed = state-pressed overlay. Labels ellipsize; trailing never shrinks.
  */
 export function Row({
   leading,
@@ -18,6 +19,7 @@ export function Row({
   trailing,
   onPress,
   className,
+  inset = 'page',
 }: {
   leading?: ReactNode;
   label: string;
@@ -29,11 +31,13 @@ export function Row({
   trailing?: ReactNode;
   onPress?: () => void;
   className?: string;
+  /** inside a sheet: 16 from the edge */
+  inset?: 'page' | 'sheet';
 }) {
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined}
-      className={cn('min-h-12 flex-row items-center gap-3 px-4 py-2 active:bg-pressed', className)}
+      className={cn('min-h-14 flex-row items-center gap-3 py-3 active:bg-pressed', inset === 'page' ? 'px-6' : 'px-4', className)}
       disabled={!onPress}
       onPress={onPress}
     >
@@ -45,27 +49,37 @@ export function Row({
         {detail ? (
           <View className="flex-row items-center gap-1">
             {detailIcon}
-            <Text className="flex-1" level="caption" numberOfLines={1} tone={detailTone}>
+            <Text className="flex-1" level="desc" numberOfLines={1} tone={detailTone}>
               {detail}
             </Text>
           </View>
         ) : null}
       </View>
-      {trailing ? <View className="flex-row items-center gap-1">{trailing}</View> : null}
+      {trailing ? <View className="shrink-0 flex-row items-center gap-2">{trailing}</View> : null}
     </Pressable>
   );
 }
 
-/** qp-sidebar__heading on a phone list: caption; `strong` when it must be read to operate. */
-export function SectionHeading({ title, strong = false }: { title: string; strong?: boolean }) {
+/**
+ * qp-sidebar__heading on a phone list: desc size, secondary (it names the group you operate in);
+ * `aside` on the right, e.g. a count. `inset` sheet = 16 from the edge.
+ */
+export function SectionHeading({ title, aside, inset = 'page', className }: { title: string; aside?: string; inset?: 'page' | 'sheet'; className?: string }) {
   return (
-    <Text className="px-4 pb-1 pt-4" level="caption-strong" tone={strong ? 'secondary' : 'tertiary'}>
-      {title}
-    </Text>
+    <View className={cn('flex-row items-center pb-2 pt-6', inset === 'page' ? 'px-6' : 'px-4', className)}>
+      <Text className="flex-1" level="desc" numberOfLines={1} tone="secondary">
+        {title}
+      </Text>
+      {aside ? (
+        <Text level="caption" tone="tertiary">
+          {aside}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
-/** qp-divider */
+/** qp-divider; `inset` keeps the page's 24 side margin, like the old app's separators. */
 export function Divider({ inset = false }: { inset?: boolean }) {
-  return <View className={cn('h-px bg-subtle', inset ? 'ml-4' : '')} />;
+  return <View className={cn('h-px bg-subtle', inset ? 'mx-6' : '')} />;
 }

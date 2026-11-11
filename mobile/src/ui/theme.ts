@@ -33,3 +33,14 @@ export function hitSlopFor(size: number) {
   const pad = Math.max(0, Math.ceil((touchTarget - size) / 2));
   return { top: pad, bottom: pad, left: pad, right: pad };
 }
+
+/**
+ * tokens.css shadows (--shadow-sm / md / lg / sheet) as React Native `boxShadow` strings, without
+ * the 1px ring; useShadow() adds the ring from --color-subtle so it follows the theme.
+ */
+export const shadowLayers = {
+  sm: '0 2px 4px 0 rgba(0, 0, 0, 0.04)',
+  md: '0 8px 12px 0 rgba(25, 25, 25, 0.027), 0 2px 6px 0 rgba(25, 25, 25, 0.027)',
+  lg: '0 20px 24px 0 rgba(25, 25, 25, 0.05), 0 5px 8px 0 rgba(25, 25, 25, 0.027)',
+  sheet: '0 -8px 24px 0 rgba(25, 25, 25, 0.08)',
+} as const;

@@ -1,56 +1,96 @@
 /**
- * One board entry: rank, title (translated when available), description, the board's own
- * numbers as one meta line, optional image, bookmark. Same frame for every board; each board
- * fills the meta line with what it has (HN points / comments, GitHub language / stars, …).
+ * One board entry, old app frame (P26: checked against the device): a two-digit rank, the title
+ * (translated when available) in regular weight, then what the board has — description, domain
+ * or author, a stats line (HN: ▲ points · comments; GitHub: contributors, language, stars,
+ * forks; Product Hunt: ▲ votes · comments; TechTwitter: topics), and a thumbnail on the right
+ * when there is one. No row bookmark: saving is on the entry page.
  */
-import { IconBookmark, IconBookmarkFilled } from '@tabler/icons-react-native';
+import { IconGitFork, IconStar, IconTriangle } from '@tabler/icons-react-native';
 import { Image, Pressable, View } from 'react-native';
 
-import { IconButton, Text } from '@/ui';
+import { Avatar, Icon, Text } from '@/ui';
 
 export type BoardEntryItem = {
   rank: number;
   title: string;
   description?: string | null;
-  /** e.g. ["github.com", "412 分", "128 评论"]; joined with " · " */
-  meta: string[];
+  /** HN / Product Hunt: the linked site; Reddit: u/author */
+  byline?: string | null;
+  score?: string | null;
+  comments?: string | null;
+  language?: string | null;
+  stars?: string | null;
+  forks?: string | null;
+  contributors?: { name: string; avatarUrl?: string | null }[];
   tags?: string[];
   imageUrl?: string | null;
-  isSaved: boolean;
 };
 
-export function BoardEntry({ entry, onOpen, onToggleSave }: { entry: BoardEntryItem; onOpen?: () => void; onToggleSave?: () => void }) {
-  const meta = [...(entry.tags ?? []).map((tag) => `#${tag}`), ...entry.meta].join(' · ');
+function Stat({ icon, value }: { icon?: typeof IconStar; value: string }) {
   return (
-    <Pressable accessibilityRole="button" className="flex-row gap-3 px-4 py-3 active:bg-pressed" onPress={onOpen}>
-      <Text className="w-5 pt-0.5" level="caption" style={{ fontVariant: ['tabular-nums'] }} tone="tertiary">
-        {entry.rank}
+    <View className="flex-row items-center gap-1">
+      {icon ? <Icon icon={icon} size="xs" /> : null}
+      <Text level="caption" style={{ fontVariant: ['tabular-nums'] }} tone="secondary">
+        {value}
       </Text>
-      <View className="min-w-0 flex-1 gap-1">
-        <Text level="body-strong" numberOfLines={3}>
-          {entry.title}
+    </View>
+  );
+}
+
+function Stats({ entry }: { entry: BoardEntryItem }) {
+  const contributors = entry.contributors ?? [];
+  const parts = [
+    entry.score ? <Stat icon={IconTriangle} key="score" value={entry.score} /> : null,
+    entry.comments ? <Stat key="comments" value={`${entry.comments} 评论`} /> : null,
+    entry.language ? <Stat key="language" value={entry.language} /> : null,
+    entry.stars ? <Stat icon={IconStar} key="stars" value={entry.stars} /> : null,
+    entry.forks ? <Stat icon={IconGitFork} key="forks" value={entry.forks} /> : null,
+    ...(entry.tags ?? []).map((tag) => <Stat key={`#${tag}`} value={`#${tag}`} />),
+  ].filter(Boolean);
+  if (contributors.length === 0 && parts.length === 0) return null;
+  return (
+    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
+      {contributors.length > 0 ? (
+        <View className="flex-row">
+          {contributors.slice(0, 3).map((person, index) => (
+            <View className={index > 0 ? '-ml-1.5 rounded-full border-2 border-canvas' : 'rounded-full border-2 border-canvas'} key={person.name}>
+              <Avatar name={person.name} size={20} uri={person.avatarUrl} />
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {parts}
+    </View>
+  );
+}
+
+export function BoardEntry({ entry, onOpen }: { entry: BoardEntryItem; onOpen?: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" className="active:bg-pressed" onPress={onOpen}>
+      <View className="mx-6 flex-row gap-2 border-b border-subtle py-6">
+        <Text className="w-8" level="card-plain" style={{ fontVariant: ['tabular-nums'] }}>
+          {String(entry.rank).padStart(2, '0')}
         </Text>
-        {entry.description ? (
-          <Text level="desc" numberOfLines={2} tone="secondary">
-            {entry.description}
+        <View className="min-w-0 flex-1 gap-2">
+          <Text level="card-plain" numberOfLines={3}>
+            {entry.title}
           </Text>
-        ) : null}
-        {meta ? (
-          <Text level="caption" numberOfLines={1} tone="tertiary">
-            {meta}
-          </Text>
+          {entry.description ? (
+            <Text level="read" numberOfLines={3} tone="secondary">
+              {entry.description}
+            </Text>
+          ) : null}
+          {entry.byline ? (
+            <Text level="caption" numberOfLines={1} tone="secondary">
+              {entry.byline}
+            </Text>
+          ) : null}
+          <Stats entry={entry} />
+        </View>
+        {entry.imageUrl ? (
+          <Image className="ml-2 mt-1 rounded-lg bg-sunken" source={{ uri: entry.imageUrl }} style={{ width: 88, height: 88 }} />
         ) : null}
       </View>
-      {entry.imageUrl ? (
-        <Image className="rounded-md bg-sunken" source={{ uri: entry.imageUrl }} style={{ width: 56, height: 56 }} />
-      ) : null}
-      <IconButton
-        icon={entry.isSaved ? IconBookmarkFilled : IconBookmark}
-        label={entry.isSaved ? '取消收藏' : '收藏'}
-        on={entry.isSaved}
-        onPress={onToggleSave}
-        size="sm"
-      />
     </Pressable>
   );
 }

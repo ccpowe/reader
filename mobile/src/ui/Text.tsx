@@ -8,8 +8,14 @@ import { cn } from '@/lib/cn';
  * most one helper level (caption / desc / micro) — DESIGN.md 3.3.
  */
 const level = {
+  // mobile (P25, old app scale)
+  page: 'text-page font-bold tracking-tight',
+  card: 'text-card font-semibold',
+  'card-plain': 'text-card',
+  read: 'text-read',
   display: 'text-display font-bold',
   title: 'text-title font-bold',
+  h1: 'text-h1 font-bold',
   h2: 'text-h2 font-semibold',
   h3: 'text-h3 font-semibold',
   section: 'text-section font-medium',
@@ -34,6 +40,7 @@ const tone = {
   disabled: 'text-disabled',
   link: 'text-link',
   'on-accent': 'text-on-accent',
+  'on-danger': 'text-on-danger',
   'accent-soft': 'text-accent-soft-text',
   success: 'text-success-text',
   warning: 'text-warning-text',
