@@ -48,3 +48,18 @@ def test_avatar_version_is_bounded_to_the_database_integer(spec) -> None:
     parameters = spec["paths"]["/avatars/{user_id}/{version}"]["get"]["parameters"]
     version = next(parameter for parameter in parameters if parameter["name"] == "version")
     assert (version["schema"]["minimum"], version["schema"]["maximum"]) == (1, 2_147_483_647)
+
+
+# Routes that answer without the database.
+_NO_DATABASE = {"/health", "/ready", "/worker-ready", "/.well-known/reader.json"}
+
+
+def test_routes_that_use_the_database_declare_it_may_be_unavailable(spec) -> None:
+    missing = [
+        (method, path)
+        for path, method, operation in _operations(spec)
+        if path not in _NO_DATABASE
+        and "`database_unavailable`"
+        not in operation["responses"].get("503", {}).get("description", "")
+    ]
+    assert missing == []

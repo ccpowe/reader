@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -413,3 +414,75 @@ async def test_retention_keeps_saved_and_newest_articles() -> None:
 
     assert kept == ["0", "3", "4"]  # newest two plus the saved one; the unsaved board item went
     assert removed == 3 and pruned_runs == 5
+
+
+def _x_post(n: int, author: str = "7", reply_to: tuple[int, str] | None = None) -> Item:
+    x = {"tweet_id": str(n), "author": {"id": author}, "completeness": "parsed"}
+    if reply_to:
+        x["reply_to"] = {"tweet_id": str(reply_to[0]), "author_id": reply_to[1]}
+    return Item(
+        native_id=str(n), kind="post", title=f"Post {n}", url=f"https://x.com/i/{n}", extra={"x": x}
+    )
+
+
+@pytest.mark.asyncio
+async def test_self_replies_are_linked_to_their_thread_root(monkeypatch) -> None:
+    async with _database(scan_initial_items=1) as (factory, config):
+        await _followed_source(factory, kind="x", config={"handle": "w"})
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page([_x_post(1)])}))
+        newest_first = [
+            _x_post(5, author="9", reply_to=(4, "7")),  # someone else replying
+            _x_post(4, reply_to=(3, "7")),  # continues the thread through 3
+            _x_post(3, reply_to=(1, "7")),  # replies to the stored root
+            _x_post(2, reply_to=(1, "8")),  # the author replying to another account
+        ]
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page(newest_first)}))
+        async with factory() as db:
+            roots = {
+                article.native_id: article.extra["x"].get("thread_root")
+                for article in await db.scalars(select(Article))
+            }
+
+    assert roots == {"1": None, "2": None, "3": "1", "4": "1", "5": None}
+
+
+async def _x_roots(factory) -> dict[str, str | None]:
+    async with factory() as db:
+        return {
+            article.native_id: article.extra["x"].get("thread_root")
+            for article in await db.scalars(select(Article))
+        }
+
+
+@pytest.mark.asyncio
+async def test_a_pinned_root_ahead_of_its_replies_still_links_them(monkeypatch) -> None:
+    async with _database(scan_initial_items=1) as (factory, config):
+        await _followed_source(factory, kind="x", config={"handle": "w"})
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page([_x_post(0)])}))
+        pinned_root = replace(_x_post(1), pinned=True)
+        batch = [pinned_root, _x_post(3, reply_to=(2, "7")), _x_post(2, reply_to=(1, "7"))]
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page(batch)}))
+        roots = await _x_roots(factory)
+
+    assert roots == {"0": None, "1": None, "2": "1", "3": "1"}
+
+
+@pytest.mark.asyncio
+async def test_a_partial_rescan_keeps_the_thread_together(monkeypatch) -> None:
+    async with _database(scan_initial_items=2) as (factory, config):
+        await _followed_source(factory, kind="x", config={"handle": "w"})
+        first = [_x_post(2, reply_to=(1, "7")), _x_post(1)]
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page(first)}))
+        # Post 2 comes back without its relations (a fallback provider), with a new reply.
+        partial = Item(
+            native_id="2",
+            kind="post",
+            title="Post 2",
+            url="https://x.com/i/2",
+            extra={"x": {"tweet_id": "2", "completeness": "partial"}},
+        )
+        batch = [_x_post(3, reply_to=(2, "7")), partial]
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page(batch)}))
+        roots = await _x_roots(factory)
+
+    assert roots == {"1": None, "2": "1", "3": "1"}

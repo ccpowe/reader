@@ -15,6 +15,7 @@ from reader.core.db import get_session
 from reader.core.errors import AppError, error_responses
 from reader.core.server_access import document_server_token
 from reader.core.settings import Settings, get_settings
+from reader.models import Source
 from reader.subscriptions import service
 from reader.subscriptions.icons import fetch_icon
 from reader.subscriptions.service import SubscriptionType, SubscriptionView
@@ -79,12 +80,17 @@ class SubscriptionResponse(BaseModel):
     created_at: datetime
 
 
+def source_icon_url(source: Source, request: Request, settings: Settings) -> str | None:
+    """The relayed icon address, or None when the source has no icon."""
+    if not source.icon_url:
+        return None
+    base = str(settings.public_api_base_url or request.base_url).rstrip("/")
+    return f"{base}/sources/{source.id}/icon"
+
+
 def _response(view: SubscriptionView, request: Request, settings: Settings) -> SubscriptionResponse:
     subscription, source = view.subscription, view.source
-    icon_url = None
-    if source.icon_url:
-        base = str(settings.public_api_base_url or request.base_url).rstrip("/")
-        icon_url = f"{base}/sources/{source.id}/icon"
+    icon_url = source_icon_url(source, request, settings)
     return SubscriptionResponse(
         id=str(subscription.id),
         source_id=str(source.id),

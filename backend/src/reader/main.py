@@ -15,6 +15,7 @@ from reader.core.errors import install_error_handlers
 from reader.core.rate_limit import RateLimiter
 from reader.core.server_access import ServerAccessMiddleware
 from reader.core.settings import get_settings
+from reader.reading.api import articles_router, feed_router, saved_router
 from reader.subscriptions.api import router as subscriptions_router
 from reader.subscriptions.api import sources_router
 from reader.system.api import router as system_router
@@ -83,6 +84,9 @@ def create_app() -> FastAPI:
         avatar_router,
         subscriptions_router,
         sources_router,
+        feed_router,
+        articles_router,
+        saved_router,
     ):
         app.include_router(router)
     app.openapi = _openapi_with_combined_security(app)

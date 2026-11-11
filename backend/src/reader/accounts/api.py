@@ -15,7 +15,7 @@ from reader.accounts import service
 from reader.accounts.auth import CurrentUser, current_user, take_attempt
 from reader.accounts.avatars import AVATAR_MAX_BYTES, AVATAR_TYPES, validate_avatar
 from reader.core.db import get_session
-from reader.core.errors import AppError, error_responses
+from reader.core.errors import DATABASE_UNAVAILABLE, AppError, error_responses
 from reader.core.server_access import document_server_token
 from reader.core.settings import Settings, get_settings
 from reader.models import User
@@ -137,7 +137,9 @@ _NOT_CONFIGURED = (503, "server_not_configured")
     "/register",
     response_model=TokensResponse,
     dependencies=[Depends(password_attempt)],
-    responses=error_responses((409, "email_taken"), _ATTEMPTS, _NOT_CONFIGURED, access="server"),
+    responses=error_responses(
+        (409, "email_taken"), _ATTEMPTS, _NOT_CONFIGURED, DATABASE_UNAVAILABLE, access="server"
+    ),
 )
 async def register(
     body: RegisterRequest,
@@ -154,7 +156,11 @@ async def register(
     response_model=TokensResponse,
     dependencies=[Depends(password_attempt)],
     responses=error_responses(
-        (401, "invalid_credentials"), _ATTEMPTS, _NOT_CONFIGURED, access="server"
+        (401, "invalid_credentials"),
+        _ATTEMPTS,
+        _NOT_CONFIGURED,
+        DATABASE_UNAVAILABLE,
+        access="server",
     ),
 )
 async def login(
@@ -175,6 +181,7 @@ async def login(
         (401, "refresh_token_reused"),
         _ATTEMPTS,
         _NOT_CONFIGURED,
+        DATABASE_UNAVAILABLE,
         access="server",
     ),
 )
@@ -187,7 +194,9 @@ async def refresh(
     return _tokens(await service.refresh(db, settings, body.refresh_token), response)
 
 
-@auth_router.post("/logout", status_code=204, responses=error_responses(access="server"))
+@auth_router.post(
+    "/logout", status_code=204, responses=error_responses(DATABASE_UNAVAILABLE, access="server")
+)
 async def logout(body: RefreshRequest, db: AsyncSession = Depends(get_session)) -> Response:
     await service.logout(db, body.refresh_token)
     return Response(status_code=204)
@@ -301,7 +310,7 @@ async def upload_avatar(
     response_class=Response,
     responses={
         200: {"content": {mime: {} for mime in AVATAR_TYPES.values()}},
-        **error_responses((404, "avatar_not_found"), access="public"),
+        **error_responses((404, "avatar_not_found"), DATABASE_UNAVAILABLE, access="public"),
     },
 )
 async def get_avatar(

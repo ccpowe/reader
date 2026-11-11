@@ -22,7 +22,7 @@ import asyncio
 import hashlib
 import logging
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -39,7 +39,12 @@ from reader.ingestion.adapters.youtube import YouTubeAdapter
 from reader.ingestion.errors import ScanError
 from reader.ingestion.items import Adapter, Item, Page
 from reader.ingestion.url_safety import PublicAsyncClient
-from reader.ingestion.x_relations import preserve_x_metadata
+from reader.ingestion.x_relations import (
+    preserve_x_metadata,
+    reply_target,
+    thread_root,
+    with_thread_root,
+)
 from reader.models import Article, ProviderUsage, Source, SourceScanRun, Subscription
 
 logger = logging.getLogger(__name__)
@@ -312,6 +317,60 @@ def _update_article(article: Article, item: Item) -> None:
     article.content_hash = content_hash
 
 
+async def _link_x_threads(db: AsyncSession, source_id: UUID, items: list[Item]) -> list[Item]:
+    """Mark self-replies with their thread root, so the feed can fold a thread into one card.
+
+    Parents are found in this batch or among stored posts, whatever the batch order
+    (a pinned root comes first). Each post is judged by what will be stored for it:
+    a partial observation keeps the relations already known.
+    """
+    batch_ids = {item.native_id for item in items}
+    targets = {target for item in items if (target := reply_target(item.extra))}
+    stored: dict[str, dict] = {
+        native_id: extra or {}
+        for native_id, extra in await db.execute(
+            select(Article.native_id, Article.extra).where(
+                Article.source_id == source_id, Article.native_id.in_(batch_ids | targets)
+            )
+        )
+    }
+    effective = {
+        item.native_id: preserve_x_metadata(stored[item.native_id], item.extra)
+        if item.native_id in stored
+        else item.extra
+        for item in items
+    }
+    roots: dict[str, str | None] = {}
+
+    def resolve(native_id: str, chain: frozenset[str]) -> str | None:
+        if native_id in roots:
+            return roots[native_id]
+        extra = effective[native_id]
+        parent_id = reply_target(extra)
+        if parent_id is None:
+            root = None
+        elif parent_id in chain:  # a reply cycle has no root
+            root = None
+        elif parent_id in effective:
+            parent = with_thread_root(effective[parent_id], resolve(parent_id, chain | {native_id}))
+            root = thread_root(extra, parent_id, parent)
+        elif parent_id in stored:
+            root = thread_root(extra, parent_id, stored[parent_id])
+        else:
+            # The parent is not stored (or was pruned): keep what was known.
+            root = (extra.get("x") or {}).get("thread_root")
+        roots[native_id] = root
+        return root
+
+    return [
+        replace(
+            item,
+            extra=with_thread_root(effective[item.native_id], resolve(item.native_id, frozenset())),
+        )
+        for item in items
+    ]
+
+
 def _apply_source_metadata(source: Source, page: Page) -> None:
     if page.source_name and not source.display_name:
         source.display_name = page.source_name.strip()[:300]
@@ -337,6 +396,8 @@ async def _store_scan(
     items = _unique([item for page in pages for item in page.items])
     async with factory() as db:
         source = await _lock_owned_source(db, claim)
+        if snapshot.kind == "x":
+            items = await _link_x_threads(db, source.id, items)
         existing = (
             {
                 article.native_id: article

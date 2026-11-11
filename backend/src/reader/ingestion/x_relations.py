@@ -1,6 +1,6 @@
 """Bounded X relationship normalization. Never persist upstream credentials/raw envelopes.
 
-The feed preview built from these relations lives in the feed module.
+The feed preview built from these relations lives in the reading module.
 """
 
 from __future__ import annotations
@@ -119,6 +119,40 @@ def normalize_x_relations(record: dict) -> dict:
     }
 
 
+def reply_target(extra: dict) -> str | None:
+    """The tweet this post replies to, if any."""
+    reply = _dict(_dict(extra.get("x")).get("reply_to"))
+    return _id(reply.get("tweet_id"))
+
+
+def thread_root(extra: dict, parent_native_id: str, parent_extra: dict) -> str | None:
+    """The root of the thread this post continues, or None when it is not a self-reply.
+
+    A self-reply has the same author ID as its parent (handles can change), and
+    neither post is a repost. The root is the parent's root, or the parent itself.
+    """
+    child, parent = _dict(extra.get("x")), _dict(parent_extra.get("x"))
+    if child.get("is_repost") or parent.get("is_repost"):
+        return None
+    author = _dict(child.get("author")).get("id")
+    if not author or author != _dict(parent.get("author")).get("id"):
+        return None
+    replied_author = _dict(child.get("reply_to")).get("author_id")
+    if replied_author and replied_author != author:
+        return None
+    return parent.get("thread_root") or parent_native_id
+
+
+def with_thread_root(extra: dict, root: str | None) -> dict:
+    x = _dict(extra.get("x"))
+    if not x or x.get("thread_root") == root:
+        return extra
+    x = {key: value for key, value in x.items() if key != "thread_root"}
+    if root:
+        x["thread_root"] = root
+    return {**extra, "x": x}
+
+
 class XAuthor(BaseModel):
     id: str | None = None
     handle: str | None = None
@@ -140,24 +174,37 @@ class XReplyPreview(BaseModel):
     handle: str | None = None
 
 
-class XThreadPreview(BaseModel):
-    loaded_count: int
-    # The root among collected posts, not necessarily the complete thread's root.
-    root_tweet_id: str | None
-    root_url: str
-
-
 class XPreview(BaseModel):
     tweet_id: str | None
-    text: str
     author: XAuthor
-    external_url: str
-    completeness: Literal["parsed", "partial", "legacy"]
+    completeness: Literal["parsed", "partial"]
     reply_to: XReplyPreview | None = None
     quote: XReferencePreview | None = None
     repost: XReferencePreview | None = None
     is_repost: bool = False
-    thread: XThreadPreview | None = None
+    # Posts in this self-reply thread that Reader has, the root included; 1 = no thread.
+    thread_count: int = 1
+
+
+def x_preview(extra: dict, thread_count: int = 1, *, quote_limit: int | None = 80) -> XPreview:
+    data = _dict(extra.get("x"))
+    references = {}
+    for kind in ("quote", "repost"):
+        ref = data.get(kind)
+        if isinstance(ref, dict):
+            text = ref.get("text")
+            if text and quote_limit:
+                text = short_text(text, quote_limit)
+            references[kind] = {**ref, "text": text}
+    return XPreview(
+        tweet_id=data.get("tweet_id"),
+        author=data.get("author") or {},
+        completeness="parsed" if data.get("completeness") == "parsed" else "partial",
+        reply_to=data.get("reply_to"),
+        is_repost=bool(data.get("is_repost")),
+        thread_count=thread_count,
+        **references,
+    )
 
 
 def short_text(text: str, limit: int) -> str:

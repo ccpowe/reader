@@ -97,7 +97,8 @@ def test_error_responses_group_codes_by_status_and_access() -> None:
     signed_in = error_responses((404, "article_not_found"), (404, "source_not_found"))
     public = error_responses((503, "not_ready"), access="public")
 
-    assert sorted(signed_in) == [401, 404, 422, 429]
+    assert sorted(signed_in) == [401, 404, 422, 429, 503]
+    assert "`database_unavailable`" in signed_in[503]["description"]
     assert "`invalid_request`" in signed_in[422]["description"]
     assert "`not_authenticated`" in signed_in[401]["description"]
     assert "`article_not_found`, `source_not_found`" in signed_in[404]["description"]

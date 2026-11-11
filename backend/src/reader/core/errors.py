@@ -75,6 +75,8 @@ def error_response(
 
 
 # Codes added automatically, by how much access a route requires.
+DATABASE_UNAVAILABLE = (503, "database_unavailable")
+
 _ACCESS_ERRORS: dict[str, tuple[tuple[int, str], ...]] = {
     "public": (),
     "server": ((401, "invalid_server_token"), (429, "too_many_attempts")),
@@ -82,6 +84,7 @@ _ACCESS_ERRORS: dict[str, tuple[tuple[int, str], ...]] = {
         (401, "invalid_server_token"),
         (429, "too_many_attempts"),
         (401, "not_authenticated"),
+        (503, "database_unavailable"),
     ),
 }
 
@@ -92,7 +95,8 @@ def error_responses(
     """OpenAPI `responses` for a route: each status lists the codes it may carry.
 
     `access` adds the gate's codes: "server" needs the deployment token, "user"
-    also a signed-in user.
+    also a signed-in user (which needs the database). Other routes that use the
+    database add `DATABASE_UNAVAILABLE` themselves.
     """
     by_status: dict[int, list[str]] = defaultdict(list)
     # Declaring 422 here also stops FastAPI adding its own {"detail": ...} schema.
