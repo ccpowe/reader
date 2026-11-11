@@ -19,6 +19,7 @@ from reader.reading.api import articles_router, feed_router, saved_router
 from reader.subscriptions.api import router as subscriptions_router
 from reader.subscriptions.api import sources_router
 from reader.system.api import router as system_router
+from reader.translation.api import preference_router, translations_router
 
 
 @asynccontextmanager
@@ -27,9 +28,12 @@ async def lifespan(app: FastAPI):
     engine = build_engine(settings) if settings.database_url else None
     app.state.engine = engine
     app.state.session_factory = build_session_factory(engine) if engine else None
+    app.state.translator = None
     try:
         yield
     finally:
+        if app.state.translator is not None:
+            await app.state.translator.aclose()
         if engine is not None:
             await engine.dispose()
 
@@ -87,6 +91,8 @@ def create_app() -> FastAPI:
         feed_router,
         articles_router,
         saved_router,
+        translations_router,
+        preference_router,
     ):
         app.include_router(router)
     app.openapi = _openapi_with_combined_security(app)

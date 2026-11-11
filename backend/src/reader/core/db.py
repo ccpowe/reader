@@ -28,6 +28,8 @@ def build_engine(settings: Settings) -> AsyncEngine:
         settings.database_url,
         connect_args={"ssl": "require"} if settings.database_ssl else {},
         pool_pre_ping=True,
+        # Errors and logs never show bound values (texts, hashes, tokens).
+        hide_parameters=True,
         pool_size=settings.database_pool_size,
         max_overflow=0,
         pool_timeout=settings.database_pool_timeout_seconds,

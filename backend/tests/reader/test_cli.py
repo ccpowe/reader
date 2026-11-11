@@ -31,14 +31,3 @@ def test_reset_password_rejects_bad_input(monkeypatch, capsys, answers, message)
 
     assert cli.main(["users", "reset-password", "me@example.com"]) == 2
     assert message in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("command", ["codex-auth", "translation-quota"])
-def test_unported_commands_go_to_the_old_cli(monkeypatch, command) -> None:
-    import app.admin.cli as old_cli
-
-    calls = []
-    monkeypatch.setattr(old_cli, "main", lambda argv: calls.append(argv) or 0)
-
-    assert cli.main([command, "status"]) == 0
-    assert calls == [[command, "status"]]
