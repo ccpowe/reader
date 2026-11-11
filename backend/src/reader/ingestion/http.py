@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+from typing import Any
 
 import httpx
 
@@ -74,3 +75,29 @@ def _retry_after_seconds(value: str | None) -> int | None:
             retry_at.replace(tzinfo=UTC) if retry_at.tzinfo is None else retry_at.astimezone(UTC)
         )
         return max(int((retry_at - datetime.now(UTC)).total_seconds()), 0)
+
+
+async def bounded_request(
+    client: httpx.AsyncClient, method: str, url: str, *, max_bytes: int, **kwargs: Any
+) -> httpx.Response:
+    """Send a request and read at most `max_bytes` of body, stopping as soon as it is exceeded.
+
+    For fixed provider endpoints (APIs, the internal Scweet service). User-supplied
+    URLs go through `url_safety.safe_get`, which also validates the destination.
+    """
+    from reader.ingestion.url_safety import read_bounded_body
+
+    headers = dict(kwargs.pop("headers", None) or {})
+    # A compressed body could expand past the limit before we could check it.
+    headers.setdefault("Accept-Encoding", "identity")
+    async with client.stream(method, url, headers=headers, **kwargs) as response:
+        declared = response.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > max_bytes:
+            raise ScanError("response_too_large", "Upstream response exceeded size limit.")
+        content = await read_bounded_body(response, max_bytes)
+        clean = response.headers.copy()
+        for header in ("content-encoding", "content-length", "transfer-encoding"):
+            clean.pop(header, None)
+        return httpx.Response(
+            response.status_code, headers=clean, content=content, request=response.request
+        )

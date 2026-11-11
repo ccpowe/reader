@@ -10,8 +10,8 @@ from typing import Any
 
 import httpx
 
-from reader.ingestion.errors import ScanError
-from reader.ingestion.http import ensure_response_size
+from reader.ingestion.errors import ScanError, upstream_errors
+from reader.ingestion.http import bounded_request
 from reader.ingestion.items import Item, Media, Page
 from reader.ingestion.x_relations import normalize_x_relations
 
@@ -37,6 +37,10 @@ class XAdapter:
         self._find_icon = find_icon
 
     async def fetch_page(self, cursor: str | None, limit: int) -> Page:
+        with upstream_errors("scweet"):
+            return await self._fetch(cursor, limit)
+
+    async def _fetch(self, cursor: str | None, limit: int) -> Page:
         body: dict[str, Any] = {"usernames": [self._handle], "limit": min(limit, 50)}
         if cursor:
             # Scweet replays the previous page boundary before continuing.
@@ -46,12 +50,17 @@ class XAdapter:
                 body["boundary_ids"] = list(saved["boundary_ids"])
             except (ValueError, KeyError, TypeError) as exc:
                 raise ScanError("cursor_invalid", "The X page cursor is invalid.") from exc
-        response = await self._client.post(
-            f"{self._base}/v1/profiles/tweets", headers=self._headers, json=body, timeout=180.0
+        response = await bounded_request(
+            self._client,
+            "POST",
+            f"{self._base}/v1/profiles/tweets",
+            max_bytes=self._max_bytes,
+            headers=self._headers,
+            json=body,
+            timeout=180.0,
         )
         if response.is_error:
             raise _service_error(response)
-        ensure_response_size(response, self._max_bytes)
         payload = response.json()
         raw_items = payload.get("items") if isinstance(payload, dict) else None
         if not isinstance(raw_items, list):
@@ -102,14 +111,17 @@ class XAdapter:
 
     async def _lookup_icon(self) -> str | None:
         try:
-            response = await self._client.post(
+            response = await bounded_request(
+                self._client,
+                "POST",
                 f"{self._base}/v1/profiles/info",
+                max_bytes=self._max_bytes,
                 headers=self._headers,
                 json={"usernames": [self._handle]},
                 timeout=60.0,
             )
             rows = response.json().get("items") if not response.is_error else None
-        except (httpx.HTTPError, ValueError, AttributeError):
+        except (httpx.HTTPError, ScanError, ValueError, AttributeError):
             return None
         if not isinstance(rows, list):
             return None

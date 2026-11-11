@@ -302,7 +302,7 @@ async def safe_get(
                         )
                 except ValueError:
                     pass
-            content = await _read_bounded_body(response, max_response_bytes)
+            content = await read_bounded_body(response, max_response_bytes)
             # The returned body is decoded; prevent HTTPX decoding it again.
             headers = response.headers.copy()
             for header in ("content-encoding", "content-length", "transfer-encoding"):
@@ -331,7 +331,7 @@ async def safe_get(
     raise UnsafeSourceUrl("Source URL redirected too many times.")
 
 
-async def _read_bounded_body(response: httpx.Response, limit: int) -> bytes:
+async def read_bounded_body(response: httpx.Response, limit: int) -> bytes:
     """Bound allocations before decoding an untrusted compressed body."""
     if limit < 0:
         raise ValueError("max_response_bytes must be non-negative")

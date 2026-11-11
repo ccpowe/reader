@@ -13,6 +13,7 @@ from reader.ingestion.adapters.x import XAdapter
 from reader.ingestion.adapters.youtube import YouTubeAdapter
 from reader.ingestion.errors import ScanError
 from reader.ingestion.items import Item, Media
+from reader.ingestion.url_safety import UnsafeSourceUrl
 from reader.ingestion.x_relations import normalize_x_relations
 
 FEED = """<?xml version="1.0"?><rss version="2.0"><channel><title>Example</title>
@@ -342,3 +343,154 @@ def test_x_relations_are_parsed_from_graphql_records() -> None:
     assert parsed["reply_to"]["tweet_id"] == "199"
     assert parsed["quote"]["availability"] == "unavailable"
     assert parsed["completeness"] == "parsed"
+
+
+# --- Review fixes ------------------------------------------------------------------
+
+OLDEST_FIRST = """<?xml version="1.0"?><rss version="2.0"><channel><title>Asc</title>
+<item><guid>undated</guid><title>Undated</title><link>https://e.com/u</link></item>
+<item><guid>old</guid><title>Old</title><link>https://e.com/o</link>
+<pubDate>Mon, 01 Jan 2024 10:00:00 +0000</pubDate></item>
+<item><guid>new</guid><title>New</title><link>https://e.com/n</link>
+<pubDate>Wed, 03 Jan 2024 10:00:00 +0000</pubDate></item>
+</channel></rss>"""
+
+
+@pytest.mark.asyncio
+async def test_rss_orders_newest_first_before_cutting_to_the_limit(monkeypatch) -> None:
+    _serve(monkeypatch, rss, OLDEST_FIRST)
+    async with httpx.AsyncClient() as client:
+        adapter = RssAdapter(client, "https://e.com/f", max_bytes=1 << 20)
+        everything = await adapter.fetch_page(None, 10)
+        newest_only = await adapter.fetch_page(None, 1)
+
+    assert [item.native_id for item in everything.items] == ["new", "old", "undated"]
+    assert [item.native_id for item in newest_only.items] == ["new"]
+
+
+@pytest.mark.asyncio
+async def test_reddit_keeps_the_popularity_order(monkeypatch) -> None:
+    _serve(monkeypatch, rss, OLDEST_FIRST)
+    async with httpx.AsyncClient() as client:
+        page = await RedditHotAdapter(client, subreddit="python", max_bytes=1 << 20).fetch_page(
+            None, 10
+        )
+
+    assert [item.native_id for item in page.items] == ["undated", "old", "new"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure", "code"),
+    [
+        (httpx.ReadTimeout("slow"), "rss_timeout"),
+        (httpx.ConnectError("refused"), "rss_network_error"),
+        (UnsafeSourceUrl("private address"), "unsafe_url"),
+    ],
+)
+async def test_rss_upstream_failures_become_scan_errors(monkeypatch, failure, code) -> None:
+    async def failing_get(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(rss, "safe_get", failing_get)
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(ScanError) as raised:
+            await RssAdapter(client, "https://e.com/f", max_bytes=1 << 20).fetch_page(None, 10)
+
+    assert raised.value.code == code
+
+
+def _youtube_failing(status: int | None = None, *, body: bytes | None = None):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if status is None:
+            raise httpx.ReadTimeout("slow", request=request)
+        return httpx.Response(status, content=body or b"{}")
+
+    return httpx.MockTransport(handler)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transport",
+    [
+        _youtube_failing(404),
+        _youtube_failing(429),
+        _youtube_failing(503),
+        _youtube_failing(None),
+        _youtube_failing(200, body=b"<html>not json</html>"),
+    ],
+)
+async def test_any_youtube_api_failure_falls_back_to_atom(monkeypatch, transport) -> None:
+    seen: list[str] = []
+    _serve(monkeypatch, rss, FEED, seen=seen)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = YouTubeAdapter(
+            client,
+            channel_id="UC1",
+            feed_url="https://www.youtube.com/feeds/videos.xml?channel_id=UC1",
+            api_key="key",
+            uploads_playlist_id="UU1",
+            max_bytes=1 << 20,
+        )
+        page = await adapter.fetch_page(None, 10)
+
+    assert adapter.used_fallback and seen and page.items
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("transport", "code"),
+    [
+        (_youtube_failing(None), "scweet_timeout"),
+        (_youtube_failing(200, body=b"not json"), "scweet_invalid_response"),
+        (_youtube_failing(200, body=b'{"items": "nope"}'), "scweet_invalid_response"),
+    ],
+)
+async def test_x_upstream_failures_become_scan_errors(transport, code) -> None:
+    with pytest.raises(ScanError) as raised:
+        await _x(transport).fetch_page(None, 10)
+
+    assert raised.value.code == code
+
+
+@pytest.mark.asyncio
+async def test_oversized_responses_stop_reading_early() -> None:
+    chunks_sent = 0
+
+    async def endless():
+        nonlocal chunks_sent
+        for _ in range(1000):
+            chunks_sent += 1
+            yield b"x" * 1024
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=endless())
+
+    adapter = XAdapter(
+        httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        handle="writer",
+        service_url="http://scweet",
+        service_token="t",
+        max_bytes=10 * 1024,
+    )
+
+    with pytest.raises(ScanError) as raised:
+        await adapter.fetch_page(None, 10)
+
+    assert raised.value.code == "response_too_large"
+    assert chunks_sent < 100  # stopped near the 10 KiB limit, not after 1 MiB
+
+
+def test_youtube_keeps_the_whole_description_as_the_body() -> None:
+    from reader.ingestion.adapters.youtube import _video_item
+
+    description = "Chapters:\n" + "x" * 1200 + "\n<a> & tail"
+    video = {"id": "v1", "snippet": {"title": "T", "description": description}}
+    changed = {"id": "v1", "snippet": {"title": "T", "description": description + " edit"}}
+
+    item = _video_item(video)
+
+    assert len(item.summary) <= 1000
+    assert item.body_html.endswith("&lt;a&gt; &amp; tail")
+    assert "<br>" in item.body_html
+    assert item.content_hash() != _video_item(changed).content_hash()

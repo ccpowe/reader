@@ -11,7 +11,7 @@ import feedparser
 import httpx
 from bs4 import BeautifulSoup
 
-from reader.ingestion.errors import ScanError
+from reader.ingestion.errors import ScanError, upstream_errors
 from reader.ingestion.html_safety import plain_text, sanitize_html
 from reader.ingestion.http import ensure_response_size, raise_for_provider_status
 from reader.ingestion.items import ArticleKind, Item, Media, Page, bounded_native_id
@@ -19,6 +19,7 @@ from reader.ingestion.site_icons import discover_site_icon_url
 from reader.ingestion.url_safety import safe_get
 
 USER_AGENT = "Reader/3 (+https://example.invalid)"
+_UNDATED = datetime.min.replace(tzinfo=UTC)
 
 
 class RssAdapter:
@@ -32,6 +33,7 @@ class RssAdapter:
         kind: ArticleKind = "article",
         youtube: bool = False,
         provider: str = "rss",
+        newest_first: bool = True,
     ) -> None:
         self._client = client
         self._url = url
@@ -40,8 +42,14 @@ class RssAdapter:
         self._kind = kind
         self._youtube = youtube
         self._provider = provider
+        # Feeds are usually newest first but not always; popularity lists opt out.
+        self._newest_first = newest_first
 
     async def fetch_page(self, cursor: str | None, limit: int) -> Page:
+        with upstream_errors(self._provider):
+            return await self._fetch(limit)
+
+    async def _fetch(self, limit: int) -> Page:
         response = await safe_get(
             self._client,
             self._url,
@@ -54,9 +62,11 @@ class RssAdapter:
         parsed = feedparser.parse(response.content)
         if getattr(parsed, "bozo", False) and not parsed.entries:
             raise ScanError("invalid_feed", "The RSS/Atom response could not be parsed.")
-        items = [
-            item for entry in parsed.entries[:limit] if (item := self._to_item(entry)) is not None
-        ]
+        items = [item for entry in parsed.entries if (item := self._to_item(entry)) is not None]
+        if self._newest_first:
+            # Stable: undated items keep their feed order, after the dated ones.
+            items.sort(key=lambda item: item.published_at or _UNDATED, reverse=True)
+        items = items[:limit]
         feed = parsed.feed
         icon = None
         if self._find_icon:

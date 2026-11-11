@@ -29,7 +29,12 @@ class RedditHotAdapter:
     def __init__(self, client: httpx.AsyncClient, *, subreddit: str, max_bytes: int) -> None:
         self._subreddit = subreddit
         self._feed = RssAdapter(
-            client, hot_feed_url(subreddit), max_bytes=max_bytes, kind="post", provider="reddit"
+            client,
+            hot_feed_url(subreddit),
+            max_bytes=max_bytes,
+            kind="post",
+            provider="reddit",
+            newest_first=False,
         )
 
     async def fetch_page(self, cursor: str | None, limit: int) -> Page:

@@ -9,6 +9,9 @@ import httpx
 
 from reader.ingestion.url_safety import UnsafeSourceUrl, safe_get
 
+# A channel page is large but bounded; nothing past this is needed.
+_CHANNEL_PAGE_MAX_BYTES = 5 * 1024 * 1024
+
 _CHANNEL_ID_RE = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
 _YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com"}
 
@@ -41,6 +44,7 @@ async def resolve_youtube_channel_id(reference: str, client: httpx.AsyncClient) 
             value,
             headers={"User-Agent": "Mozilla/5.0 (compatible; ReaderAggregator/0.1)"},
             timeout=30.0,
+            max_response_bytes=_CHANNEL_PAGE_MAX_BYTES,
         )
         response.raise_for_status()
     except (httpx.HTTPError, UnsafeSourceUrl) as exc:

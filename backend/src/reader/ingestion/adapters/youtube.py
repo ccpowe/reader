@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
+import html
 from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
 
 from reader.ingestion.adapters.rss import USER_AGENT, RssAdapter
-from reader.ingestion.errors import ScanError
-from reader.ingestion.http import ensure_response_size, raise_for_provider_status
+from reader.ingestion.errors import ScanError, upstream_errors
+from reader.ingestion.http import bounded_request, raise_for_provider_status
 from reader.ingestion.items import Item, Media, Page, parse_iso_datetime
 from reader.ingestion.url_safety import safe_get
 
 API_ROOT = "https://www.googleapis.com/youtube/v3"
-# Fall back to Atom on these instead of failing the scan.
-_FALLBACK_CODES = frozenset(
-    {"youtube_quota_exceeded", "youtube_http_400", "youtube_http_401", "youtube_http_403"}
-)
+# Any API failure (quota, 4xx, 5xx, timeout, bad response) falls back to the public Atom feed.
+_API_FAILURE_PREFIXES = ("youtube_quota", "youtube_http_", "youtube_timeout", "youtube_network")
+_API_FAILURE_CODES = frozenset({"youtube_invalid_response"})
 
 
 class YouTubeAdapter:
@@ -46,9 +46,10 @@ class YouTubeAdapter:
         if not self._api_key or self.used_fallback:
             return await self._atom_page(limit)
         try:
-            return await self._api_page(cursor, min(limit, 50))
+            with upstream_errors("youtube"):
+                return await self._api_page(cursor, min(limit, 50))
         except ScanError as exc:
-            if exc.code in _FALLBACK_CODES or exc.code.startswith("youtube_http_5"):
+            if exc.code.startswith(_API_FAILURE_PREFIXES) or exc.code in _API_FAILURE_CODES:
                 return await self._atom_page(limit)
             raise
 
@@ -132,15 +133,19 @@ class YouTubeAdapter:
         }
 
     async def _get(self, resource: str, params: dict[str, str]) -> dict[str, Any]:
-        response = await self._client.get(
-            f"{API_ROOT}/{resource}", params={**params, "key": self._api_key}, timeout=30.0
+        response = await bounded_request(
+            self._client,
+            "GET",
+            f"{API_ROOT}/{resource}",
+            max_bytes=self._max_bytes,
+            params={**params, "key": self._api_key},
+            timeout=30.0,
         )
         if response.status_code == 403 and _quota_exhausted(response):
             raise ScanError(
                 "youtube_quota_exceeded", "The YouTube Data API daily quota is used up."
             )
         raise_for_provider_status(response, "youtube")
-        ensure_response_size(response, self._max_bytes)
         payload = response.json()
         if not isinstance(payload, dict):
             raise ScanError("youtube_invalid_response", "YouTube returned invalid JSON.")
@@ -185,6 +190,8 @@ def _video_item(video: dict[str, Any] | None) -> Item | None:
         published_at=parse_iso_datetime(snippet.get("publishedAt")),
         author=str(snippet.get("channelTitle") or "").strip() or None,
         summary=_cut(" ".join(description.split())) if description else None,
+        # The full description (chapters, links) is the body; it is plain text.
+        body_html=html.escape(description).replace("\n", "<br>") if description else None,
         media=(Media(thumbnail),) if thumbnail else (),
         extra={
             "duration": details.get("duration"),
