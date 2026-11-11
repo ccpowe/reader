@@ -41,15 +41,20 @@ _BOARD_ERRORS = (
 )
 
 
-async def get_boards(request: Request) -> Boards:
-    """One Boards per API process (async: no race between the check and the assignment)."""
-    boards = getattr(request.app.state, "boards", None)
+def boards_of(app) -> Boards:
+    """One Boards per API process, created on first use. Called on the event loop with
+    no await between the check and the assignment, so two cannot be created."""
+    boards = getattr(app.state, "boards", None)
     if boards is None:
-        factory = request.app.state.session_factory
+        factory = app.state.session_factory
         if factory is None:
             raise AppError(503, "database_unavailable", "The database is not configured.")
-        boards = request.app.state.boards = Boards(factory, get_settings())
+        boards = app.state.boards = Boards(factory, get_settings())
     return boards
+
+
+async def get_boards(request: Request) -> Boards:
+    return boards_of(request.app)
 
 
 class TranslatedText(BaseModel):

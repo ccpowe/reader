@@ -86,6 +86,7 @@ async def test_feed_scopes_and_pages(monkeypatch) -> None:
             "/feed", params={"limit": 2, "cursor": first.json()["next_cursor"]}, headers=auth
         )
         group = await client.get("/feed", params={"group": "News"}, headers=auth)
+        everything = await client.get("/feed", params={"scope": "all"}, headers=auth)
         only = await client.get("/feed", params={"subscription": str(hidden.id)}, headers=auth)
         disabled = await client.get("/feed", params={"subscription": str(off.id)}, headers=auth)
 
@@ -102,6 +103,8 @@ async def test_feed_scopes_and_pages(monkeypatch) -> None:
     assert item["source"]["subscription_id"] == str(home.id) and item["sequence"] == 3
     assert item["x"] is None and item["is_saved"] is False
     assert _titles(group) == ["Item 4", "Item 3", "Item 2", "Item 1"]
+    assert _titles(everything) == ["Item 4", "Item 3", "Item 2", "Item 1"]  # not the disabled one
+    assert item["source"]["group"] == "News"
     assert _titles(only) == ["Item 4"]
     assert _titles(disabled) == ["Item 5"]  # asked for by name, so shown
     assert _code(foreign) == (404, "subscription_not_found")

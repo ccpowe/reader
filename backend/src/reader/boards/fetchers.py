@@ -42,6 +42,8 @@ class BoardItem(BaseModel):
     author_handle: str | None = None
     # Where the link points, e.g. "github.com" on HN or "r/python · Hot".
     source_label: str | None = None
+    # The comments page (HN item, Reddit post), when it differs from `url` or is it.
+    discussion_url: str | None = None
     published_at: datetime | None = None
     image_urls: list[str] = []
     video_url: str | None = None
@@ -132,13 +134,15 @@ async def fetch_hacker_news(limit: int) -> list[BoardItem]:
     for data in raw:
         if not data or data.get("type") != "story" or not data.get("title"):
             continue
-        url = _http_url(data.get("url")) or f"https://news.ycombinator.com/item?id={data.get('id')}"
+        discussion = f"https://news.ycombinator.com/item?id={data.get('id')}"
+        url = _http_url(data.get("url")) or discussion
         items.append(
             BoardItem(
                 rank=len(items) + 1,
                 title=str(data["title"]),
                 url=url,
                 source_label=_host(url),
+                discussion_url=discussion,
                 author=_text(data.get("by")),
                 score=_count(data.get("score")),
                 comments=_count(data.get("descendants")),
@@ -392,6 +396,7 @@ async def fetch_reddit(subreddit: str, variant: str, limit: int) -> list[BoardIt
                 title=title,
                 url=link,
                 source_label=label,
+                discussion_url=link,
                 description=soup.get_text(" ", strip=True)[:280] or None,
                 author=str(entry.get("author") or "").strip() or None,
                 image_urls=[

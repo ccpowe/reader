@@ -84,6 +84,8 @@ class User(Base):
     avatar_version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
+    # SHA-256 of the personal token an agent sends to /mcp; empty = no MCP access.
+    mcp_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 

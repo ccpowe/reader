@@ -27,12 +27,14 @@ from reader.models import Article, SavedArticle, Source, Subscription
 class FeedScope:
     """Which subscriptions and which time window a feed query covers.
 
-    With no subscription or group: the enabled subscriptions shown on home.
+    With no subscription or group: the enabled subscriptions shown on home, or all
+    enabled ones with `everything` (agents briefing on every subscription).
     `since` asks for updates, so first-scan baseline items are left out.
     """
 
     subscription_id: UUID | None = None
     group: str | None = None
+    everything: bool = False
     since: datetime | None = None
     until: datetime | None = None
 
@@ -138,7 +140,7 @@ def _scope_conditions(user_id: UUID, scope: FeedScope) -> list[ColumnElement]:
         conditions.append(Subscription.is_enabled.is_(True))
         if scope.group is not None:
             conditions.append(Subscription.group_name == scope.group)
-        else:
+        elif not scope.everything:
             conditions.append(Subscription.include_in_home.is_(True))
     conditions += _in_window(Article, scope)
     conditions.append(~_folded_into_root(scope))

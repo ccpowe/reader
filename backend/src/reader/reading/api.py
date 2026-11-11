@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -34,6 +34,11 @@ saved_router = APIRouter(
 )
 
 _SUMMARY_LIMIT = 280
+Scope = Literal["home", "all"]
+_SCOPE_HELP = (
+    "Without subscription/group: home = enabled subscriptions shown on home; "
+    "all = every enabled subscription."
+)
 _ARTICLE_NOT_FOUND = (404, "article_not_found")
 _SUBSCRIPTION_NOT_FOUND = (404, "subscription_not_found")
 _BAD_CURSOR = (422, "invalid_cursor")
@@ -45,6 +50,7 @@ class SourceRef(BaseModel):
     source_id: str
     # Empty when the user no longer follows the source (e.g. a saved article).
     subscription_id: str | None
+    group: str | None = None
     type: str
     name: str | None
     icon_url: str | None
@@ -112,6 +118,7 @@ def _source_ref(
     return SourceRef(
         source_id=str(source.id),
         subscription_id=str(subscription.id) if subscription else None,
+        group=subscription.group_name if subscription else None,
         type=source.kind,
         name=(subscription.custom_name if subscription else None) or source.display_name,
         icon_url=source_icon_url(source, request, settings),
@@ -179,6 +186,7 @@ async def get_feed(
     request: Request,
     subscription: UUID | None = Query(default=None, description="Only this subscription."),
     group: str | None = Query(default=None, max_length=120, description="Only this group."),
+    scope: Scope = Query(default="home", description=_SCOPE_HELP),
     since: AwareDatetime | None = Query(
         default=None, description="Updates seen from this time; leaves out first-scan items."
     ),
@@ -194,7 +202,13 @@ async def get_feed(
     Without `subscription` or `group`: the enabled subscriptions shown on home.
     An X self-reply thread appears once, as its first post, with `x.thread_count`.
     """
-    scope = FeedScope(subscription_id=subscription, group=group, since=since, until=until)
+    scope = FeedScope(
+        subscription_id=subscription,
+        group=group,
+        since=since,
+        until=until,
+        everything=scope == "all",
+    )
     rows, has_more = await service.feed_page(db, user.id, scope, after=_after(cursor), limit=limit)
     translations = await title_translations(
         db, user.id, settings, [row.article.title for row in rows]
@@ -226,12 +240,17 @@ async def get_feed_summary(
     since: AwareDatetime = Query(description="Count updates seen from this time."),
     until: AwareDatetime | None = Query(default=None, description="Up to this time; default now."),
     group: str | None = Query(default=None, max_length=120),
+    scope: Scope = Query(default="home", description=_SCOPE_HELP),
     user: CurrentUser = Depends(current_user),
     db: AsyncSession = Depends(get_session),
 ):
     """How many feed items each subscription has in a time window (same rules as /feed)."""
     until = until or datetime.now(UTC)
-    rows = await service.feed_summary(db, user.id, FeedScope(group=group, since=since, until=until))
+    rows = await service.feed_summary(
+        db,
+        user.id,
+        FeedScope(group=group, since=since, until=until, everything=scope == "all"),
+    )
     return FeedSummary(
         since=since,
         until=until,

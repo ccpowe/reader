@@ -6,6 +6,8 @@ concurrent logins, refreshes and password changes cannot deadlock.
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -203,6 +205,41 @@ async def reset_password(db: AsyncSession, email: str, new_password: str) -> UUI
     await _revoke_all_sessions(db, user.id)
     await db.commit()
     return user.id
+
+
+# --- MCP token -------------------------------------------------------------------
+
+MCP_TOKEN_PREFIX = "rmcp_"
+
+
+def _mcp_token_hash(token: str) -> str:
+    # A random 256-bit token needs no slow hash; SHA-256 keeps lookup by value possible.
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+async def create_mcp_token(db: AsyncSession, email: str) -> str:
+    """Issue the user's MCP token, replacing any earlier one. Shown once, stored hashed."""
+    user = await _lock_user(db, email=email)
+    if user is None:
+        raise AppError(404, "user_not_found", "No user with this email.")
+    token = MCP_TOKEN_PREFIX + secrets.token_urlsafe(32)
+    user.mcp_token_hash = _mcp_token_hash(token)
+    await db.commit()
+    return token
+
+
+async def revoke_mcp_token(db: AsyncSession, email: str) -> None:
+    user = await _lock_user(db, email=email)
+    if user is None:
+        raise AppError(404, "user_not_found", "No user with this email.")
+    user.mcp_token_hash = None
+    await db.commit()
+
+
+async def user_for_mcp_token(db: AsyncSession, token: str) -> UUID | None:
+    if not token.startswith(MCP_TOKEN_PREFIX) or len(token) > 200:
+        return None
+    return await db.scalar(select(User.id).where(User.mcp_token_hash == _mcp_token_hash(token)))
 
 
 async def get_user(db: AsyncSession, user_id: UUID) -> User:

@@ -4,6 +4,7 @@ reader-admin users reset-password EMAIL
 reader-admin codex-auth import --source PATH|- [--replace]   (a dedicated Codex login)
 reader-admin codex-auth status | refresh
 reader-admin translation usage                                 (characters used today)
+reader-admin mcp-token create|revoke EMAIL                     (personal token for /mcp)
 
 Output is JSON and never contains credentials.
 """
@@ -40,6 +41,13 @@ def build_parser() -> argparse.ArgumentParser:
     actions = users.add_subparsers(dest="action", required=True)
     reset = actions.add_parser("reset-password", help="set a password and end all sessions")
     reset.add_argument("email")
+
+    mcp = commands.add_parser("mcp-token", help="the personal token an agent uses for /mcp")
+    mcp_actions = mcp.add_subparsers(dest="action", required=True)
+    create = mcp_actions.add_parser("create", help="issue a token (replaces the old one)")
+    create.add_argument("email")
+    revoke = mcp_actions.add_parser("revoke", help="remove the token")
+    revoke.add_argument("email")
 
     codex = commands.add_parser("codex-auth", help="manage Reader's Codex subscription login")
     codex_actions = codex.add_subparsers(dest="action", required=True)
@@ -99,6 +107,20 @@ def _codex_auth(settings: Settings, action: str, source: str | None, replace: bo
     return subscription_auth_status(path)
 
 
+async def _mcp_token(settings: Settings, action: str, email: str) -> dict:
+    engine = build_engine(settings)
+    try:
+        async with build_session_factory(engine)() as db:
+            if action == "create":
+                token = await accounts.create_mcp_token(db, email)
+                # The only time the token is shown; it is stored as a hash.
+                return {"status": "created", "token": token}
+            await accounts.revoke_mcp_token(db, email)
+            return {"status": "revoked"}
+    finally:
+        await engine.dispose()
+
+
 async def _translation_usage(settings: Settings) -> dict:
     engine = build_engine(settings)
     try:
@@ -114,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "users" and args.action == "reset-password":
             email = normalize_email(args.email)
             result = asyncio.run(_reset_password(email, _read_new_password()))
+        elif args.command == "mcp-token":
+            result = asyncio.run(_mcp_token(settings, args.action, normalize_email(args.email)))
         elif args.command == "codex-auth":
             result = _codex_auth(
                 settings,

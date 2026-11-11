@@ -24,10 +24,7 @@ dependencies = [
     "pyjwt[crypto]>=2.10.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "uvicorn[standard]>=0.34.0",
-]
-
-[project.optional-dependencies]
-mcp = [
+    # /mcp is served by the API itself.
     "mcp>=2.3.0,<3",
     "youtube-transcript-api>=1.2.4,<2",
 ]
@@ -35,7 +32,6 @@ mcp = [
 [project.scripts]
 reader-worker = "reader.worker:main"
 reader-admin = "reader.cli:main"
-reader-mcp = "app.mcp.server:main"
 
 [dependency-groups]
 dev = [

@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from starlette.routing import Route
 
 from reader.accounts.api import auth_router, avatar_router, me_router
 from reader.boards.api import boards_router, saved_board_router
@@ -16,6 +17,7 @@ from reader.core.errors import install_error_handlers
 from reader.core.rate_limit import RateLimiter
 from reader.core.server_access import ServerAccessMiddleware
 from reader.core.settings import get_settings
+from reader.mcp.endpoint import McpEndpoint
 from reader.reading.api import articles_router, feed_router, saved_router
 from reader.subscriptions.api import router as subscriptions_router
 from reader.subscriptions.api import sources_router
@@ -32,9 +34,10 @@ async def lifespan(app: FastAPI):
     app.state.translator = None
     app.state.boards = None
     try:
-        yield
+        async with app.state.mcp.running():
+            yield
     finally:
-        for owner in (app.state.translator, app.state.boards):
+        for owner in (app.state.translator, app.state.boards, app.state.mcp):
             if owner is not None:
                 await owner.aclose()
         if engine is not None:
@@ -100,6 +103,11 @@ def create_app() -> FastAPI:
         preference_router,
     ):
         app.include_router(router)
+    # MCP for agents (Streamable HTTP): not part of the app's OpenAPI contract.
+    app.state.mcp = McpEndpoint()
+    app.router.routes.append(
+        Route("/mcp", endpoint=app.state.mcp, methods=["GET", "POST", "DELETE"])
+    )
     app.openapi = _openapi_with_combined_security(app)
     return app
 

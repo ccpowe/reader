@@ -1614,6 +1614,7 @@ dependencies = [
     { name = "langchain" },
     { name = "langchain-deepseek" },
     { name = "langchain-openai" },
+    { name = "mcp" },
     { name = "pillow" },
     { name = "pwdlib", extra = ["argon2", "bcrypt"] },
     { name = "pydantic-settings" },
@@ -1621,11 +1622,6 @@ dependencies = [
     { name = "regex" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-mcp = [
-    { name = "mcp" },
     { name = "youtube-transcript-api" },
 ]
 
@@ -1649,7 +1645,7 @@ requires-dist = [
     { name = "langchain", specifier = "==1.4.0" },
     { name = "langchain-deepseek", specifier = ">=1.1.0" },
     { name = "langchain-openai", specifier = ">=1.1.0" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.3.0,<3" },
+    { name = "mcp", specifier = ">=2.3.0,<3" },
     { name = "pillow", specifier = ">=11.0.0" },
     { name = "pwdlib", extras = ["argon2", "bcrypt"], specifier = ">=0.3.0" },
     { name = "pydantic-settings", specifier = ">=2.7.0" },
@@ -1657,9 +1653,8 @@ requires-dist = [
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
-    { name = "youtube-transcript-api", marker = "extra == 'mcp'", specifier = ">=1.2.4,<2" },
+    { name = "youtube-transcript-api", specifier = ">=1.2.4,<2" },
 ]
-provides-extras = ["mcp"]
 
 [package.metadata.requires-dev]
 dev = [
