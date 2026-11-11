@@ -1,0 +1,33 @@
+@import "tailwindcss";
+@import "uniwind";
+
+/*
+ * Layout exploration (design step 4): neutral grays only, light and dark. The quietpaper tokens
+ * (mobile/design/style/tokens.css) replace these in step 5. Uniwind follows the system theme.
+ */
+@layer theme {
+  :root {
+    @variant light {
+      --color-background: #ffffff;
+      --color-foreground: #1f1f1f;
+      --color-muted: #f2f2f2;
+      --color-muted-foreground: #6b6b6b;
+      --color-subtle-foreground: #9a9a9a;
+      --color-border: #e5e5e5;
+      --color-pressed: rgba(0, 0, 0, 0.06);
+      --color-warning: #8a5a00;
+      --color-danger: #b42318;
+    }
+    @variant dark {
+      --color-background: #181818;
+      --color-foreground: #ececec;
+      --color-muted: #262626;
+      --color-muted-foreground: #a3a3a3;
+      --color-subtle-foreground: #737373;
+      --color-border: #2e2e2e;
+      --color-pressed: rgba(255, 255, 255, 0.08);
+      --color-warning: #e0b050;
+      --color-danger: #f97066;
+    }
+  }
+}

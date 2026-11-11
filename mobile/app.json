@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.ccpower.reader",
       "supportsTablet": true,
@@ -53,12 +53,20 @@
         "expo-localization",
         {
           "supportedLocales": {
-            "ios": ["zh-Hans", "en"],
-            "android": ["zh-Hans", "en"]
+            "ios": [
+              "zh-Hans",
+              "en"
+            ],
+            "android": [
+              "zh-Hans",
+              "en"
+            ]
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-status-bar",
+      "expo-router"
     ],
     "extra": {
       "eas": {

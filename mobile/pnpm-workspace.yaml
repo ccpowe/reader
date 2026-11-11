@@ -13,6 +13,8 @@ minimumReleaseAgeExclude:
   - expo-build-properties@57.0.17
   - expo-image-picker@57.0.16
   - expo-secure-store@57.0.4
+  - lucide-react-native@1.72.0
 
-patchedDependencies:
-  react-native-webview@13.16.1: patches/react-native-webview+13.16.1.patch
+# patches/react-native-webview+13.16.1.patch (Android edge-to-edge insets for WebView and
+# fullscreen video) is not applied since the SDK 58 upgrade (react-native-webview 14). Expo Go
+# does not use it; before the next APK build, check whether 14.x fixes the issue, else port it.

@@ -26,8 +26,13 @@
 | P18 | 2026-11-11 | MCP 令牌管理界面放到第二期（第一期用 `reader-admin mcp-token`） | 审阅 PRODUCT 草稿：「都按建议」 | |
 | P19 | 2026-11-11 | 收藏入口沿用现状：卡片右侧书签图标，点一下收藏 / 取消，不打开内容 | 审阅 PRODUCT 草稿：「收藏沿用」 | |
 | P20 | 2026-11-11 | 做深色模式（第一期）；跟随系统，【待定】是否另给手动切换 | 审阅 PRODUCT 草稿：「深色做」 | |
+| P21 | 2026-11-11 | 前端升级到 Expo SDK 58（React Native 0.88、React 19.3），以便用手机上已自动升级的 Expo Go 58 看原型 | 「我手机上好像是 58 了 自动升级了」→「ok 升级」 | |
+| P22 | 2026-11-11 | 第 3 步（理清概念）跳过：对象只有订阅、文章、榜单条目、收藏，关系已在后端设计中理清；第 4 步探索 SLICE.md 的 4 个区域，由主会话自己做原型（不另开子 Agent），用 Expo Go 在手机上看 | 「可以。有expo go」 | |
+
+> 技术细节（在 P4 意图内）：样式用 uniwind（Tailwind 4 的 React Native 实现，React Native Reusables 的默认搭档，wandrun 在 SDK 57 上验证过）而不是 NativeWind；主题是 CSS 变量，便于搬入 quietpaper 的 `tokens.css` 并做浅色 / 深色两套。
 
 ## 待用户确认（不能当作决策使用）
 - 风格包来自 Notion 桌面网页，手机组件（底部标签栏、底部弹层、列表行按压、安全区）需在校准时补充
 - quietpaper 只有浅色；深色模式需在第 6 步按角色变量重写一套并校准
 - TechTwitter：本机网络出口被 Vercel 人机验证拦截；部署到 VPS 后试订阅 `https://www.techtwitter.com/rss` 并看榜单是否恢复
+- 打包 APK 前：`patches/react-native-webview+13.16.1.patch`（Android 全面屏下 WebView 与全屏视频的安全区）在 WebView 14 上是否还需要，需要就移植
