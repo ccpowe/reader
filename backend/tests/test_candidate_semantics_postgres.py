@@ -8,11 +8,10 @@ import pytest
 from sqlalchemy import select
 from test_candidate_recovery_postgres import _database
 
-from app.domain.enums import CandidateStatus, ContentKind, ExtractionStatus
+from app.domain.enums import CandidateStatus, ContentKind
 from app.ingestion.candidate_queue import upsert_candidates
 from app.ingestion.models import (
     ContentAvailability,
-    ContentObservation,
     DiscoveredContent,
     DiscoveredMedia,
 )
@@ -55,137 +54,6 @@ def _article(*, native_id="article", **changes):
     return replace(original, **changes)
 
 
-@pytest.mark.postgres
-@pytest.mark.asyncio
-async def test_listing_preserves_missing_enrichment_but_full_replaces_and_clears(monkeypatch):
-    monkeypatch.setattr(candidates, "_enqueue_default_title_translation", AsyncMock())
-    async with _database() as (factory, source_id):
-        original = _article()
-        await _project(factory, source_id, original)
-        async with factory() as session:
-            entry = await session.scalar(
-                select(SourceEntry).where(SourceEntry.source_id == source_id)
-            )
-            content_id = entry.content_id
-            original_sort = entry.feed_sort_at
-
-        listing = replace(
-            original,
-            title="Listing title",
-            author_name=None,
-            published_at=None,
-            excerpt_html="<p>Listing summary.</p>",
-            media=(),
-            observation=ContentObservation.LISTING,
-            raw_metadata={"web_discovery_only": False},
-        )
-        assert (await _upsert(factory, source_id, listing)).changed == 1
-        async with factory() as session:
-            queued = await session.scalar(
-                select(IngestionCandidate).where(IngestionCandidate.source_id == source_id)
-            )
-            assert queued.payload["observation"] == "listing"
-            assert queued.payload["availability"] == "available"
-            assert DiscoveredContent.from_payload(queued.payload) == listing
-        assert await candidates.process_candidates(factory, limit=1) == 1
-        async with factory() as session:
-            entry = await session.scalar(
-                select(SourceEntry).where(SourceEntry.source_id == source_id)
-            )
-            content = await session.get(Content, content_id)
-            media = list(
-                await session.scalars(
-                    select(ContentMedia).where(ContentMedia.content_id == content_id)
-                )
-            )
-            assert (entry.title, entry.author_name, entry.published_at, entry.feed_sort_at) == (
-                "Listing title",
-                original.author_name,
-                original.published_at,
-                original_sort,
-            )
-            assert (content.title, content.body_html, content.body_text, content.excerpt) == (
-                "Listing title",
-                original.excerpt_html,
-                "Original article body.",
-                "Original article body.",
-            )
-            assert (content.author_name, content.published_at, content.extraction_status) == (
-                original.author_name,
-                original.published_at,
-                ExtractionStatus.SUCCESS,
-            )
-            assert [(item.original_url, item.is_active) for item in media] == [
-                ("https://example.com/old.jpg", True)
-            ]
-
-        full = replace(
-            listing,
-            title="Full replacement",
-            author_name="New author",
-            published_at=datetime(2024, 2, 3, tzinfo=UTC),
-            excerpt_html="<p>Replacement body.</p>",
-            media=(DiscoveredMedia(original_url="https://example.com/new.jpg"),),
-            observation=ContentObservation.FULL,
-            raw_metadata={"web_discovery_only": True},
-        )
-        await _project(factory, source_id, full)
-        async with factory() as session:
-            entry = await session.scalar(
-                select(SourceEntry).where(SourceEntry.source_id == source_id)
-            )
-            content = await session.get(Content, content_id)
-            media = list(
-                await session.scalars(
-                    select(ContentMedia).where(ContentMedia.content_id == content_id)
-                )
-            )
-            assert (entry.title, entry.author_name, entry.published_at) == (
-                full.title,
-                full.author_name,
-                full.published_at,
-            )
-            assert (
-                content.body_html,
-                content.body_text,
-                content.author_name,
-                content.published_at,
-            ) == (full.excerpt_html, "Replacement body.", full.author_name, full.published_at)
-            assert {item.original_url for item in media if item.is_active} == {
-                "https://example.com/new.jpg"
-            }
-
-        empty_full = replace(
-            full,
-            title="Cleared enrichment",
-            author_name=None,
-            published_at=None,
-            excerpt_html=None,
-            media=(),
-        )
-        await _project(factory, source_id, empty_full)
-        async with factory() as session:
-            entry = await session.scalar(
-                select(SourceEntry).where(SourceEntry.source_id == source_id)
-            )
-            content = await session.get(Content, content_id)
-            media = list(
-                await session.scalars(
-                    select(ContentMedia).where(ContentMedia.content_id == content_id)
-                )
-            )
-            assert (entry.author_name, entry.published_at, entry.feed_sort_at) == (
-                None,
-                full.published_at,
-                original_sort,
-            )
-            assert (content.body_html, content.body_text, content.excerpt) == (None, None, None)
-            assert (content.author_name, content.published_at, content.extraction_status) == (
-                None,
-                full.published_at,
-                ExtractionStatus.FAILED,
-            )
-            assert media and not any(item.is_active for item in media)
 
 
 @pytest.mark.postgres
@@ -219,7 +87,6 @@ async def test_unavailable_first_discovery_and_existing_entry_recovery(monkeypat
                 select(IngestionCandidate).where(IngestionCandidate.source_id == source_id)
             )
             assert queued.payload["availability"] == "unavailable"
-            assert queued.payload["observation"] == "full"
             assert DiscoveredContent.from_payload(queued.payload) == unavailable
             assert queued.status == CandidateStatus.COMPLETED and queued.content_id is None
             assert (

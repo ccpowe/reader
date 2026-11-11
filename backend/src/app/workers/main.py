@@ -25,7 +25,6 @@ from .candidates import process_candidates
 from .cleanup import cancel_obsolete_model_work, purge_orphan_sources
 from .health import mark_worker_loop_finished, mark_worker_loop_started, prune_worker_heartbeats
 from .sync import sync_due_sources
-from .web_rules import run_web_rule_author_once
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,6 @@ async def run_once(
     translation_limit: int = 50,
     translation_lease_seconds: int = 120,
     translation_max_attempts: int = 8,
-    web_rule_settings: Settings | None = None,
 ) -> int:
     """Run one bounded pass, creating translations only from real demand."""
     cleanup_result, source_result, ranking_result = await asyncio.gather(
@@ -68,21 +66,12 @@ async def run_once(
             max_attempts=translation_max_attempts,
         )
         translation_result = await executor.run_once()
-    rule_result = 0
-    if web_rule_settings is not None:
-        try:
-            rule_result = await run_web_rule_author_once(
-                session_factory, settings=web_rule_settings
-            )
-        except Exception:
-            logger.exception("Rule authoring failed independently in the bounded worker cycle.")
     return (
         cleanup_result
         + source_result
         + ranking_result
         + candidate_result
         + translation_result
-        + rule_result
     )
 
 
@@ -130,24 +119,6 @@ async def run_forever(poll_interval_seconds: int) -> None:
             ),
             _translation_service(
                 settings,
-                health_session_factory=session_factory,
-                worker_instance_id=worker_instance_id,
-            ),
-            _poll_loop(
-                "web_rule_author",
-                settings.web_rule_agent_poll_seconds,
-                lambda: run_web_rule_author_once(
-                    session_factory,
-                    settings=settings,
-                    heartbeat_callback=lambda metrics: _safe_mark_loop_finished(
-                        session_factory,
-                        worker_instance_id=worker_instance_id,
-                        loop_name="web_rule_author",
-                        expected_interval_seconds=settings.web_rule_agent_poll_seconds,
-                        error=None,
-                        metrics=metrics,
-                    ),
-                ),
                 health_session_factory=session_factory,
                 worker_instance_id=worker_instance_id,
             ),
@@ -482,7 +453,6 @@ def main() -> None:
                     translation_limit=settings.translation_batch_size,
                     translation_lease_seconds=settings.translation_lease_seconds,
                     translation_max_attempts=settings.translation_max_attempts,
-                    web_rule_settings=settings,
                 )
             finally:
                 await _close_translation_runtime(

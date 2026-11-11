@@ -10,7 +10,6 @@ from uuid import UUID
 
 from app.core.settings import get_settings
 from app.llm.codex_auth import CodexAuthenticationError, CodexRefreshError
-from app.services.web_rule_jobs import JobGuardError
 from app.storage.database import build_engine, build_session_factory
 
 from .codex_auth import configure_parser as configure_codex_auth_parser
@@ -18,14 +17,11 @@ from .codex_auth import run_codex_auth
 from .translation_quota import TranslationQuotaAdminError, TranslationQuotaAdminService
 from .users import configure_parser as configure_user_parser
 from .users import run_user_admin
-from .web_rules import configure_parser as configure_web_rule_parser
-from .web_rules import run_web_rule_admin
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="reader-admin", description="Reader operations CLI.")
     commands = parser.add_subparsers(dest="command", required=True)
-    configure_web_rule_parser(commands)
     configure_user_parser(commands)
     configure_codex_auth_parser(commands)
     quota = commands.add_parser(
@@ -61,7 +57,6 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_run(args))
     except (
         TranslationQuotaAdminError,
-        JobGuardError,
         ValueError,
         CodexAuthenticationError,
         CodexRefreshError,
@@ -75,7 +70,7 @@ async def _run(args: argparse.Namespace) -> int:
         result = await run_codex_auth(get_settings(), args)
         print(json.dumps(result, sort_keys=True))
         return 0 if result["available"] else 2
-    if args.command not in {"translation-quota", "web-rules", "users"}:
+    if args.command not in {"translation-quota", "users"}:
         raise TranslationQuotaAdminError("unknown command")
     settings = get_settings()
     if not settings.database_url:
@@ -86,10 +81,6 @@ async def _run(args: argparse.Namespace) -> int:
         if args.command == "users":
             result = await run_user_admin(session_factory, args)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-            return 0
-        if args.command == "web-rules":
-            result = await run_web_rule_admin(session_factory, args)
-            print(json.dumps(result, ensure_ascii=False, sort_keys=True, default=str))
             return 0
         service = TranslationQuotaAdminService(session_factory)
         if args.action == "list":

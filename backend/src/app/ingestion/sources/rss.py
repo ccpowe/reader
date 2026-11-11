@@ -15,7 +15,6 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.domain.enums import ContentKind, MediaType
-from app.ingestion.feed_discovery import parse_usable_web_feed
 from app.ingestion.html_safety import sanitize_html
 from app.ingestion.http import ensure_response_size, raise_for_provider_status
 from app.ingestion.models import (
@@ -28,8 +27,7 @@ from app.ingestion.models import (
     checkpoint_ids,
 )
 from app.ingestion.site_icons import discover_site_icon_url
-from app.ingestion.source_identity import normalize_web_article_url, web_article_native_id
-from app.ingestion.url_safety import safe_get, validate_http_url
+from app.ingestion.url_safety import safe_get
 
 from .base import SourceAdapter
 
@@ -86,16 +84,11 @@ class RSSSourceAdapter(SourceAdapter):
                 completed=True,
                 checkpoint=request.checkpoint,
             )
-        try:
-            raise_for_provider_status(response, self._config.provider_mode)
-            ensure_response_size(response, request.max_response_bytes)
-            parsed = self._parse_feed(response)
-            if getattr(parsed, "bozo", False) and not parsed.entries:
-                raise SourceScanError("invalid_feed", "The RSS/Atom response could not be parsed.")
-        except SourceScanError as exc:
-            if self._config.provider_mode == "web_rss":
-                exc.evidence["feed_head"] = request.continuation is None
-            raise
+        raise_for_provider_status(response, self._config.provider_mode)
+        ensure_response_size(response, request.max_response_bytes)
+        parsed = self._parse_feed(response)
+        if getattr(parsed, "bozo", False) and not parsed.entries:
+            raise SourceScanError("invalid_feed", "The RSS/Atom response could not be parsed.")
         raw_entries = list(parsed.entries[: request.max_raw_items])
         raw_truncated = len(parsed.entries) > request.max_raw_items
         normalized = tuple(
@@ -210,27 +203,11 @@ class RSSSourceAdapter(SourceAdapter):
         return next_url
 
     def _parse_feed(self, response: httpx.Response) -> Any:
-        if self._config.provider_mode != "web_rss":
-            return feedparser.parse(response.content)
-        parsed = parse_usable_web_feed(response.content, str(response.url))
-        if parsed is None:
-            raise SourceScanError(
-                "invalid_feed", "The selected RSS/Atom URL no longer returns a feed."
-            )
-        return parsed
+        return feedparser.parse(response.content)
 
     def _entry_to_content(self, entry: Any) -> DiscoveredContent | None:
         external_url = str(entry.get("link") or "").strip()
         identity = str(entry.get("id") or entry.get("guid") or external_url).strip()
-        if self._config.provider_mode == "web_rss":
-            try:
-                validate_http_url(external_url)
-            except ValueError:
-                return None
-            if not str(entry.get("title") or "").strip():
-                return None
-            external_url = normalize_web_article_url(external_url, keep_query=True)
-            identity = web_article_native_id(external_url)
         if self._config.provider_mode == "youtube_atom":
             identity = str(entry.get("yt_videoid") or identity.removeprefix("yt:video:")).strip()
         if not external_url or not identity:

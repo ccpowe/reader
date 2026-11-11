@@ -14,6 +14,7 @@ from app.api.sources import (
 from app.core.auth import AuthenticatedUser, require_current_user
 from app.domain.enums import SourceStatus
 from app.ingestion import url_safety
+from app.ingestion.feed_discovery import FeedDiscoveryResult
 from app.storage.database import get_session
 from app.storage.models import FeedSource, SourceSubscription, SourceSyncState
 
@@ -42,7 +43,7 @@ def test_reddit_subscription_accepts_prefixed_max_length_community() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", ["rss", "web"])
+@pytest.mark.parametrize("kind", ["rss"])
 async def test_ipv6_subscription_routes_accept_public_literal(
     monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
@@ -79,3 +80,80 @@ async def test_ipv6_subscription_routes_accept_public_literal(
 
     assert response.status_code == 201
     assert response.json()["canonical_url"] == canonical
+
+
+def _web_route_app(monkeypatch: pytest.MonkeyPatch, discovery) -> tuple[FastAPI, list]:
+    """Mount the sources router with public-URL checks and storage stubbed out."""
+    subscribed: list = []
+
+    async def public_url(url: str) -> str:
+        return url
+
+    async def discover(url, _client, **_kwargs):
+        return discovery
+
+    async def store_subscription(_session, *, user_id, identity, **_kwargs):
+        subscribed.append(identity)
+        source = FeedSource(
+            id=uuid4(),
+            kind=identity.kind,
+            canonical_key=identity.canonical_key,
+            canonical_url=identity.canonical_url,
+            status=SourceStatus.PENDING,
+        )
+        subscription = SourceSubscription(id=uuid4(), user_id=user_id, source_id=source.id)
+        return source, subscription, SourceSyncState(source_id=source.id, next_scan_at=None), True
+
+    monkeypatch.setattr(sources, "validate_public_http_url", public_url)
+    monkeypatch.setattr(sources, "discover_web_feed", discover)
+    monkeypatch.setattr(sources, "subscribe_to_source", store_subscription)
+    app = FastAPI()
+    app.include_router(sources.router)
+    app.dependency_overrides[require_current_user] = lambda: AuthenticatedUser(
+        id=uuid4(), email=None, claims={}
+    )
+    app.dependency_overrides[get_session] = lambda: object()
+    return app, subscribed
+
+
+async def _post_web(app: FastAPI) -> httpx.Response:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        return await client.post("/sources/web", json={"url": "https://example.com/blog"})
+
+
+@pytest.mark.asyncio
+async def test_web_route_subscribes_to_the_discovered_feed_as_rss(monkeypatch) -> None:
+    found = FeedDiscoveryResult("found", "https://example.com/blog/feed.xml", {})
+    app, subscribed = _web_route_app(monkeypatch, found)
+
+    response = await _post_web(app)
+
+    assert response.status_code == 201
+    assert response.json()["canonical_url"] == "https://example.com/blog/feed.xml"
+    assert [identity.kind for identity in subscribed] == ["rss"]
+    assert [identity.canonical_url for identity in subscribed] == [
+        "https://example.com/blog/feed.xml"
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "http_status", "detail"),
+    [
+        ("not_found", 422, "feed_not_found"),
+        ("retry", 502, "website_unreachable"),
+        ("blocked", 502, "website_unreachable"),
+    ],
+)
+async def test_web_route_rejects_sites_without_a_usable_feed(
+    monkeypatch, status, http_status, detail
+) -> None:
+    app, subscribed = _web_route_app(monkeypatch, FeedDiscoveryResult(status, None, {}))
+
+    response = await _post_web(app)
+
+    assert response.status_code == http_status
+    assert response.json()["detail"] == detail
+    assert subscribed == []

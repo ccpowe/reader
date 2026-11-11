@@ -15,18 +15,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.settings import Settings, get_settings
 from app.domain.enums import ContentKind, SourceKind, SourceStatus, SyncRunStatus
-from app.ingestion.candidate_queue import upsert_candidates, upsert_web_frontier
-from app.ingestion.feed_discovery import discover_web_feed
+from app.ingestion.candidate_queue import upsert_candidates
 from app.ingestion.models import SourceScanError, SourceScanPage
-from app.ingestion.sources.apify_x import ApifyXSourceAdapter, ApifyXSourceConfig
 from app.ingestion.sources.base import SourceAdapter
 from app.ingestion.sources.rss import RSSSourceAdapter, RSSSourceConfig
 from app.ingestion.sources.scweet_x import ScweetXSourceAdapter, ScweetXSourceConfig
-from app.ingestion.sources.web_blog import WebBlogSourceAdapter, WebBlogSourceConfig
 from app.ingestion.sources.youtube_data import YouTubeSourceAdapter, YouTubeSourceConfig
 from app.ingestion.url_safety import PublicAsyncClient
-from app.ingestion.web_feed import configured_web_feed_url, web_feed_probe_required
-from app.ingestion.web_rules import WebRuleError, parse_web_rule
 from app.services.scan_state import (
     PageDisposition,
     ScanProgress,
@@ -34,13 +29,10 @@ from app.services.scan_state import (
     claim_scan,
     empty_run_metrics,
     finish_incomplete_run,
-    mark_web_head_observed,
     record_scan_failure,
     recovered_run_values,
     start_scan,
 )
-from app.services.web_feeds import save_web_feed_discovery, schedule_web_feed_probes
-from app.services.web_scan_health import record_web_structure_health
 from app.storage.models import (
     FeedSource,
     ProviderQuotaUsage,
@@ -64,14 +56,13 @@ async def claim_due_sources(session, *, limit: int = 20) -> list[SourceClaim]:
         return []
     settings = get_settings()
     now = datetime.now(UTC)
-    await schedule_web_feed_probes(session, now=now)
     states = list(
         await session.scalars(
             select(SourceSyncState)
             .join(FeedSource, FeedSource.id == SourceSyncState.source_id)
             .where(
                 FeedSource.status != SourceStatus.PAUSED,
-                FeedSource.kind.not_in([SourceKind.REDDIT, SourceKind.HACKER_NEWS]),
+                FeedSource.kind.not_in([SourceKind.REDDIT, SourceKind.RANKING_ARCHIVE]),
                 SourceSyncState.next_scan_at.is_not(None),
                 SourceSyncState.next_scan_at <= now,
                 or_(
@@ -101,7 +92,7 @@ async def claim_due_sources(session, *, limit: int = 20) -> list[SourceClaim]:
             source is None
             or state is None
             or source.status == SourceStatus.PAUSED
-            or source.kind in {SourceKind.REDDIT, SourceKind.HACKER_NEWS}
+            or source.kind in {SourceKind.REDDIT, SourceKind.RANKING_ARCHIVE}
             or state.next_scan_at is None
             or state.next_scan_at > now
             or (state.lease_expires_at is not None and state.lease_expires_at >= now)
@@ -167,39 +158,6 @@ async def scan_claimed_source(session_factory, claim: SourceClaim) -> None:
     try:
         async with asyncio.timeout(settings.ingestion_source_timeout_seconds):
             async with _build_source_http_client(source, settings) as client:
-                if source.kind == SourceKind.WEB and web_feed_probe_required(
-                    source.canonical_url, source.config
-                ):
-                    result = await discover_web_feed(
-                        source.canonical_url,
-                        client,
-                        max_response_bytes=min(
-                            settings.ingestion_max_response_bytes, 2 * 1024 * 1024
-                        ),
-                    )
-                    updated = await save_web_feed_discovery(
-                        session_factory,
-                        source_id=source.id,
-                        lease_token=claim.lease_token,
-                        run_id=run_id,
-                        source_url=source.canonical_url,
-                        rule_revision=int((source.config or {}).get("web_rule_revision") or 0),
-                        result=result,
-                    )
-                    if updated is None:
-                        return
-                    source, state = updated
-                    if result.status == "blocked":
-                        raise SourceScanError(
-                            result.evidence["error_code"],
-                            "The website or RSS endpoint denied access; RSS discovery will retry.",
-                            long_lived=True,
-                        )
-                    if result.status == "retry":
-                        raise SourceScanError(
-                            "web_feed_discovery_retry",
-                            "RSS/Atom discovery will retry after a temporary failure.",
-                        )
                 use_youtube_data_api = True
                 if source.kind == SourceKind.YOUTUBE:
                     use_youtube_data_api = await _reserve_youtube_quota(
@@ -326,10 +284,6 @@ async def _persist_page(
             baseline_hashes=checkpoint_hashes(progress.baseline_checkpoint()),
             counts_as_update=state.initial_sync_completed,
         )
-        if page.web_links:
-            await upsert_web_frontier(
-                session, source_id=source.id, links=page.web_links, observed_at=now
-            )
         if page.source_avatar_url and source.kind != SourceKind.REDDIT:
             source.avatar_url = page.source_avatar_url
         if page.source_display_name and _should_update_display_name(source):
@@ -337,20 +291,6 @@ async def _persist_page(
         if page.source_config_updates:
             source.config = {**source.config, **page.source_config_updates}
         disposition = progress.apply_page(state, source, run, page, outcome, now)
-        if (
-            source.kind == SourceKind.WEB
-            and page.web_listing_evidence.get("is_head")
-            and not (run.metrics or {}).get("web_head_observed")
-        ):
-            await record_web_structure_health(
-                session,
-                source,
-                state,
-                code=page.warning_code,
-                evidence=page.web_listing_evidence,
-                now=now,
-            )
-            mark_web_head_observed(run, page.web_listing_evidence)
         await session.commit()
         return disposition
 
@@ -397,19 +337,6 @@ async def _record_scan_failure(
             return
         now = datetime.now(UTC)
         record_scan_failure(source, state, run, exc, now)
-        if source.kind == SourceKind.WEB and not (
-            exc.evidence.get("is_head")
-            and run is not None
-            and (run.metrics or {}).get("web_head_observed")
-        ):
-            await record_web_structure_health(
-                session,
-                source,
-                state,
-                code=exc.code,
-                evidence=exc.evidence,
-                now=now,
-            )
         await session.commit()
         logger.warning(
             "Source scan failed: source_id=%s code=%s error=%s", source.id, exc.code, exc
@@ -453,39 +380,6 @@ def _build_adapter(
             ),
             client,
         )
-    if source.kind == SourceKind.WEB:
-        feed_url = configured_web_feed_url(source.canonical_url, source.config)
-        if feed_url:
-            return RSSSourceAdapter(
-                RSSSourceConfig(
-                    url=feed_url,
-                    site_url=source.canonical_url,
-                    resolve_site_avatar=source.avatar_url is None,
-                    provider_mode="web_rss",
-                ),
-                client,
-            )
-        raw_rule = source.config.get("web_rule")
-        if raw_rule is None:
-            raise SourceScanError(
-                "web_rule_required", "Web source needs an accepted native rule.", long_lived=True
-            )
-        try:
-            rule = parse_web_rule(raw_rule, source_url=source.canonical_url)
-        except WebRuleError as exc:
-            raise SourceScanError(
-                "web_rule_required",
-                "Stored Web rule is invalid; author a native rule.",
-                long_lived=True,
-            ) from exc
-        return WebBlogSourceAdapter(
-            WebBlogSourceConfig(
-                url=source.canonical_url,
-                resolve_site_avatar=source.avatar_url is None,
-                rule=rule,
-            ),
-            client,
-        )
     if source.kind == SourceKind.YOUTUBE:
         channel_id = str(source.config.get("channel_id") or _youtube_channel_id(source))
         api_key = (
@@ -505,29 +399,19 @@ def _build_adapter(
         )
     if source.kind == SourceKind.X:
         handle = str(source.config["handle"])
-        if settings.x_provider == "scweet":
-            if not settings.scweet_service_url or not settings.scweet_service_token:
-                raise SourceScanError(
-                    "scweet_not_configured",
-                    "APP_SCWEET_SERVICE_URL and APP_SCWEET_SERVICE_TOKEN are required.",
-                    long_lived=True,
-                )
-            return ScweetXSourceAdapter(
-                ScweetXSourceConfig(
-                    handle=handle,
-                    service_url=str(settings.scweet_service_url),
-                    service_token=settings.scweet_service_token,
-                ),
-                client,
-            )
-        if not settings.apify_token:
+        if not settings.scweet_service_url or not settings.scweet_service_token:
             raise SourceScanError(
-                "apify_not_configured",
-                "APP_APIFY_TOKEN is required when APP_X_PROVIDER=apify.",
+                "scweet_not_configured",
+                "APP_SCWEET_SERVICE_URL and APP_SCWEET_SERVICE_TOKEN are required.",
                 long_lived=True,
             )
-        return ApifyXSourceAdapter(
-            ApifyXSourceConfig(handle=handle, token=settings.apify_token), client
+        return ScweetXSourceAdapter(
+            ScweetXSourceConfig(
+                handle=handle,
+                service_url=str(settings.scweet_service_url),
+                service_token=settings.scweet_service_token,
+            ),
+            client,
         )
     raise SourceScanError("unsupported_source", f"No scanner for source kind {source.kind}.")
 
@@ -537,7 +421,7 @@ def _build_source_http_client(
     settings: Settings,
 ) -> httpx.AsyncClient:
     """Keep the operator-configured Scweet edge separate from untrusted URLs."""
-    if source.kind == SourceKind.X and settings.x_provider == "scweet":
+    if source.kind == SourceKind.X:
         return httpx.AsyncClient(trust_env=False)
     return PublicAsyncClient()
 

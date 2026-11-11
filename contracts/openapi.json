@@ -1771,7 +1771,7 @@
                 "type": "null"
               }
             ],
-            "description": "Latest synchronization error or warning. web_rule_partial_parse means usable articles were found but some rows lacked a title or URL; web_rule_missing_fields means no usable articles were found.",
+            "description": "Latest synchronization error or warning code.",
             "title": "Last Error Code"
           },
           "new_count": {
@@ -4680,7 +4680,7 @@
     },
     "/v1/sources/web": {
       "post": {
-        "description": "Subscribe to a website, probing RSS/Atom before authoring a crawl rule.",
+        "description": "Find a website's RSS/Atom feed now and subscribe to that feed.\n\nWebsites without a usable feed are rejected; Reader does not crawl pages.",
         "operationId": "add_web_source_v1_sources_web_post",
         "requestBody": {
           "content": {

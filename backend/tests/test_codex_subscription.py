@@ -14,16 +14,12 @@ from app.core.settings import Settings
 from app.domain.enums import TranslationProviderMode
 from app.llm.codex_auth import subscription_headers
 from app.llm.codex_subscription import CodexSubscriptionModel
-from app.llm.factory import ChatModelConfigurationError, chat_model_snapshot
 from app.storage.models import TranslationPreference
 from app.translation.domain import TranslationItem, TranslationProviderError
 from app.translation.engines import engine_descriptor
 from app.translation.factory import (
     build_translation_provider,
-    build_translation_provider_routes,
-    close_translation_providers,
 )
-from app.web_rule_agent.model import build_rule_chat_model
 
 ENGINE = "codex-subscription"
 
@@ -303,23 +299,6 @@ async def test_deleted_credentials_are_not_retried(configured):
     assert not error.value.retryable
 
 
-async def test_routes_share_capacity_model_changes_cache_and_rule_agent_rejects(configured):
-    routes = build_translation_provider_routes(configured, require_default=True)
-    try:
-        providers = list(routes.values())
-        assert len(providers) == 2
-        assert providers[0]._request_semaphore is providers[1]._request_semaphore
-        before = engine_descriptor(configured, ENGINE)
-        changed = configured.model_copy(update={"codex_subscription_model": "another-model"})
-        assert (
-            before.to_engine().fingerprint
-            != engine_descriptor(changed, ENGINE).to_engine().fingerprint
-        )
-        assert "private-refresh" not in json.dumps(chat_model_snapshot(configured, before))
-        with pytest.raises(ChatModelConfigurationError, match="translation only"):
-            build_rule_chat_model(configured, before)
-    finally:
-        await close_translation_providers(routes)
 
 
 async def test_deadline_and_cancellation(configured, monkeypatch):

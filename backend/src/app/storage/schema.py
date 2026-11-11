@@ -14,8 +14,8 @@ from app.core.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-REQUIRED_SCHEMA_REVISION = "20260925_30"
-REQUIRED_SCHEMA_CONTRACT = "reader-runtime-v26"
+REQUIRED_SCHEMA_REVISION = "20261110_01"
+REQUIRED_SCHEMA_CONTRACT = "reader-runtime-v27"
 
 
 class RuntimeReadinessProbe:

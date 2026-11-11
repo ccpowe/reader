@@ -5,7 +5,6 @@ import pytest
 
 from app.ingestion.feed_discovery import discover_web_feed
 from app.ingestion.url_safety import PublicAsyncClient, UnsafeSourceUrl
-from app.ingestion.web_feed import configured_web_feed_url, web_feed_probe_required
 
 RSS = b"""<?xml version="1.0"?><rss version="2.0"><channel>
 <title>Research</title><link>https://example.com/research</link><description>News</description>
@@ -717,21 +716,5 @@ def _legacy_discovery_record(url):
     }
 
 
-def test_only_historical_one_request_page_403_negative_cache_is_reprobed():
-    url = "https://example.com/research"
-    record = _legacy_discovery_record(url)
-    assert web_feed_probe_required(url, {"web_feed_discovery": record})
-    record["evidence"]["attempts"][0]["status_code"] = 200
-    assert not web_feed_probe_required(url, {"web_feed_discovery": record})
-    record["evidence"]["attempts"][0]["status_code"] = 403
-    record["evidence"]["requests"] = 2
-    assert not web_feed_probe_required(url, {"web_feed_discovery": record})
 
 
-def test_legacy_recovery_preserves_a_selected_feed():
-    url = "https://example.com/research"
-    record = _legacy_discovery_record(url)
-    record.update(status="found", feed_url=url + "/feed")
-    config = {"web_feed_discovery": record}
-    assert configured_web_feed_url(url, config) == url + "/feed"
-    assert not web_feed_probe_required(url, config)

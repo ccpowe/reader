@@ -17,7 +17,6 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
-    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -48,7 +47,6 @@ from app.domain.enums import (
     TranslationPurpose,
     TranslationScope,
     TranslationStatus,
-    WebFrontierStatus,
 )
 
 from .database import Base
@@ -202,7 +200,6 @@ class FeedSource(Timestamped, Base):
         back_populates="source", uselist=False, cascade="all, delete-orphan"
     )
     candidates: Mapped[list[IngestionCandidate]] = relationship(back_populates="source")
-    web_frontier: Mapped[list[WebFrontier]] = relationship(back_populates="source")
 
 
 class SourceSubscription(Timestamped, Base):
@@ -293,10 +290,6 @@ class SourceSyncState(Timestamped, Base):
     next_scan_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     consecutive_limit_runs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    web_rule_structural_failures: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
-    web_rule_failure_episode_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
     gap_detected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     gap_details: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     last_error_code: Mapped[str | None] = mapped_column(String(120))
@@ -305,99 +298,6 @@ class SourceSyncState(Timestamped, Base):
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     source: Mapped[FeedSource] = relationship(back_populates="sync_state")
-
-
-class WebRuleJob(Timestamped, Base):
-    """Source-scoped, durable model budget and fenced rule authoring work."""
-
-    __tablename__ = "web_rule_jobs"
-    __table_args__ = (
-        UniqueConstraint("idempotency_key", name="uq_web_rule_jobs_idempotency"),
-        CheckConstraint("reason IN ('author', 'repair')", name="ck_web_rule_jobs_reason"),
-        CheckConstraint("goal_resumptions_reserved >= 0", name="ck_web_rule_jobs_goal_resumptions"),
-        CheckConstraint(
-            "status IN ('queued', 'running', 'retry_wait', 'succeeded', 'failed', "
-            "'blocked', 'cancelled')",
-            name="ck_web_rule_jobs_status",
-        ),
-        Index("ix_web_rule_jobs_due", "status", "available_at"),
-        Index("ix_web_rule_jobs_source_created", "source_id", "created_at"),
-        Index(
-            "uq_web_rule_jobs_active_source",
-            "source_id",
-            unique=True,
-            postgresql_where=text("status IN ('queued', 'running', 'retry_wait')"),
-        ),
-    )
-
-    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    source_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("feed_sources.id", ondelete="CASCADE"), nullable=False
-    )
-    reason: Mapped[str] = mapped_column(String(16), nullable=False)
-    idempotency_key: Mapped[str] = mapped_column(String(256), nullable=False)
-    failure_episode_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
-    retry_of: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("web_rule_jobs.id", ondelete="SET NULL")
-    )
-    source_url: Mapped[str] = mapped_column(Text, nullable=False)
-    base_rule_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    base_rule_hash: Mapped[str | None] = mapped_column(String(64))
-    base_rule: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    prompt_version: Mapped[str | None] = mapped_column(String(120))
-    rule_schema_version: Mapped[str | None] = mapped_column(String(120))
-    validator_version: Mapped[str | None] = mapped_column(String(120))
-    engine_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
-    limits_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
-    stage: Mapped[str] = mapped_column(String(24), nullable=False, default="preflight")
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    available_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    lease_token: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    model_calls_reserved: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    tool_calls_reserved: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    validation_calls_reserved: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    goal_resumptions_reserved: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
-    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    unknown_usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    conservative_tokens_reserved: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    usage_reservations: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
-    candidate_rule: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    validation_report: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    validation_receipt: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    activated_version: Mapped[str | None] = mapped_column(String(64))
-    last_error_code: Mapped[str | None] = mapped_column(String(120))
-    last_error_message: Mapped[str | None] = mapped_column(Text)
-    diagnostics: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
-
-
-class WebRuleAgentRuntime(Timestamped, Base):
-    """Singleton deployment-wide execution slot and durable engine circuit breaker."""
-
-    __tablename__ = "web_rule_agent_runtime"
-    __table_args__ = (CheckConstraint("id = 'default'", name="ck_web_rule_runtime_singleton"),)
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default="default")
-    current_job_id: Mapped[UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("web_rule_jobs.id", ondelete="SET NULL")
-    )
-    lease_token: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    engine_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
-    paused_code: Mapped[str | None] = mapped_column(String(120))
-    paused_message: Mapped[str | None] = mapped_column(Text)
-    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    resume_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class IngestionCandidate(Timestamped, Base):
@@ -444,46 +344,6 @@ class IngestionCandidate(Timestamped, Base):
     last_error_message: Mapped[str | None] = mapped_column(Text)
 
     source: Mapped[FeedSource] = relationship(back_populates="candidates")
-
-
-class WebFrontier(Timestamped, Base):
-    """Durable discovery evidence for generic and site-specific Web scans."""
-
-    __tablename__ = "web_frontier"
-    __table_args__ = (
-        UniqueConstraint("source_id", "url_hash", name="uq_web_frontier_source_url_hash"),
-        CheckConstraint(
-            "status IN ('pending', 'fetched', 'uncertain', 'rejected', 'failed')",
-            name="ck_web_frontier_status",
-        ),
-        Index("ix_web_frontier_due", "source_id", "status", "available_at"),
-    )
-
-    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    source_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("feed_sources.id", ondelete="CASCADE"), nullable=False
-    )
-    original_url: Mapped[str] = mapped_column(Text, nullable=False)
-    normalized_url: Mapped[str] = mapped_column(Text, nullable=False)
-    url_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    canonical_url: Mapped[str | None] = mapped_column(Text)
-    discovered_from: Mapped[str | None] = mapped_column(Text)
-    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    status: Mapped[WebFrontierStatus] = mapped_column(
-        String(16), nullable=False, default=WebFrontierStatus.PENDING
-    )
-    evidence: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
-    available_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    etag: Mapped[str | None] = mapped_column(String(512))
-    last_modified: Mapped[str | None] = mapped_column(String(512))
-    content_hash: Mapped[str | None] = mapped_column(String(64))
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    last_error: Mapped[str | None] = mapped_column(Text)
-
-    source: Mapped[FeedSource] = relationship(back_populates="web_frontier")
 
 
 class RankingSnapshot(Base):

@@ -18,10 +18,6 @@ RUN uv sync --locked --no-dev --no-editable
 
 FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9
 
-LABEL io.reader.browser-runtime.component="adapter" \
-      io.reader.browser-runtime.protocol-version="1" \
-      io.reader.browser-runtime.adapter-policy-version="reader-browser-container-v1"
-
 ENV PATH=/opt/reader/.venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -30,24 +26,17 @@ RUN groupadd --gid 20000 reader-state \
     && groupadd --gid 10001 reader \
     && useradd --no-log-init --uid 10001 --gid 10001 --groups 20000 \
        --home-dir /home/reader --create-home reader \
-    && useradd --no-log-init --uid 10002 --gid 10001 --groups 20000 \
-       --home-dir /home/reader-reaper --create-home reader-reaper \
-    && mkdir -p /opt/reader /var/lib/reader-browser \
-    && chown 10001:20000 /var/lib/reader-browser
+    && mkdir -p /opt/reader
 
 WORKDIR /opt/reader
 COPY --from=builder /opt/reader/.venv /opt/reader/.venv
 COPY backend/alembic.ini ./alembic.ini
 COPY backend/migrations ./migrations
 COPY backend/docker-entrypoint.py /usr/local/bin/reader-container-entrypoint
-COPY backend/docker-state-init.sh /usr/local/bin/reader-state-init
 COPY backend/docker-codex-auth-init.sh /usr/local/bin/reader-codex-auth-init
-COPY services/browser_runtime/init-browser-task-volume /reader/init-browser-task-volume
 RUN chmod 0555 \
       /usr/local/bin/reader-container-entrypoint \
-      /usr/local/bin/reader-state-init \
-      /usr/local/bin/reader-codex-auth-init \
-      /reader/init-browser-task-volume
+      /usr/local/bin/reader-codex-auth-init
 
 USER 10001:10001
 ENTRYPOINT ["reader-container-entrypoint"]

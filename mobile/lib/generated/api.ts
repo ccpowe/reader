@@ -864,7 +864,7 @@ export type SourceListItemResponse = {
     /**
      * Last Error Code
      *
-     * Latest synchronization error or warning. web_rule_partial_parse means usable articles were found but some rows lacked a title or URL; web_rule_missing_fields means no usable articles were found.
+     * Latest synchronization error or warning code.
      */
     last_error_code: string | null;
     /**

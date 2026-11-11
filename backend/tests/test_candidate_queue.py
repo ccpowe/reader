@@ -9,7 +9,6 @@ from app.domain.enums import ContentKind
 from app.ingestion.candidate_queue import upsert_candidates
 from app.ingestion.models import (
     ContentAvailability,
-    ContentObservation,
     DiscoveredContent,
     DiscoveredMedia,
     checkpoint_for_items,
@@ -51,6 +50,8 @@ def test_dated_material_hash_preserves_installed_digest_and_ignores_date_jitter(
     assert replace(item, published_at=None).material_hash() != installed_digest
 
 
+
+
 def test_material_hash_tracks_explicit_policy_not_metadata_control_keys() -> None:
     item = _item("same", "Unchanged title")
     assert (
@@ -58,13 +59,7 @@ def test_material_hash_tracks_explicit_policy_not_metadata_control_keys() -> Non
         != item.material_hash()
     )
     assert (
-        replace(item, observation=ContentObservation.LISTING).material_hash()
-        != item.material_hash()
-    )
-    assert (
-        replace(
-            item, raw_metadata={"availability": "unavailable", "web_discovery_only": True}
-        ).material_hash()
+        replace(item, raw_metadata={"availability": "unavailable"}).material_hash()
         == item.material_hash()
     )
 

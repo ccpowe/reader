@@ -136,7 +136,7 @@ env_value() {
 }
 
 write_base_env() {
-  local deployment project docker_gid secret_gid
+  local deployment project secret_gid
   if test -f "$BASE_ENV"; then
     deployment=$(env_value "$BASE_ENV" READER_DEPLOYMENT_ID)
     project=$(env_value "$BASE_ENV" COMPOSE_PROJECT_NAME)
@@ -144,17 +144,12 @@ write_base_env() {
     deployment=$(python3 -c 'import uuid; print(uuid.uuid4())')
     project=reader-${deployment%%-*}
   fi
-  docker_gid=$(stat -c %g /var/run/docker.sock 2>/dev/null) || die "/var/run/docker.sock is unavailable"
   secret_gid=$(id -g)
   cat <<EOF | atomic_text "$BASE_ENV" 0600
 COMPOSE_PROJECT_NAME=$project
 READER_DEPLOYMENT_ID=$deployment
-DOCKER_GID=$docker_gid
 READER_SECRET_GID=$secret_gid
 DB_DATA_NETWORK=$project-db-data
-BROWSER_CONTROL_NETWORK=$project-browser-control
-BROWSER_DATA_NETWORK=$project-browser-data
-BROWSER_EGRESS_NETWORK=$project-browser-egress
 APP_EGRESS_NETWORK=$project-app-egress
 SCWEET_CONTROL_NETWORK=$project-scweet-control
 X_EGRESS_NETWORK=$project-x-egress
@@ -171,7 +166,6 @@ initialize() {
   ensure_generated_secret database-password
   ensure_generated_secret server-access-token
   ensure_generated_secret auth-jwt-secret
-  ensure_generated_secret browser-manager-token
   ensure_generated_secret scweet-service-token
   seal_input deepseek-api-key
   seal_input openrouter-api-key
@@ -204,14 +198,11 @@ wait_healthy() {
 }
 
 build_candidate() {
-  local with_x=$1 stamp reader_tag browser_tag scweet_tag reader_id browser_id scweet_id
+  local with_x=$1 stamp reader_tag scweet_tag reader_id scweet_id
   stamp=$(git rev-parse --short=12 HEAD)-$(date -u +%Y%m%d%H%M%S)
   reader_tag=reader-backend:$stamp
-  browser_tag=reader-browser:$stamp
   scweet_tag=reader-scweet:$stamp
-  docker build --file services/browser_runtime/Dockerfile.browser --tag "$browser_tag" .
   docker build --file backend/Dockerfile --tag "$reader_tag" .
-  browser_id=$(docker image inspect --format '{{.Id}}' "$browser_tag")
   reader_id=$(docker image inspect --format '{{.Id}}' "$reader_tag")
   scweet_id=reader-scweet-unavailable
   if test "$with_x" = 1; then
@@ -222,7 +213,6 @@ build_candidate() {
   fi
   cat <<EOF | atomic_text "$CANDIDATE_ENV" 0600
 READER_IMAGE_ID=$reader_id
-BROWSER_IMAGE_ID=$browser_id
 SCWEET_IMAGE_ID=$scweet_id
 EOF
   if test "$with_x" = 1; then
@@ -248,36 +238,9 @@ for record in value:
 PY
 }
 
-drain_active() {
-  test -f "$ACTIVE_ENV" || return 0
-  local manager expected actual label deployment containers volumes running_core
-  compose_with "$ACTIVE_ENV" --profile scweet stop worker >/dev/null
-  deployment=$(env_value "$BASE_ENV" READER_DEPLOYMENT_ID)
-  manager=$(compose_with "$ACTIVE_ENV" ps -a -q browser-manager)
-  if test -z "$manager" || test "$(docker inspect --format '{{.State.Running}}' "$manager")" != true; then
-    containers=$(docker ps -aq \
-      --filter label=io.reader.browser-task.managed=true \
-      --filter "label=io.reader.browser-task.deployment=$deployment")
-    volumes=$(docker volume ls -q \
-      --filter label=io.reader.browser-task.managed=true \
-      --filter "label=io.reader.browser-task.deployment=$deployment")
-    running_core=$(compose_with "$ACTIVE_ENV" ps -q api worker browser-manager browser-reaper)
-    test -z "$containers" && test -z "$volumes" \
-      || die "browser manager is unavailable while owned task resources remain"
-    test -z "$running_core" || die "browser manager is unavailable while deployment services are running"
-    return 0
-  fi
-  expected=$(env_value "$ACTIVE_ENV" READER_IMAGE_ID)
-  actual=$(docker inspect --format '{{.Image}}' "$manager")
-  label=$(docker inspect --format '{{index .Config.Labels "io.reader.deployment"}}' "$manager")
-  test "$actual" = "$expected" || die "refusing to drain a manager with an unexpected image"
-  test "$label" = "$deployment" || die "refusing to drain another deployment"
-  docker exec "$manager" reader-browser-admin drain
-}
-
 stop_active_apps() {
   test -f "$ACTIVE_ENV" || return 0
-  compose_with "$ACTIVE_ENV" --profile scweet stop worker api browser-reaper browser-manager >/dev/null
+  compose_with "$ACTIVE_ENV" --profile scweet stop worker api >/dev/null
 }
 
 remove_scweet() {
@@ -302,25 +265,20 @@ run_up() {
   if test "$with_x" = 1; then validate_cookie; fi
   build_candidate "$with_x"
 
-  drain_active
   stop_active_apps
 
   compose_with "$CANDIDATE_ENV" --profile tools run --rm pg-init
   compose_with "$CANDIDATE_ENV" up -d postgres
   wait_healthy "$CANDIDATE_ENV" postgres
   compose_with "$CANDIDATE_ENV" --profile tools run --rm migrate
-  compose_with "$CANDIDATE_ENV" --profile tools run --rm state-init
   compose_with "$CANDIDATE_ENV" --profile tools run --rm codex-auth-init
-  compose_with "$CANDIDATE_ENV" --profile tools run --rm network-init
 
   # From this point onward candidate containers own the fixed service names.
   # Persist their exact image identity first so a failed start remains
   # recoverable by the next up or down operation.
   atomic_text "$ACTIVE_ENV" 0600 < "$CANDIDATE_ENV"
-  compose_with "$CANDIDATE_ENV" create browser-manager browser-reaper api worker >/dev/null
-  compose_with "$CANDIDATE_ENV" up -d browser-manager
-  wait_healthy "$CANDIDATE_ENV" browser-manager
-  compose_with "$CANDIDATE_ENV" up -d browser-reaper api
+  compose_with "$CANDIDATE_ENV" create api worker >/dev/null
+  compose_with "$CANDIDATE_ENV" up -d api
   wait_healthy "$CANDIDATE_ENV" api
   if test "$with_x" = 1; then
     compose_with "$CANDIDATE_ENV" --profile scweet up -d scweet
@@ -339,7 +297,6 @@ run_up() {
 run_down() {
   initialize
   test -f "$ACTIVE_ENV" || die "Reader has no active Docker deployment"
-  drain_active
   compose_with "$ACTIVE_ENV" --profile scweet --profile tools down
 }
 

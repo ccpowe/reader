@@ -177,7 +177,9 @@ def test_archived_saved_response_reopens_web_and_upgraded_content_reopens_reader
         fetched_at=datetime.now(UTC),
         raw_metadata={"ranking_kind": "github"},
     )
-    source = SimpleNamespace(id=uuid4(), display_name="GitHub", avatar_url=None, kind="web")
+    source = SimpleNamespace(
+        id=uuid4(), display_name="GitHub", avatar_url=None, kind="ranking_archive"
+    )
     assert _saved_item_response(None, entry, content, source, None).ranking_kind == "github"
     content.body_html = "<p>Extracted article</p>"
     assert _saved_item_response(None, entry, content, source, None).ranking_kind is None
@@ -224,7 +226,7 @@ def test_techtwitter_saved_response_restores_original_body_and_media_despite_htm
         canonical_key="ranking-archive:techtwitter",
         display_name="X 技术热门",
         avatar_url=None,
-        kind="web",
+        kind="ranking_archive",
     )
 
     response = _saved_item_response(None, entry, content, source, None)

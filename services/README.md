@@ -115,11 +115,8 @@ and HTTPS access to X, so do not make its only network internal-only. The
 `*.dev.yml` override is the only configuration that opens a port, and it is
 bound to localhost. Do not expose this service publicly.
 
-Set `APP_X_PROVIDER=scweet` explicitly (it is the default). Apify remains an
-explicit compatibility path through `APP_X_PROVIDER=apify`; the backend never
-switches providers automatically because their pagination checkpoints are not
-interchangeable. If the selected collector is not configured, only X syncing
-degrades; RSS, Web, Reddit, and YouTube continue normally. Authentication,
+Scweet is Reader's only X collector. If it is not configured, only X syncing
+degrades; RSS, Reddit, and YouTube continue normally. Authentication,
 manifest, protected-account, and rate-limit failures are returned as structured
 errors and use the backend retry policy.
 

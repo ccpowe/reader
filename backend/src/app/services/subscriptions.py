@@ -13,10 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.enums import SourceKind, SourceStatus, SourceVisibility, SyncPhase
 from app.ingestion.source_identity import SourceIdentity
-from app.ingestion.web_feed import configured_web_feed_url, web_feed_probe_required
-from app.ingestion.web_rules import WebRuleError, parse_web_rule
 from app.services.ranking_snapshots import ensure_reddit_snapshots
-from app.services.web_rule_jobs import ensure_web_rule_job
 from app.storage.locks import acquire_user_transaction_lock
 from app.storage.models import FeedSource, SourceSubscription, SourceSyncState
 from app.storage.profiles import ensure_profile
@@ -185,10 +182,6 @@ async def _prepare_source_subscription(
             if source is None:  # Defensive: a concurrent transaction was rolled back.
                 raise
 
-    needs_web_rule = web_source_needs_rule(source)
-    needs_feed_probe = source.kind == SourceKind.WEB and web_feed_probe_required(
-        source.canonical_url, source.config
-    )
     sync_state = await session.get(SourceSyncState, source.id, with_for_update=True)
     if sync_state is None:
         is_reddit = identity.kind == SourceKind.REDDIT
@@ -196,25 +189,13 @@ async def _prepare_source_subscription(
             pg_insert(SourceSyncState)
             .values(
                 source_id=source.id,
-                phase=SyncPhase.DEGRADED if needs_web_rule else SyncPhase.IDLE,
+                phase=SyncPhase.IDLE,
                 committed_checkpoint={},
                 pending_checkpoint={},
                 continuation=None,
                 provider_mode="reddit_snapshot" if is_reddit else None,
                 initial_sync_completed=is_reddit,
-                next_scan_at=None if is_reddit or needs_web_rule else datetime.now(UTC),
-                last_error_code=(
-                    "web_rule_required"
-                    if needs_web_rule
-                    else "web_feed_discovering"
-                    if needs_feed_probe
-                    else None
-                ),
-                last_error_message="Web source needs an accepted native rule."
-                if needs_web_rule
-                else "Checking the website for a usable RSS or Atom feed."
-                if needs_feed_probe
-                else None,
+                next_scan_at=None if is_reddit else datetime.now(UTC),
                 consecutive_failures=0,
                 consecutive_limit_runs=0,
                 gap_detected=False,
@@ -255,35 +236,13 @@ async def _prepare_source_subscription(
         subscription = await _find_subscription(session, user_id, source.id)
         if subscription is None:
             raise RuntimeError("Source subscription upsert did not return the stored row.")
-        if (
-            inserted_subscription_id is not None
-            and identity.kind != SourceKind.REDDIT
-            and not needs_web_rule
-        ):
+        if inserted_subscription_id is not None and identity.kind != SourceKind.REDDIT:
             sync_state.next_scan_at = datetime.now(UTC)
 
     elif not subscription.is_enabled:
         subscription.is_enabled = True
-        if identity.kind != SourceKind.REDDIT and not needs_web_rule:
+        if identity.kind != SourceKind.REDDIT:
             sync_state.next_scan_at = datetime.now(UTC)
-
-    if needs_feed_probe:
-        if sync_state.next_scan_at is None:
-            sync_state.next_scan_at = datetime.now(UTC)
-        if getattr(sync_state, "last_error_code", None) is None or str(
-            sync_state.last_error_code
-        ).startswith("web_rule_"):
-            sync_state.last_error_code = "web_feed_discovering"
-            sync_state.last_error_message = "Checking the website for a usable RSS or Atom feed."
-            if getattr(sync_state, "phase", None) == SyncPhase.DEGRADED:
-                sync_state.phase = SyncPhase.IDLE
-    elif needs_web_rule:
-        sync_state.phase = SyncPhase.DEGRADED
-        sync_state.next_scan_at = None
-        sync_state.last_error_code = "web_rule_required"
-        sync_state.last_error_message = "Web source needs an accepted native rule."
-        await session.flush()
-        await ensure_web_rule_job(session, source=source, state=sync_state, reason="author")
 
     await session.flush()
     return source, subscription, sync_state, created_source
@@ -293,20 +252,6 @@ async def _find_source(session: AsyncSession, canonical_key: str) -> FeedSource 
     return await session.scalar(
         select(FeedSource).where(FeedSource.canonical_key == canonical_key).with_for_update()
     )
-
-
-def web_source_needs_rule(source: FeedSource) -> bool:
-    if source.kind != SourceKind.WEB:
-        return False
-    if configured_web_feed_url(source.canonical_url, source.config) or web_feed_probe_required(
-        source.canonical_url, source.config
-    ):
-        return False
-    try:
-        parse_web_rule((source.config or {}).get("web_rule"), source_url=source.canonical_url)
-    except WebRuleError:
-        return True
-    return False
 
 
 async def _find_subscription(

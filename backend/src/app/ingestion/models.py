@@ -42,13 +42,6 @@ class ContentAvailability(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
-class ContentObservation(StrEnum):
-    """Whether absent enrichment replaces stored values or was not observed."""
-
-    FULL = "full"
-    LISTING = "listing"
-
-
 @dataclass(frozen=True)
 class DiscoveredContent:
     """A stable upstream item before it enters the Candidate Queue."""
@@ -64,7 +57,6 @@ class DiscoveredContent:
     media: tuple[DiscoveredMedia, ...] = ()
     source_updated_at: datetime | None = None
     availability: ContentAvailability = ContentAvailability.AVAILABLE
-    observation: ContentObservation = ContentObservation.FULL
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -79,7 +71,6 @@ class DiscoveredContent:
             "media": [item.to_payload() for item in self.media],
             "source_updated_at": _datetime_text(self.source_updated_at),
             "availability": self.availability.value,
-            "observation": self.observation.value,
         }
 
     @classmethod
@@ -104,7 +95,6 @@ class DiscoveredContent:
             ),
             source_updated_at=_parse_datetime(payload.get("source_updated_at")),
             availability=ContentAvailability(payload["availability"]),
-            observation=ContentObservation(payload["observation"]),
         )
 
     # Mark only missing publication dates: filling one must reach the queue, but
@@ -117,11 +107,8 @@ class DiscoveredContent:
         # checkpoints must not see a content change merely from payload migration.
         # These keys are hash representation only, never policy read from metadata.
         stable_metadata.pop("availability", None)
-        stable_metadata.pop("web_discovery_only", None)
         if self.availability == ContentAvailability.UNAVAILABLE:
             stable_metadata["availability"] = "unavailable"
-        if self.observation == ContentObservation.LISTING:
-            stable_metadata["web_discovery_only"] = True
         material = {
             "kind": self.kind.value,
             "title": self.title,
@@ -144,19 +131,6 @@ class DiscoveredContent:
             material["published_at_missing"] = True
         encoded = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-@dataclass(frozen=True)
-class DiscoveredWebLink:
-    normalized_url: str
-    confidence: float
-    accepted: bool
-    discovered_from: str
-    evidence: dict[str, Any] = field(default_factory=dict)
-    original_url: str | None = None
-    fetched: bool = False
-    canonical_url: str | None = None
-    content_hash: str | None = None
 
 
 @dataclass(frozen=True)
@@ -191,8 +165,6 @@ class SourceScanPage:
     source_display_name: str | None = None
     source_avatar_url: str | None = None
     source_config_updates: dict[str, Any] = field(default_factory=dict)
-    web_links: tuple[DiscoveredWebLink, ...] = ()
-    web_listing_evidence: dict[str, Any] = field(default_factory=dict)
 
 
 class SourceScanError(RuntimeError):

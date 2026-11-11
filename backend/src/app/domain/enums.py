@@ -5,10 +5,9 @@ from enum import IntEnum, StrEnum
 
 class SourceKind(StrEnum):
     RSS = "rss"
-    WEB = "web"
     REDDIT = "reddit"
     YOUTUBE = "youtube"
-    HACKER_NEWS = "hackernews"
+    RANKING_ARCHIVE = "ranking_archive"
     X = "x"
 
 
@@ -42,14 +41,6 @@ class CandidateStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
-    FAILED = "failed"
-
-
-class WebFrontierStatus(StrEnum):
-    PENDING = "pending"
-    FETCHED = "fetched"
-    UNCERTAIN = "uncertain"
-    REJECTED = "rejected"
     FAILED = "failed"
 
 

@@ -242,7 +242,7 @@ async def test_techtwitter_save_survives_snapshot_removal_with_original_body_and
             assert content.body_text == body
             assert content.excerpt == item.description
             source = await session.get(FeedSource, content.authority_source_id)
-            assert source.kind == SourceKind.WEB
+            assert source.kind == SourceKind.RANKING_ARCHIVE
             assert source.status == SourceStatus.PAUSED
             assert source.canonical_url == "https://www.techtwitter.com/"
             assert source.config == {"ranking_archive": True}
@@ -397,7 +397,7 @@ async def test_techtwitter_visible_x_content_reused_without_replacing_its_richer
                 .values(
                     canonical_key="ranking-archive:techtwitter",
                     canonical_url="https://www.techtwitter.com/",
-                    kind=SourceKind.WEB,
+                    kind=SourceKind.RANKING_ARCHIVE,
                     display_name="X 技术热门",
                     visibility=SourceVisibility.SHARED,
                     status=SourceStatus.PAUSED,

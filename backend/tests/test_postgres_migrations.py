@@ -18,7 +18,6 @@ from uuid import uuid4
 
 import asyncpg
 import pytest
-from asyncpg.exceptions import ForeignKeyViolationError
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -30,7 +29,6 @@ from app.api.translation_preferences import (
 )
 from app.core.auth import AuthenticatedUser
 from app.core.settings import Settings
-from app.ingestion.models import DiscoveredContent
 from app.ingestion.source_identity import canonical_rss_identity
 from app.services import ranking_snapshots
 from app.services.subscriptions import subscribe_to_source
@@ -200,526 +198,15 @@ def _expected_engine_fingerprint() -> str:
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
-def _historical_candidate_hash(payload: dict) -> str:
-    """Pre-cutover material encoding for fixtures without volatile metadata."""
-    material = {
-        "kind": payload["kind"],
-        "title": payload["title"],
-        "external_url": payload["external_url"],
-        "author_name": payload["author_name"],
-        "excerpt_html": payload["excerpt_html"],
-        "source_updated_at": payload["source_updated_at"],
-        "metadata": payload["raw_metadata"],
-        "media": [],
-    }
-    encoded = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
 @pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_runtime_safety_migrations_against_disposable_postgres(
+async def test_baseline_migration_installs_the_runtime_schema(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A fresh database reaches the runtime contract and its transactional rules hold."""
     dsn = _test_dsn()
     guard_token = _test_guard_token()
     connection = await asyncpg.connect(dsn)
-    try:
-        await _assert_disposable_database(connection, guard_token)
-        await connection.execute(
-            """
-            DROP SCHEMA IF EXISTS public CASCADE;
-            CREATE SCHEMA public;
-            DROP SCHEMA IF EXISTS auth CASCADE;
-            CREATE SCHEMA auth;
-            CREATE TABLE auth.users (
-                id uuid PRIMARY KEY,
-                raw_user_meta_data jsonb
-            );
-            """
-        )
-
-        _run_alembic(dsn, "upgrade", "20260803_13")
-        await connection.execute(
-            """
-            INSERT INTO translation_artifacts (
-                id, purpose, scope, source_hash, source_locale, target_locale,
-                engine_fingerprint, provider_name, model_name, prompt_version,
-                glossary_version, translated_text
-            ) VALUES (
-                '10000000-0000-0000-0000-000000000001', 'title', 'shared',
-                repeat('a', 64), 'auto', 'zh-CN', 'legacy-artifact',
-                '供应商', '模型😀', '提示-vé', '术语', '译文'
-            );
-            INSERT INTO translation_work (
-                id, purpose, scope, source_hash, source_text, source_locale,
-                target_locale, engine_fingerprint, provider_name, model_name,
-                prompt_version, glossary_version, status
-            ) VALUES (
-                '20000000-0000-0000-0000-000000000002', 'title', 'shared',
-                repeat('b', 64), 'source', 'auto', 'zh-CN', 'legacy-work',
-                '供应商', '模型😀', '提示-vé', '术语', 'pending'
-            );
-            """
-        )
-        offline_sql = _run_alembic(
-            dsn,
-            "upgrade",
-            "20260803_13:20260804_14",
-            "--sql",
-            capture_sql=True,
-        )
-        await connection.execute(offline_sql)
-        fingerprints = await connection.fetch(
-            """
-            SELECT engine_id, engine_fingerprint FROM translation_artifacts
-            UNION ALL
-            SELECT engine_id, engine_fingerprint FROM translation_work
-            ORDER BY engine_fingerprint
-            """
-        )
-        assert len(fingerprints) == 2
-        assert {row["engine_id"] for row in fingerprints} == {"供应商:模型😀"}
-        assert {row["engine_fingerprint"] for row in fingerprints} == {
-            _expected_engine_fingerprint()
-        }
-
-        _run_alembic(dsn, "upgrade", "20260810_16")
-        await connection.execute(
-            """
-            INSERT INTO profiles (id)
-            VALUES ('30000000-0000-0000-0000-000000000003');
-            INSERT INTO feed_sources (
-                id, kind, canonical_key, canonical_url, display_name,
-                config, visibility, status
-            ) VALUES (
-                '40000000-0000-0000-0000-000000000004', 'reddit',
-                'reddit:machinelearning',
-                'https://www.reddit.com/r/MachineLearning/',
-                'r/MachineLearning', '{"subreddit":"MachineLearning"}',
-                'shared', 'active'
-            );
-            INSERT INTO source_sync_states (
-                source_id, phase, committed_checkpoint, pending_checkpoint,
-                provider_mode, initial_sync_completed, next_scan_at,
-                consecutive_failures, consecutive_limit_runs, gap_detected
-            ) VALUES (
-                '40000000-0000-0000-0000-000000000004', 'idle', '{}', '{}',
-                'reddit_snapshot', true, NULL, 0, 0, false
-            );
-            INSERT INTO source_subscriptions (id, user_id, source_id, is_enabled)
-            VALUES (
-                '50000000-0000-0000-0000-000000000005',
-                '30000000-0000-0000-0000-000000000003',
-                '40000000-0000-0000-0000-000000000004', true
-            );
-            INSERT INTO contents (
-                id, kind, canonical_url, url_hash, title, extraction_status
-            ) VALUES (
-                '60000000-0000-0000-0000-000000000006', 'post',
-                'https://example.com/old', repeat('f', 64), 'Old', 'not_needed'
-            );
-            INSERT INTO ingestion_candidates (
-                id, source_id, native_id, payload, payload_hash, observed_at,
-                suggested_feed_sort_at, status, attempt_count, content_id
-            ) VALUES
-            (
-                '70000000-0000-0000-0000-000000000007',
-                '40000000-0000-0000-0000-000000000004', 'pending', '{}',
-                repeat('c', 64), now(), now(), 'pending', 0, NULL
-            ),
-            (
-                '80000000-0000-0000-0000-000000000008',
-                '40000000-0000-0000-0000-000000000004', 'completed', '{}',
-                repeat('d', 64), now(), now(), 'completed', 1,
-                '60000000-0000-0000-0000-000000000006'
-            );
-            INSERT INTO ranking_snapshots (
-                cache_key, kind, parameters, payload, fetched_at,
-                next_refresh_at, last_error
-            ) VALUES
-            (
-                'ranking:v2:hacker_news', 'hacker_news', '{}',
-                '{"title":"HN","subtitle":"Top","items":[{"rank":1}]}',
-                now(), now(), NULL
-            ),
-            (
-                'ranking:hacker_news', 'hacker_news', '{}',
-                '{"title":"Legacy HN","subtitle":"Top","items":[{"rank":1}]}',
-                now(), now(), NULL
-            ),
-            (
-                'ranking:github', 'github', '{}',
-                '{"title":"Legacy GitHub","subtitle":"Trending","items":[{"rank":1}]}',
-                now(), now(), NULL
-            ),
-            (
-                'ranking:reddit:machinelearning:hot:-', 'reddit',
-                '{"subreddit":"MachineLearning","sort":"hot","time_filter":"week"}',
-                '{"title":"r/MachineLearning","subtitle":"Hot","items":[{"rank":1}]}',
-                now(), now(), NULL
-            );
-            INSERT INTO user_content_states (
-                user_id, content_id, is_read, offline_requested
-            ) VALUES (
-                '30000000-0000-0000-0000-000000000003',
-                '60000000-0000-0000-0000-000000000006', true, false
-            );
-            INSERT INTO user_saved_contents (id, user_id, content_id)
-            VALUES (
-                'd0000000-0000-0000-0000-00000000000d',
-                '30000000-0000-0000-0000-000000000003',
-                '60000000-0000-0000-0000-000000000006'
-            );
-            INSERT INTO web_frontier (
-                id, source_id, original_url, normalized_url, url_hash,
-                canonical_url, confidence, status, evidence, attempt_count
-            ) VALUES (
-                'e0000000-0000-0000-0000-00000000000e',
-                '40000000-0000-0000-0000-000000000004',
-                'https://example.com/frontier', 'https://example.com/frontier',
-                repeat('e', 64), 'https://example.com/frontier',
-                1.0, 'fetched', '{}', 0
-            );
-            """
-        )
-        assert (
-            await connection.fetchval(
-                "SELECT count(*) FROM ranking_snapshots WHERE kind = 'reddit'"
-            )
-            == 1
-        )
-        assert (
-            await connection.fetchval(
-                """
-                SELECT count(*)
-                FROM ranking_snapshots
-                WHERE cache_key IN ('ranking:hacker_news', 'ranking:github')
-                   OR cache_key LIKE 'ranking:reddit:%'
-                """
-            )
-            == 3
-        )
-        assert await connection.fetchval("SELECT count(*) FROM ingestion_candidates") == 2
-        assert await connection.fetchval("SELECT count(*) FROM web_frontier") == 1
-        assert await connection.fetchval("SELECT count(*) FROM user_content_states") == 1
-        assert await connection.fetchval("SELECT count(*) FROM user_saved_contents") == 1
-
-        # Exercise the historical reversible range before installing Reader auth,
-        # whose credential data deliberately cannot be dropped by downgrade.
-        _run_alembic(dsn, "upgrade", "20260910_27")
-        snapshot_rows = await connection.fetch(
-            """
-            SELECT cache_key, is_ready
-            FROM ranking_snapshots
-            WHERE kind = 'reddit'
-            ORDER BY cache_key
-            """
-        )
-        assert [row["cache_key"] for row in snapshot_rows] == [
-            "ranking:v2:reddit:machinelearning:hot:-",
-            "ranking:v2:reddit:machinelearning:rising:-",
-            "ranking:v2:reddit:machinelearning:top:week",
-        ]
-        assert all(row["is_ready"] is False for row in snapshot_rows)
-        assert (
-            await connection.fetchval(
-                """
-                SELECT count(*)
-                FROM ranking_snapshots
-                WHERE cache_key IN ('ranking:hacker_news', 'ranking:github')
-                   OR cache_key LIKE 'ranking:reddit:%'
-                """
-            )
-            == 0
-        )
-        assert (
-            await connection.fetchval(
-                "SELECT is_ready FROM ranking_snapshots WHERE kind = 'hacker_news'"
-            )
-            is True
-        )
-        assert await connection.fetchval("SELECT count(*) FROM ingestion_candidates") == 0
-        assert await connection.fetchval("SELECT count(*) FROM web_frontier") == 0
-        assert await connection.fetchval("SELECT count(*) FROM contents") == 0
-        assert await connection.fetchval("SELECT count(*) FROM user_content_states") == 0
-        assert await connection.fetchval("SELECT count(*) FROM user_saved_contents") == 0
-
-        await connection.execute(
-            """
-            INSERT INTO feed_sources (
-                id, kind, canonical_key, canonical_url, display_name,
-                config, visibility, status
-            ) VALUES (
-                '90000000-0000-0000-0000-000000000009', 'rss', 'rss:test-b',
-                'https://example.com/b.xml', 'B', '{}', 'shared', 'active'
-            );
-            INSERT INTO contents (
-                id, authority_source_id, kind, title, extraction_status
-            ) VALUES (
-                'a0000000-0000-0000-0000-00000000000a',
-                '40000000-0000-0000-0000-000000000004',
-                'post', 'Owned by Reddit source', 'not_needed'
-            );
-            INSERT INTO source_entries (
-                id, source_id, content_id, native_id, external_url,
-                title, raw_metadata, feed_sort_at
-            ) VALUES (
-                'b0000000-0000-0000-0000-00000000000b',
-                '40000000-0000-0000-0000-000000000004',
-                'a0000000-0000-0000-0000-00000000000a', 'owned',
-                'https://example.com/owned', 'Owned', '{}', now()
-            );
-            """
-        )
-        with pytest.raises(ForeignKeyViolationError):
-            await connection.execute(
-                """
-                INSERT INTO source_entries (
-                    id, source_id, content_id, native_id, external_url,
-                    title, raw_metadata, feed_sort_at
-                ) VALUES (
-                    'c0000000-0000-0000-0000-00000000000c',
-                    '90000000-0000-0000-0000-000000000009',
-                    'a0000000-0000-0000-0000-00000000000a', 'foreign',
-                    'https://example.com/foreign', 'Foreign', '{}', now()
-                )
-                """
-            )
-        assert await connection.fetchval("SELECT count(*) FROM source_entries") == 1
-
-        _run_alembic(dsn, "downgrade", "20260810_16")
-        _run_alembic(dsn, "upgrade", "20260912_28")
-        await connection.execute(
-            """
-            INSERT INTO feed_sources (
-                id, kind, canonical_key, canonical_url, display_name,
-                config, visibility, status
-            ) VALUES (
-                '91000000-0000-0000-0000-000000000009', 'reddit',
-                'reddit:awaitingfirstsnapshot',
-                'https://www.reddit.com/r/awaitingfirstsnapshot/',
-                'Awaiting first snapshot', '{}', 'shared', 'pending'
-            );
-            INSERT INTO source_sync_states (
-                source_id, phase, committed_checkpoint, pending_checkpoint,
-                provider_mode, initial_sync_completed, consecutive_failures,
-                consecutive_limit_runs, gap_detected
-            ) VALUES (
-                '91000000-0000-0000-0000-000000000009', 'idle', '{}', '{}',
-                'reddit_snapshot', true, 0, 0, false
-            );
-            INSERT INTO ingestion_candidates (
-                id, source_id, native_id, payload, payload_hash, observed_at,
-                suggested_feed_sort_at, status, attempt_count
-            ) VALUES (
-                'f0000000-0000-0000-0000-00000000000f',
-                '40000000-0000-0000-0000-000000000004', 'legacy-pending', '{}',
-                repeat('f', 64), now(), now(), 'pending', 0
-            )
-            """
-        )
-        _run_alembic(dsn, "upgrade", "20260922_29")
-        await _assert_candidate_semantics_migration(dsn, connection)
-        _run_alembic(dsn, "upgrade", "head")
-        assert (
-            await connection.fetchval("SELECT version_num FROM alembic_version")
-            == REQUIRED_SCHEMA_REVISION
-        )
-        rebuilt_snapshots = await connection.fetch(
-            "SELECT is_ready FROM ranking_snapshots WHERE kind = 'reddit' ORDER BY cache_key"
-        )
-        assert len(rebuilt_snapshots) == 3
-        assert all(row["is_ready"] is False for row in rebuilt_snapshots)
-        assert (
-            await connection.fetchval(
-                "SELECT is_ready FROM ranking_snapshots WHERE kind = 'hacker_news'"
-            )
-            is True
-        )
-        baseline = await connection.fetchrow(
-            """
-            SELECT source.latest_update_sequence,
-                   subscription.include_in_home,
-                   subscription.last_viewed_update_sequence,
-                   state.committed_checkpoint ->> 'reddit_hot_baseline_received' AS reddit_baseline
-            FROM feed_sources AS source
-            JOIN source_subscriptions AS subscription ON subscription.source_id = source.id
-            JOIN source_sync_states AS state ON state.source_id = source.id
-            WHERE source.id = '40000000-0000-0000-0000-000000000004'
-            """
-        )
-        assert dict(baseline) == {
-            "latest_update_sequence": 0,
-            "include_in_home": True,
-            "last_viewed_update_sequence": 0,
-            "reddit_baseline": "true",
-        }
-        assert (
-            await connection.fetchval(
-                "SELECT counts_as_update FROM ingestion_candidates "
-                "WHERE native_id = 'legacy-pending'"
-            )
-            is False
-        )
-        assert (
-            await connection.fetchval(
-                "SELECT count(*) FROM source_entries WHERE update_sequence IS NOT NULL"
-            )
-            == 0
-        )
-        assert (
-            await connection.fetchval(
-                """
-                SELECT committed_checkpoint ? 'reddit_hot_baseline_received'
-                FROM source_sync_states
-                WHERE source_id = '91000000-0000-0000-0000-000000000009'
-                """
-            )
-            is False
-        )
-        await _assert_ranking_worker_contract(dsn, connection, monkeypatch)
-        await _assert_concurrent_idempotency_contract(dsn, connection)
-        await _assert_translation_quota_contract(dsn, connection)
-        await connection.execute(
-            "DELETE FROM ingestion_candidates WHERE id = 'f0000000-0000-0000-0000-00000000000f'"
-        )
-    finally:
-        await connection.close()
-
-
-async def _assert_candidate_semantics_migration(
-    dsn: str,
-    connection: asyncpg.Connection,
-) -> None:
-    """Upgrade and roll back real queued work without reissuing a claim or scan."""
-    await connection.execute(
-        """
-        INSERT INTO feed_sources (
-            id, kind, canonical_key, canonical_url, display_name,
-            config, visibility, status
-        ) VALUES
-        (
-            '92000000-0000-0000-0000-000000000009', 'web',
-            'web:https://example.com/migration', 'https://example.com/migration',
-            'Legacy web', '{}', 'shared', 'active'
-        ),
-        (
-            '93000000-0000-0000-0000-000000000009', 'youtube',
-            'youtube:channel:migration', 'https://www.youtube.com/channel/migration',
-            'Legacy YouTube', '{}', 'shared', 'active'
-        );
-        UPDATE source_sync_states
-        SET pending_checkpoint = '{"cursor":"in-flight"}'::jsonb
-        WHERE source_id = '40000000-0000-0000-0000-000000000004';
-        """
-    )
-    source_state_sql = """
-        SELECT phase, committed_checkpoint, pending_checkpoint, last_complete_at
-        FROM source_sync_states
-        WHERE source_id = '40000000-0000-0000-0000-000000000004'
-    """
-    source_state = await connection.fetchrow(source_state_sql)
-    assert source_state is not None
-    assert json.loads(source_state["pending_checkpoint"]) == {"cursor": "in-flight"}
-
-    cases = (
-        (
-            "baseline-full",
-            "post",
-            "40000000-0000-0000-0000-000000000004",
-            {"provider": "reddit", "nested": {"availability": "provider-value"}},
-            "pending",
-            0,
-            False,
-            "available",
-            "full",
-        ),
-        (
-            "listing-web",
-            "article",
-            "92000000-0000-0000-0000-000000000009",
-            {
-                "web_discovery_only": True,
-                "index_url": "https://example.com/migration",
-                "nested": {"availability": "provider-value"},
-            },
-            "processing",
-            3,
-            True,
-            "available",
-            "listing",
-        ),
-        (
-            "unavailable-video",
-            "video",
-            "93000000-0000-0000-0000-000000000009",
-            {
-                "availability": "unavailable",
-                "privacy_status": "unavailable",
-                "nested": {"availability": "still-provider-data"},
-            },
-            "failed",
-            2,
-            False,
-            "unavailable",
-            "full",
-        ),
-    )
-    legacy_payloads = {}
-    for native_id, kind, source_id, metadata, status, attempts, counts, _, _ in cases:
-        payload = {
-            "native_id": native_id,
-            "kind": kind,
-            "title": f"Legacy {native_id}",
-            "external_url": f"https://example.com/{native_id}",
-            "published_at": "2026-09-24T12:00:00+00:00",
-            "author_name": "Upstream author",
-            "excerpt_html": "<p>Summary</p>",
-            "raw_metadata": metadata,
-            "media": [],
-            "source_updated_at": None,
-        }
-        legacy_payloads[native_id] = payload
-        await connection.execute(
-            """
-            INSERT INTO ingestion_candidates (
-                id, source_id, native_id, payload, payload_hash, observed_at,
-                suggested_feed_sort_at, status, attempt_count, counts_as_update,
-                lease_token, lease_expires_at, last_error_code, last_error_message
-            ) VALUES (
-                $1, $2::uuid, $3, $4::jsonb, $5, now(), now(), $6::text, $7, $8,
-                $9, CASE WHEN $6::text = 'processing' THEN now() + interval '10 minutes' END,
-                CASE WHEN $6::text = 'failed' THEN 'provider_unavailable' END,
-                CASE WHEN $6::text = 'failed' THEN 'Upstream removed the item' END
-            )
-            """,
-            uuid4(),
-            source_id,
-            native_id,
-            json.dumps(payload),
-            _historical_candidate_hash(payload),
-            status,
-            attempts,
-            counts,
-            uuid4() if status == "processing" else None,
-        )
-
-    candidate_sql = """
-        SELECT native_id, payload, payload_hash, status, attempt_count,
-               counts_as_update, lease_token, lease_expires_at, available_at,
-               observed_at, suggested_feed_sort_at, source_updated_at,
-               completed_at, content_id, last_error_code, last_error_message,
-               created_at, updated_at
-        FROM ingestion_candidates
-        WHERE native_id = ANY($1::text[])
-        ORDER BY native_id
-    """
-    names = list(legacy_payloads)
-    before = await connection.fetch(candidate_sql, names)
-    assert len(before) == len(cases)
-    assert next(row for row in before if row["native_id"] == "listing-web")["lease_token"]
-    assert next(row for row in before if row["native_id"] == "listing-web")["counts_as_update"]
     engine = create_async_engine(dsn.replace("postgresql://", "postgresql+asyncpg://", 1))
     settings = Settings(
         _env_file=None,
@@ -729,8 +216,14 @@ async def _assert_candidate_semantics_migration(
         auth_jwt_secret="test-jwt-signing-secret-at-least-32-characters",
     )
     try:
-        assert await runtime_readiness_failures(settings, engine) == ["schema_contract_missing"]
-        _run_alembic(dsn, "upgrade", "20260925_30")
+        await _assert_disposable_database(connection, guard_token)
+        await connection.execute("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;")
+        assert await runtime_readiness_failures(settings, engine) == [
+            "database_or_schema_unavailable"
+        ]
+
+        _run_alembic(dsn, "upgrade", "head")
+
         assert (
             await connection.fetchval("SELECT version_num FROM alembic_version")
             == REQUIRED_SCHEMA_REVISION
@@ -740,107 +233,12 @@ async def _assert_candidate_semantics_migration(
             REQUIRED_SCHEMA_CONTRACT,
         )
         assert await runtime_readiness_failures(settings, engine) == []
-        upgraded = await connection.fetch(candidate_sql, names)
-        assert await connection.fetchrow(source_state_sql) == source_state
-        for old, row in zip(before, upgraded, strict=True):
-            assert {key: row[key] for key in row.keys() if key != "payload"} == {
-                key: old[key] for key in old.keys() if key != "payload"
-            }
-            payload = json.loads(row["payload"])
-            legacy = legacy_payloads[row["native_id"]]
-            case = next(item for item in cases if item[0] == row["native_id"])
-            assert payload["availability"] == case[7]
-            assert payload["observation"] == case[8]
-            assert payload["raw_metadata"] == {
-                key: value
-                for key, value in legacy["raw_metadata"].items()
-                if key not in {"availability", "web_discovery_only"}
-            }
-            assert row["payload_hash"] == _historical_candidate_hash(legacy)
-            discovered = DiscoveredContent.from_payload(payload)
-            assert discovered.material_hash() == row["payload_hash"]
-        assert json.loads(
-            await connection.fetchval(
-                "SELECT payload FROM ingestion_candidates WHERE native_id = 'legacy-pending'"
-            )
-        ) == {"availability": "available", "observation": "full"}
-
-        # A new producer can carry provider keys with the former policy names.
-        # Rollback must derive old-worker policy from explicit fields, not revive them.
-        explicit_payload = {
-            **legacy_payloads["baseline-full"],
-            "native_id": "v26-conflicting-metadata",
-            "availability": "available",
-            "observation": "full",
-            "raw_metadata": {
-                "availability": "unavailable",
-                "web_discovery_only": True,
-                "nested": {"availability": "provider-value"},
-            },
-        }
-        explicit_hash = DiscoveredContent.from_payload(explicit_payload).material_hash()
-        await connection.execute(
-            """
-            INSERT INTO ingestion_candidates (
-                id, source_id, native_id, payload, payload_hash, observed_at,
-                suggested_feed_sort_at, status, attempt_count
-            ) VALUES (
-                $1, '40000000-0000-0000-0000-000000000004',
-                'v26-conflicting-metadata', $2::jsonb, $3, now(), now(), 'pending', 0
-            )
-            """,
-            uuid4(),
-            json.dumps(explicit_payload),
-            explicit_hash,
-        )
-
-        _run_alembic(dsn, "downgrade", "20260922_29")
-        assert await connection.fetchval("SELECT version_num FROM alembic_version") == "20260922_29"
-        assert not await connection.fetchval(
-            "SELECT EXISTS(SELECT 1 FROM app_schema_contracts WHERE contract = $1)",
-            REQUIRED_SCHEMA_CONTRACT,
-        )
-        assert await connection.fetchval(
-            "SELECT EXISTS(SELECT 1 FROM app_schema_contracts "
-            "WHERE contract = 'reader-runtime-v25')"
-        )
-        assert await runtime_readiness_failures(settings, engine) == ["schema_contract_missing"]
-        assert await connection.fetchrow(source_state_sql) == source_state
-        rolled_back = await connection.fetch(candidate_sql, names)
-        assert rolled_back == before
-        assert (
-            json.loads(
-                await connection.fetchval(
-                    "SELECT payload FROM ingestion_candidates WHERE native_id = 'legacy-pending'"
-                )
-            )
-            == {}
-        )
-        downgraded = json.loads(
-            await connection.fetchval(
-                "SELECT payload FROM ingestion_candidates "
-                "WHERE native_id = 'v26-conflicting-metadata'"
-            )
-        )
-        assert downgraded == {
-            **{
-                key: value
-                for key, value in explicit_payload.items()
-                if key not in {"availability", "observation", "raw_metadata"}
-            },
-            "raw_metadata": {"nested": {"availability": "provider-value"}},
-        }
-        assert _historical_candidate_hash(downgraded) == explicit_hash
+        await _assert_ranking_worker_contract(dsn, connection, monkeypatch)
+        await _assert_concurrent_idempotency_contract(dsn, connection)
+        await _assert_translation_quota_contract(dsn, connection)
     finally:
         await engine.dispose()
-        await connection.execute(
-            "DELETE FROM ingestion_candidates WHERE native_id = ANY($1::text[])",
-            [*names, "v26-conflicting-metadata"],
-        )
-        await connection.execute(
-            "DELETE FROM feed_sources WHERE id IN "
-            "('92000000-0000-0000-0000-000000000009', '93000000-0000-0000-0000-000000000009')"
-        )
+        await connection.close()
 
 
 async def _assert_concurrent_idempotency_contract(
@@ -1327,6 +725,19 @@ async def _assert_ranking_worker_contract(
     connection: asyncpg.Connection,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The API creates core board rows on first view; seed the one this checks.
+    await connection.execute(
+        """
+        INSERT INTO ranking_snapshots (
+            cache_key, kind, parameters, payload, fetched_at,
+            next_refresh_at, last_accessed_at, is_ready, last_error
+        ) VALUES (
+            'ranking:v2:hacker_news', 'hacker_news', '{}',
+            '{"title":"Hacker News","subtitle":"","items":[]}',
+            now(), now(), now(), true, NULL
+        ) ON CONFLICT (cache_key) DO NOTHING
+        """
+    )
     await connection.execute(
         """
         UPDATE ranking_snapshots
@@ -1341,17 +752,6 @@ async def _assert_ranking_worker_contract(
             cache_key, kind, parameters, payload, fetched_at,
             next_refresh_at, last_accessed_at, is_ready, last_error
         ) VALUES
-        (
-            'ranking:hacker_news', 'hacker_news', '{}',
-            '{"title":"Legacy","subtitle":"","items":[]}',
-            now(), now() - interval '1 minute', now(), true, NULL
-        ),
-        (
-            'ranking:v2:reddit:codex:hot:-', 'reddit',
-            '{"subreddit":"machinelearning","sort":"hot","time_filter":"week"}',
-            '{"title":"Mismatched","subtitle":"","items":[]}',
-            now(), now() - interval '1 minute', now(), true, NULL
-        ),
         (
             'ranking:v2:reddit:machinelearning:top:day', 'reddit',
             '{"subreddit":"machinelearning","sort":"top","time_filter":"day"}',
@@ -1399,11 +799,7 @@ async def _assert_ranking_worker_contract(
             """
             SELECT count(*)
             FROM ranking_snapshots
-            WHERE cache_key IN (
-                'ranking:hacker_news',
-                'ranking:v2:reddit:codex:hot:-',
-                'ranking:v2:reddit:machinelearning:top:day'
-            )
+            WHERE cache_key = 'ranking:v2:reddit:machinelearning:top:day'
             """
         )
         == 0

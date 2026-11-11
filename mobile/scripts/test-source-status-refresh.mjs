@@ -155,22 +155,12 @@ try {
   assert.equal(calls, 6, 'healthy subscriptions continue refreshing at thirty seconds');
   console.log('PASS identical pending responses keep polling and completion reduces refresh frequency');
 
-  await mount([{ ...healthy, sync_phase: 'degraded', last_error_code: 'web_rule_repairing' }]);
-  await advance(2_999);
-  assert.equal(calls, 1);
+  await mount([{ ...pending, sync_phase: 'degraded', last_error_code: 'rss_http_403' }]);
+  await advance(29_999);
+  assert.equal(calls, 1, 'a pending source with a recorded failure does not poll rapidly');
   await advance(1);
-  assert.equal(calls, 2, 'an active source under rule repair uses the transient cadence');
-  await advance(3_000);
-  assert.equal(calls, 3, 'unchanged repair state continues polling');
-
-  for (const code of ['web_rule_authoring_failed', 'web_rule_agent_unavailable']) {
-    await mount([{ ...pending, sync_phase: 'degraded', last_error_code: code }]);
-    await advance(29_999);
-    assert.equal(calls, 1, `${code} does not poll rapidly merely because the source remains pending`);
-    await advance(1);
-    assert.equal(calls, 2, `${code} retains the thirty-second status refresh`);
-  }
-  console.log('PASS rule repair stays responsive and terminal failures use the slower cadence');
+  assert.equal(calls, 2, 'failed sources retain the thirty-second status refresh');
+  console.log('PASS failed sources use the slower cadence');
 
   await mount(repeatedPending);
   const temporaryError = new Error('Temporary source status request failure');

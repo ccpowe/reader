@@ -20,7 +20,6 @@ REQUIRED_WORKER_LOOPS = (
     "translation_foreground",
     "translation_background",
 )
-OPTIONAL_WORKER_LOOPS = ("web_rule_author",)
 
 
 async def mark_worker_loop_started(
@@ -134,10 +133,7 @@ def summarize_worker_readiness(
 
     loops: list[dict[str, Any]] = []
     failures: list[str] = []
-    for loop_name in (
-        *REQUIRED_WORKER_LOOPS,
-        *(name for name in OPTIONAL_WORKER_LOOPS if name in latest),
-    ):
+    for loop_name in REQUIRED_WORKER_LOOPS:
         row = latest.get(loop_name)
         if row is None:
             failures.append(f"missing:{loop_name}")
@@ -156,12 +152,7 @@ def summarize_worker_readiness(
             state = "starting"
         else:
             state = "healthy"
-        metrics = getattr(row, "last_metrics", None) or {}
-        if loop_name in OPTIONAL_WORKER_LOOPS and state == "healthy":
-            mode = metrics.get("mode")
-            if mode in {"disabled", "paused"}:
-                state = mode
-        if state != "healthy" and loop_name in REQUIRED_WORKER_LOOPS:
+        if state != "healthy":
             failures.append(f"{state}:{loop_name}")
         loops.append(
             {

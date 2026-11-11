@@ -63,24 +63,17 @@ export function sourceHealthLabel(item: Pick<
   'backlog_cycles' | 'gap_detected' | 'last_error_code' | 'status' | 'sync_phase'
 >): string {
   if (item.status === 'paused') return i18n.t('errors:sourcePaused');
-  if (['web_challenge_required', 'web_rss_challenge_required', 'rss_challenge_required'].includes(item.last_error_code ?? '')) {
+  if (['rss_challenge_required'].includes(item.last_error_code ?? '')) {
     return i18n.t('errors:sourceBrowserVerification');
   }
-  if (['web_http_403', 'web_rss_http_403', 'rss_http_403'].includes(item.last_error_code ?? '')) {
+  if (['rss_http_403'].includes(item.last_error_code ?? '')) {
     return i18n.t('errors:sourceAccessDenied');
   }
-  if (['web_http_401', 'web_rss_http_401', 'rss_http_401'].includes(item.last_error_code ?? '')) {
+  if (['rss_http_401'].includes(item.last_error_code ?? '')) {
     return i18n.t('errors:sourceAuthenticationRequired');
   }
-  if (item.last_error_code === 'web_feed_discovering') return i18n.t('errors:sourceFeedDiscovering');
-  if (item.last_error_code === 'web_feed_discovery_retry') return i18n.t('errors:sourceFeedDiscoveryRetry');
-  if (item.last_error_code === 'web_rule_authoring') return i18n.t('errors:sourceRuleAuthoring');
-  if (item.last_error_code === 'web_rule_repairing') return i18n.t('errors:sourceRuleRepairing');
-  if (item.last_error_code === 'web_rule_authoring_failed') return i18n.t('errors:sourceRuleAuthoringFailed');
-  if (item.last_error_code === 'web_rule_agent_unavailable') return i18n.t('errors:sourceRuleAgentUnavailable');
   if (item.sync_phase === 'degraded') {
     if (item.gap_detected) return i18n.t('errors:sourceHistoryGap');
-    if (item.last_error_code === 'web_rule_partial_parse') return i18n.t('errors:sourcePartialParsing');
     if (item.last_error_code === 'youtube_data_api_unavailable') return i18n.t('errors:sourceYouTubeQuota');
     if (item.last_error_code === 'auth_failed') return i18n.t('errors:sourceXAuthFailed');
     if (item.last_error_code === 'manifest_failed') return i18n.t('errors:sourceXManifestFailed');
@@ -96,12 +89,7 @@ export function sourceHealthLabel(item: Pick<
 
 export function sourceStatusRefreshInterval(items: readonly Pick<SourceListItem, 'status' | 'last_error_code'>[]): number | false {
   if (!items.length) return false;
-  const busy = items.some((item) => item.status !== 'paused' && (
-    (item.status === 'pending' && !item.last_error_code)
-    || item.last_error_code === 'web_feed_discovering'
-    || item.last_error_code === 'web_rule_authoring'
-    || item.last_error_code === 'web_rule_repairing'
-  ));
+  const busy = items.some((item) => item.status !== 'paused' && item.status === 'pending' && !item.last_error_code);
   // Failures and scheduled backlog scans may last hours. Keep them current
   // without treating them as continuously running short operations.
   return busy ? 3_000 : 30_000;

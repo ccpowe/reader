@@ -21,7 +21,6 @@ from app.ingestion.models import (
     SourceScanPage,
     SourceScanRequest,
 )
-from app.ingestion.web_feed import configured_web_feed_url
 from app.storage.models import FeedSource, SourceSyncRun, SourceSyncState
 
 _RESTART_CURSOR = {"_restart_from_head": True}
@@ -160,8 +159,6 @@ class ScanProgress:
         self.raw_items += page.raw_items
         self.changed += outcome.changed
         _record_page(run, state, page, outcome, now)
-        if page.provider_mode == "web_rss":
-            state.web_rule_structural_failures = 0
         if self.mode == "initial":
             state.initial_sync_completed = True
             state.committed_checkpoint = _with_unchanged_streak(
@@ -346,13 +343,6 @@ def _record_page(
     state.last_attempt_at = now
 
 
-def mark_web_head_observed(run: SourceSyncRun, evidence: dict[str, Any]) -> None:
-    metrics = dict(run.metrics or {})
-    metrics["web_listing"] = evidence
-    metrics["web_head_observed"] = True
-    run.metrics = metrics
-
-
 def finish_incomplete_run(
     source: FeedSource,
     state: SourceSyncState,
@@ -385,11 +375,7 @@ def record_scan_failure(
 ) -> None:
     state.last_error_code = exc.code
     state.last_error_message = str(exc)[:2000]
-    if exc.code == "web_rule_required":
-        state.phase = SyncPhase.DEGRADED
-        state.next_scan_at = None
-        status = SyncRunStatus.FAILED
-    elif exc.code == "cursor_invalid":
+    if exc.code == "cursor_invalid":
         state.phase = SyncPhase.CATCHING_UP
         state.continuation = {
             "latest_checkpoint": state.pending_checkpoint or state.committed_checkpoint,
@@ -415,7 +401,7 @@ def record_scan_failure(
         run.error_code = exc.code
         run.error_message = str(exc)[:2000]
         if exc.evidence:
-            run.metrics = {**(run.metrics or {}), "web_listing": exc.evidence}
+            run.metrics = {**(run.metrics or {}), "error_evidence": exc.evidence}
 
 
 def _finish_run(run: SourceSyncRun, page: SourceScanPage, now: datetime, *, partial: bool) -> None:
@@ -500,12 +486,7 @@ def _merge_fallback_checkpoint(
 
 
 def normal_interval_minutes(source: FeedSource, state: SourceSyncState) -> int:
-    if source.kind == SourceKind.RSS or (
-        source.kind == SourceKind.WEB
-        and configured_web_feed_url(
-            getattr(source, "canonical_url", ""), getattr(source, "config", {})
-        )
-    ):
+    if source.kind == SourceKind.RSS:
         target, minimum, maximum = 60, 30, 120
     elif source.kind == SourceKind.YOUTUBE:
         target, minimum, maximum = 60, 60, 120
@@ -536,47 +517,3 @@ def retry_delay(exc: SourceScanError, failures: int) -> timedelta:
         return timedelta(hours=24)
     minutes = (2, 10, 30, 120, 360)[min(max(failures - 1, 0), 4)]
     return timedelta(minutes=minutes * random.uniform(0.9, 1.1))
-
-
-def _reset_checkpoint_cursors(state: SourceSyncState) -> None:
-    state.committed_checkpoint = {
-        key: value
-        for key, value in state.committed_checkpoint.items()
-        if key in {"head_ids", "item_hashes"}
-    }
-    state.pending_checkpoint = {}
-    state.continuation = None
-
-
-def reset_for_rule_activation(state: SourceSyncState, *, now: datetime) -> None:
-    _reset_checkpoint_cursors(state)
-    state.lease_token = None
-    state.lease_expires_at = None
-    state.phase = SyncPhase.IDLE
-    state.last_error_code = None
-    state.last_error_message = None
-    state.consecutive_failures = 0
-    state.web_rule_structural_failures = 0
-    state.web_rule_failure_episode_id = None
-    state.provider_mode = "web_crawl4ai"
-    state.next_scan_at = now
-
-
-def reset_for_selected_feed(state: SourceSyncState) -> None:
-    _reset_checkpoint_cursors(state)
-    state.web_rule_structural_failures = 0
-    state.web_rule_failure_episode_id = None
-    state.provider_mode = "web_rss"
-    state.consecutive_failures = 0
-    state.consecutive_limit_runs = 0
-    state.last_error_code = None
-    state.last_error_message = None
-    state.gap_detected = False
-    state.phase = SyncPhase.IDLE
-
-
-def reset_for_feed_rediscovery(state: SourceSyncState) -> None:
-    _reset_checkpoint_cursors(state)
-    state.web_rule_structural_failures = 0
-    state.last_error_code = "web_feed_discovery_retry"
-    state.last_error_message = "The selected feed changed; checking the website again."

@@ -573,6 +573,9 @@ async function addSource(
     method: 'POST',
   });
   if (!response.ok) {
+    const detail = payload && typeof payload === 'object' ? (payload as { detail?: unknown }).detail : null;
+    if (detail === 'feed_not_found') throw localizedApiError(localizedMessage('errors:sourceFeedNotFound'));
+    if (detail === 'website_unreachable') throw localizedApiError(localizedMessage('errors:sourceWebsiteUnreachable'));
     throw backendError(payload, response.status);
   }
   return payload as SourceSubscription;

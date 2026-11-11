@@ -54,15 +54,15 @@ def test_refresh_ranges_are_channel_specific() -> None:
     assert (
         scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.YOUTUBE), quiet) == 120
     )
-    assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.WEB), quiet) == 240
+    assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.X), quiet) == 240
     assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.X), idle) == 120
     assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.RSS), busy) == 30
-    assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.WEB), busy) == 60
+    assert scan_state.normal_interval_minutes(SimpleNamespace(kind=SourceKind.X), busy) == 60
 
 
 @pytest.mark.asyncio
 async def test_only_operator_configured_scweet_uses_the_trusted_service_client() -> None:
-    settings = SimpleNamespace(x_provider="scweet")
+    settings = SimpleNamespace()
     scweet_client = sync._build_source_http_client(
         SimpleNamespace(kind=SourceKind.X),
         settings,
@@ -170,7 +170,6 @@ def _catchup_progress(continuation):
         last_error_message=None,
         consecutive_failures=0,
         consecutive_limit_runs=0,
-        web_rule_structural_failures=0,
         lease_token=uuid4(),
         lease_expires_at=datetime.now(UTC) + timedelta(minutes=5),
         next_scan_at=None,

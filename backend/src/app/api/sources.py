@@ -24,11 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import AuthenticatedUser, require_current_user
 from app.core.settings import get_settings
 from app.domain.enums import SourceStatus, SyncPhase
+from app.ingestion.feed_discovery import discover_web_feed
 from app.ingestion.source_identity import (
     MAX_RAW_SUBREDDIT_LENGTH,
     canonical_reddit_identity,
     canonical_rss_identity,
-    canonical_web_identity,
     canonical_x_identity,
     canonical_youtube_identity,
 )
@@ -39,7 +39,6 @@ from app.ingestion.url_safety import (
     validate_public_http_url,
 )
 from app.ingestion.youtube import resolve_youtube_channel_id
-from app.services.source_health import web_rule_health_projections
 from app.services.subscriptions import (
     SourceSubscriptionLimitExceeded,
     subscribe_to_reddit_source,
@@ -153,9 +152,7 @@ class SourceListItemResponse(BaseModel):
     backlog_cycles: int
     last_error_code: str | None = Field(
         description=(
-            "Latest synchronization error or warning. web_rule_partial_parse means usable "
-            "articles were found but some rows lacked a title or URL; "
-            "web_rule_missing_fields means no usable articles were found."
+            "Latest synchronization error or warning code."
         )
     )
 
@@ -200,18 +197,35 @@ async def add_web_source(
     current_user: AuthenticatedUser = Depends(require_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> SourceSubscriptionResponse:
-    """Subscribe to a website, probing RSS/Atom before authoring a crawl rule."""
+    """Find a website's RSS/Atom feed now and subscribe to that feed.
+
+    Websites without a usable feed are rejected; Reader does not crawl pages.
+    """
     logger.info("Source add requested: kind=web user_id=%s", current_user.id)
     try:
-        identity = canonical_web_identity(payload.url)
-        await validate_public_http_url(identity.canonical_url)
-    except UnsafeSourceUrl as exc:
-        logger.warning("Source add rejected: kind=web user_id=%s reason=%s", current_user.id, exc)
+        await validate_public_http_url(payload.url)
+        async with PublicAsyncClient() as client:
+            result = await discover_web_feed(payload.url, client)
+    except (UnsafeSourceUrl, ValueError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
-
+    if result.status == "not_found" or result.feed_url is None:
+        status_code = (
+            status.HTTP_502_BAD_GATEWAY
+            if result.status in {"retry", "blocked"}
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail="feed_not_found" if status_code == 422 else "website_unreachable",
+        )
+    try:
+        identity = canonical_rss_identity(result.feed_url)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     source, subscription, sync_state, created_source = await subscribe_to_source(
         session,
         user_id=current_user.id,
@@ -219,11 +233,6 @@ async def add_web_source(
         display_name=payload.display_name,
         folder_name=_normalise_folder_name(payload.folder_name),
         source_config={},
-    )
-    logger.info(
-        "Source add complete: kind=web source_id=%s created_shared_source=%s",
-        source.id,
-        created_source,
     )
     return _to_response(source, subscription, sync_state, created_source)
 
@@ -356,16 +365,12 @@ async def list_sources(
         .order_by(SourceSubscription.created_at.desc())
     )
     rows = list(result)
-    projections = await web_rule_health_projections(
-        session, [(source, state) for _, source, state, _ in rows]
-    )
     return [
         _source_list_item_response(
             subscription,
             source,
             sync_state,
             new_count=int(count or 0),
-            projection=projections.get(source.id),
         )
         for subscription, source, sync_state, count in rows
     ]
@@ -377,9 +382,7 @@ def _source_list_item_response(
     sync_state: SourceSyncState,
     *,
     new_count: int,
-    projection: tuple[SyncPhase, str | None] | None = None,
 ) -> SourceListItemResponse:
-    phase, error_code = projection or (sync_state.phase, sync_state.last_error_code)
     return SourceListItemResponse(
         source_id=str(source.id),
         subscription_id=str(subscription.id),
@@ -391,12 +394,12 @@ def _source_list_item_response(
         include_in_home=subscription.include_in_home,
         new_count=new_count,
         status=source.status,
-        sync_phase=phase,
+        sync_phase=sync_state.phase,
         last_complete_at=sync_state.last_complete_at,
         next_scan_at=sync_state.next_scan_at,
         gap_detected=sync_state.gap_detected,
         backlog_cycles=sync_state.consecutive_limit_runs,
-        last_error_code=error_code,
+        last_error_code=sync_state.last_error_code,
     )
 
 
@@ -655,13 +658,11 @@ async def _load_source_list_item(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subscription not found.")
     subscription, source, sync_state, new_count = row
-    projections = await web_rule_health_projections(session, [(source, sync_state)])
     return _source_list_item_response(
         subscription,
         source,
         sync_state,
         new_count=int(new_count or 0),
-        projection=projections.get(source.id),
     )
 
 

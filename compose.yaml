@@ -29,13 +29,6 @@ x-reader-environment: &reader-environment
   APP_TRANSLATION_QUOTA_REQUESTS_PER_MINUTE: ${APP_TRANSLATION_QUOTA_REQUESTS_PER_MINUTE:-30}
   APP_TRANSLATION_QUOTA_USER_MISS_CHARS_PER_MINUTE: ${APP_TRANSLATION_QUOTA_USER_MISS_CHARS_PER_MINUTE:-120000}
   APP_TRANSLATION_QUOTA_GLOBAL_MISS_CHARS_PER_MINUTE: ${APP_TRANSLATION_QUOTA_GLOBAL_MISS_CHARS_PER_MINUTE:-500000}
-  APP_WEB_RULE_AGENT_ENGINE_ID: ${APP_WEB_RULE_AGENT_ENGINE_ID:-disabled}
-  APP_WEB_RULE_AGENT_MAX_OUTPUT_TOKENS: ${APP_WEB_RULE_AGENT_MAX_OUTPUT_TOKENS:-4096}
-  APP_WEB_RULE_AGENT_MODEL_TIMEOUT_SECONDS: ${APP_WEB_RULE_AGENT_MODEL_TIMEOUT_SECONDS:-60}
-  APP_WEB_RULE_AGENT_VALIDATE_TIMEOUT_SECONDS: ${APP_WEB_RULE_AGENT_VALIDATE_TIMEOUT_SECONDS:-180}
-  APP_WEB_RULE_AGENT_MAX_TOOL_RESULT_BYTES: ${APP_WEB_RULE_AGENT_MAX_TOOL_RESULT_BYTES:-20480}
-  APP_WEB_RULE_AGENT_MAX_DIAGNOSTIC_BYTES: ${APP_WEB_RULE_AGENT_MAX_DIAGNOSTIC_BYTES:-262144}
-  APP_X_PROVIDER: scweet
 
 x-reader-runtime: &reader-runtime
   image: ${READER_IMAGE_ID:?docker-init.sh up must select a Reader image}
@@ -61,7 +54,6 @@ x-worker-secrets: &worker-secrets
   - openrouter-api-key
   - product-hunt-token
   - youtube-data-api-key
-  - browser-manager-token
   - scweet-service-token
 
 services:
@@ -142,23 +134,6 @@ services:
     cpus: 1.0
     pids_limit: 256
 
-  state-init:
-    <<: *reader-runtime
-    profiles: [tools]
-    restart: "no"
-    user: "0:20000"
-    network_mode: none
-    cap_add: [CHOWN]
-    environment:
-      APP_BROWSER_TASK_STATE_DIR: /var/lib/reader-browser
-    entrypoint: [reader-state-init]
-    command: []
-    volumes:
-      - browser-state:/var/lib/reader-browser
-    mem_limit: 64m
-    cpus: 0.25
-    pids_limit: 32
-
   codex-auth-init:
     <<: *reader-runtime
     profiles: [tools]
@@ -173,83 +148,6 @@ services:
     mem_limit: 32m
     cpus: 0.25
     pids_limit: 16
-
-  network-init:
-    <<: *reader-runtime
-    profiles: [tools]
-    restart: "no"
-    user: "10001:10001"
-    command: [/bin/true]
-    networks: [browser-egress]
-    mem_limit: 32m
-    cpus: 0.25
-    pids_limit: 16
-
-  browser-manager:
-    <<: *reader-runtime
-    user: "10001:10001"
-    group_add: ["20000", "${DOCKER_GID}", "${READER_SECRET_GID}"]
-    environment:
-      APP_BROWSER_TASK_DEPLOYMENT_ID: ${READER_DEPLOYMENT_ID}
-      APP_BROWSER_TASK_BROWSER_IMAGE: ${BROWSER_IMAGE_ID}
-      APP_BROWSER_TASK_ADAPTER_IMAGE: ${READER_IMAGE_ID}
-      APP_BROWSER_TASK_DATA_NETWORK: ${BROWSER_DATA_NETWORK}
-      APP_BROWSER_TASK_EGRESS_NETWORK: ${BROWSER_EGRESS_NETWORK}
-      APP_BROWSER_TASK_POLICY_VERSION: reader-browser-container-v1
-      APP_BROWSER_TASK_LIGHTPANDA_VERSION: 0.4.0
-      APP_BROWSER_TASK_LIGHTPANDA_SHA256: bfcf9bd7e80939b87232aa114a49d8f397f51af0c2632d9fc58d4a6d4386624f
-      APP_BROWSER_TASK_AGENT_BROWSER_VERSION: 0.37.1
-      APP_BROWSER_TASK_AGENT_BROWSER_SHA256: f8e5f9294bd0da70dda61854f12004fd61c668cd682bfb600cdf6d0df73dea69
-      APP_BROWSER_TASK_STATE_DIR: /var/lib/reader-browser
-      APP_BROWSER_MANAGER_TOKEN_FILE: /run/secrets/browser-manager-token
-    secrets: [browser-manager-token]
-    volumes:
-      - browser-state:/var/lib/reader-browser
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      browser-control:
-        aliases: [browser-manager]
-    command: [reader-browser-manager]
-    healthcheck:
-      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/ready', timeout=2).read()"]
-      interval: 3s
-      timeout: 3s
-      retries: 30
-      start_period: 5s
-    labels:
-      io.reader.deployment: ${READER_DEPLOYMENT_ID}
-      io.reader.component: browser-manager
-    mem_limit: 384m
-    cpus: 0.75
-    pids_limit: 192
-
-  browser-reaper:
-    <<: *reader-runtime
-    user: "10002:10001"
-    group_add: ["20000", "${DOCKER_GID}"]
-    network_mode: none
-    environment:
-      APP_BROWSER_TASK_DEPLOYMENT_ID: ${READER_DEPLOYMENT_ID}
-      APP_BROWSER_TASK_BROWSER_IMAGE: ${BROWSER_IMAGE_ID}
-      APP_BROWSER_TASK_ADAPTER_IMAGE: ${READER_IMAGE_ID}
-      APP_BROWSER_TASK_DATA_NETWORK: ${BROWSER_DATA_NETWORK}
-      APP_BROWSER_TASK_EGRESS_NETWORK: ${BROWSER_EGRESS_NETWORK}
-      APP_BROWSER_TASK_POLICY_VERSION: reader-browser-container-v1
-      APP_BROWSER_TASK_LIGHTPANDA_VERSION: 0.4.0
-      APP_BROWSER_TASK_LIGHTPANDA_SHA256: bfcf9bd7e80939b87232aa114a49d8f397f51af0c2632d9fc58d4a6d4386624f
-      APP_BROWSER_TASK_AGENT_BROWSER_VERSION: 0.37.1
-      APP_BROWSER_TASK_AGENT_BROWSER_SHA256: f8e5f9294bd0da70dda61854f12004fd61c668cd682bfb600cdf6d0df73dea69
-      APP_BROWSER_TASK_STATE_DIR: /var/lib/reader-browser
-    volumes:
-      - browser-state:/var/lib/reader-browser
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: [reader-browser-reaper]
-    labels:
-      io.reader.deployment: ${READER_DEPLOYMENT_ID}
-      io.reader.component: browser-reaper
-    mem_limit: 256m
-    cpus: 0.5
-    pids_limit: 128
 
   api:
     <<: *reader-runtime
@@ -305,21 +203,12 @@ services:
       APP_TRANSLATION_QUOTA_REQUESTS_PER_MINUTE: ${APP_TRANSLATION_QUOTA_REQUESTS_PER_MINUTE:-30}
       APP_TRANSLATION_QUOTA_USER_MISS_CHARS_PER_MINUTE: ${APP_TRANSLATION_QUOTA_USER_MISS_CHARS_PER_MINUTE:-120000}
       APP_TRANSLATION_QUOTA_GLOBAL_MISS_CHARS_PER_MINUTE: ${APP_TRANSLATION_QUOTA_GLOBAL_MISS_CHARS_PER_MINUTE:-500000}
-      APP_WEB_RULE_AGENT_ENGINE_ID: ${APP_WEB_RULE_AGENT_ENGINE_ID:-disabled}
-      APP_WEB_RULE_AGENT_MAX_OUTPUT_TOKENS: ${APP_WEB_RULE_AGENT_MAX_OUTPUT_TOKENS:-4096}
-      APP_WEB_RULE_AGENT_MODEL_TIMEOUT_SECONDS: ${APP_WEB_RULE_AGENT_MODEL_TIMEOUT_SECONDS:-60}
-      APP_WEB_RULE_AGENT_VALIDATE_TIMEOUT_SECONDS: ${APP_WEB_RULE_AGENT_VALIDATE_TIMEOUT_SECONDS:-180}
-      APP_WEB_RULE_AGENT_MAX_TOOL_RESULT_BYTES: ${APP_WEB_RULE_AGENT_MAX_TOOL_RESULT_BYTES:-20480}
-      APP_WEB_RULE_AGENT_MAX_DIAGNOSTIC_BYTES: ${APP_WEB_RULE_AGENT_MAX_DIAGNOSTIC_BYTES:-262144}
-      CRAWL4_AI_BASE_DIRECTORY: /tmp/reader-crawl4ai
-      APP_BROWSER_CONTROLLER_URL: http://browser-manager:8091
-      APP_BROWSER_CONTROLLER_TOKEN_FILE: /run/secrets/browser-manager-token
       APP_SCWEET_SERVICE_URL: http://scweet:8090
       APP_SCWEET_SERVICE_TOKEN_FILE: /run/secrets/scweet-service-token
     secrets: *worker-secrets
     volumes:
       - codex-auth:/var/lib/reader-codex
-    networks: [db-data, app-egress, browser-control, browser-data, scweet-control]
+    networks: [db-data, app-egress, scweet-control]
     command: [reader-worker]
     labels:
       io.reader.deployment: ${READER_DEPLOYMENT_ID}
@@ -375,21 +264,12 @@ services:
 volumes:
   codex-auth:
   postgres-data:
-  browser-state:
   scweet-state:
 
 networks:
   db-data:
     name: ${DB_DATA_NETWORK}
     internal: true
-  browser-control:
-    name: ${BROWSER_CONTROL_NETWORK}
-    internal: true
-  browser-data:
-    name: ${BROWSER_DATA_NETWORK}
-    internal: true
-  browser-egress:
-    name: ${BROWSER_EGRESS_NETWORK}
   app-egress:
     name: ${APP_EGRESS_NETWORK}
   scweet-control:
@@ -413,8 +293,6 @@ secrets:
     file: .docker/secrets/product-hunt-token
   youtube-data-api-key:
     file: .docker/secrets/youtube-data-api-key
-  browser-manager-token:
-    file: .docker/secrets/browser-manager-token
   scweet-service-token:
     file: .docker/secrets/scweet-service-token
   scweet-cookies:

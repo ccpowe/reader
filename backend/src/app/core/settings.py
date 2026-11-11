@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 
 from pydantic import AliasChoices, AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -65,35 +64,6 @@ class Settings(BaseSettings):
     ingestion_max_response_bytes: int = Field(
         default=5 * 1024 * 1024, ge=256 * 1024, le=20 * 1024 * 1024
     )
-    # All dynamic Web paths use the same backend. Legacy Agent-only names are
-    # accepted during configuration migration; Chromium is no longer supported.
-    ingestion_browser_engine: Literal["lightpanda"] = Field(
-        default="lightpanda",
-        validation_alias=AliasChoices(
-            "APP_INGESTION_BROWSER_ENGINE",
-            "ingestion_browser_engine",
-            "APP_WEB_RULE_AGENT_BROWSER_ENGINE",
-            "web_rule_agent_browser_engine",
-        ),
-    )
-    ingestion_lightpanda_executable_path: str | None = Field(
-        default=None,
-        max_length=4096,
-        validation_alias=AliasChoices(
-            "APP_INGESTION_LIGHTPANDA_EXECUTABLE_PATH",
-            "ingestion_lightpanda_executable_path",
-            "APP_WEB_RULE_AGENT_LIGHTPANDA_EXECUTABLE_PATH",
-            "web_rule_agent_lightpanda_executable_path",
-        ),
-    )
-    browser_controller_url: AnyHttpUrl | None = None
-    browser_controller_token: SecretStr | None = Field(default=None, exclude=True)
-    browser_controller_token_file: Path | None = Field(default=None, exclude=True)
-    browser_controller_control_timeout_seconds: float = Field(default=45.0, ge=5.0, le=120.0)
-    browser_adapter_request_timeout_seconds: float = Field(default=70.0, ge=10.0, le=180.0)
-    browser_task_close_timeout_seconds: float = Field(default=15.0, ge=3.0, le=60.0)
-    browser_task_heartbeat_seconds: float = Field(default=15.0, ge=5.0, le=60.0)
-    browser_task_startup_shutdown_margin_seconds: int = Field(default=120, ge=60, le=300)
     ingestion_dns_timeout_seconds: float = Field(default=3.0, ge=0.5, le=10.0)
     ingestion_connect_attempt_timeout_seconds: float = Field(default=1.5, ge=0.25, le=5.0)
     ingestion_source_timeout_seconds: int = Field(default=120, ge=10, le=600)
@@ -109,39 +79,6 @@ class Settings(BaseSettings):
     reddit_ranking_refreshes_per_minute: int = Field(default=1, ge=1, le=60)
     ranking_worker_concurrency: int = Field(default=4, ge=1, le=32)
     ranking_worker_cycle_timeout_seconds: int = Field(default=120, ge=10, le=900)
-    # Shared-source rule authoring is independent of user translation preferences.
-    web_rule_agent_engine_id: str = Field(default="disabled", min_length=1, max_length=64)
-    web_rule_agent_cli_executable_path: str | None = None
-    web_rule_agent_poll_seconds: int = Field(default=10, ge=1, le=300)
-    web_rule_agent_max_model_calls: int = Field(default=80, ge=1, le=100)
-    web_rule_agent_model_timeout_seconds: float = Field(default=60.0, ge=1.0, le=180.0)
-    web_rule_agent_max_output_tokens: int = Field(default=4096, ge=256, le=32768)
-    web_rule_agent_max_total_tokens: int = Field(default=3_000_000, ge=1000, le=10_000_000)
-    web_rule_agent_max_tool_result_bytes: int = Field(default=20 * 1024, ge=1024, le=80 * 1024)
-    web_rule_agent_max_diagnostic_bytes: int = Field(default=256 * 1024, ge=4096, le=1024 * 1024)
-    web_rule_agent_inspect_timeout_seconds: float = Field(default=60.0, ge=1.0, le=180.0)
-    web_rule_agent_validate_timeout_seconds: float = Field(default=180.0, ge=1.0, le=600.0)
-    web_rule_agent_lease_seconds: int = Field(default=120, ge=10, le=900)
-    web_rule_agent_heartbeat_seconds: float = Field(default=15.0, ge=1.0, le=120.0)
-    web_rule_agent_validation_ttl_seconds: int = Field(default=300, ge=10, le=900)
-
-    @model_validator(mode="after")
-    def validate_browser_controller_token_source(self) -> Settings:
-        if (
-            self.browser_controller_token is not None
-            and self.browser_controller_token_file is not None
-        ):
-            raise ValueError(
-                "browser_controller_token and browser_controller_token_file are mutually exclusive"
-            )
-        return self
-
-    @model_validator(mode="after")
-    def validate_web_rule_lease(self) -> Settings:
-        if self.web_rule_agent_heartbeat_seconds * 2 >= self.web_rule_agent_lease_seconds:
-            raise ValueError("Web rule heartbeat must be less than half the lease duration")
-        return self
-
     translation_default_engine_id: str = Field(
         default="deepseek-v4-flash", min_length=1, max_length=64
     )
@@ -209,10 +146,6 @@ class Settings(BaseSettings):
     def normalize_translation_model(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value
 
-    apify_token: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("APP_APIFY_TOKEN", "APIFY_KEY"),
-    )
     scweet_service_url: AnyHttpUrl | None = Field(
         default=None,
         validation_alias=AliasChoices("APP_SCWEET_SERVICE_URL", "SCWEET_SERVICE_URL"),
@@ -221,7 +154,6 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("APP_SCWEET_SERVICE_TOKEN", "SCWEET_SERVICE_TOKEN"),
     )
-    x_provider: Literal["scweet", "apify"] = "scweet"
     youtube_data_api_key: SecretStr | None = Field(
         default=None,
         validation_alias=AliasChoices("APP_YOUTUBE_DATA_API_KEY", "YOUTUBE_DATA_API_KEY"),

@@ -26,7 +26,7 @@ from app.domain.enums import (
 )
 from app.domain.x_relations import preserve_x_metadata
 from app.ingestion.html_safety import sanitize_html as _sanitize_html
-from app.ingestion.models import ContentAvailability, ContentObservation, DiscoveredContent
+from app.ingestion.models import ContentAvailability, DiscoveredContent
 from app.storage.locks import acquire_source_update_transaction_lock
 from app.storage.models import (
     Content,
@@ -267,24 +267,7 @@ async def _process_candidate(session, candidate: IngestionCandidate) -> None:
             entry.published_at = item.published_at or entry.published_at
             entry.raw_metadata = preserve_x_metadata(entry.raw_metadata, entry_metadata)
 
-    discovery_only = item.observation == ContentObservation.LISTING
-    preserve_body = discovery_only and bool(content.body_html or content.body_text)
     safe_body_text = _plain_text(safe_body_html)
-    if discovery_only:
-        # Missing optional enrichment is not evidence that an existing article
-        # lost its body, date, author or image.
-        if preserve_body:
-            # HTML and text must retain the same source. In particular, a legacy
-            # text-only body must not acquire the new listing summary as HTML.
-            safe_body_html = content.body_html
-            safe_body_text = content.body_text or _plain_text(safe_body_html)
-        item = replace(
-            item,
-            author_name=item.author_name or content.author_name,
-            published_at=item.published_at or content.published_at,
-        )
-        entry.author_name = item.author_name
-        entry.published_at = item.published_at
 
     if content.authority_source_id is None:
         raise RuntimeError("Content has no authoritative Source.")
@@ -303,11 +286,9 @@ async def _process_candidate(session, candidate: IngestionCandidate) -> None:
         content.body_html = safe_body_html
         content.body_text = safe_body_text
         content.content_hash = candidate.payload_hash
-        if not preserve_body:
-            content.extraction_status = _resolved_extraction_status(item.kind, safe_body_html)
+        content.extraction_status = _resolved_extraction_status(item.kind, safe_body_html)
         await session.flush()
-        if not discovery_only or item.media:
-            await _synchronise_media(session, content, item)
+        await _synchronise_media(session, content, item)
         await _enqueue_default_title_translation(session, content)
 
     _complete_candidate(candidate, content_id=content.id)

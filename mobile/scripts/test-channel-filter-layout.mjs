@@ -86,43 +86,22 @@ assert.equal(sourceSecondaryLabel({ canonical_url: 'https://anthropic.com/news/'
 assert.equal(sourceSecondaryLabel({ canonical_url: 'https://vercel.com/blog', display_name: 'Vercel', kind: 'web' }), 'vercel.com/blog');
 const sourceHealth = { backlog_cycles: 0, gap_detected: true, status: 'pending', sync_phase: 'degraded' };
 const accessFailureLabels = [
-  ['web_http_403', '网站拒绝服务器访问（HTTP 403），暂时无法获取更新'],
-  ['web_rss_http_403', '网站拒绝服务器访问（HTTP 403），暂时无法获取更新'],
   ['rss_http_403', '网站拒绝服务器访问（HTTP 403），暂时无法获取更新'],
-  ['web_challenge_required', '网站要求浏览器验证，服务器暂时无法获取更新'],
-  ['web_rss_challenge_required', '网站要求浏览器验证，服务器暂时无法获取更新'],
   ['rss_challenge_required', '网站要求浏览器验证，服务器暂时无法获取更新'],
-  ['web_http_401', '网站要求登录或授权（HTTP 401），暂时无法获取更新'],
+  ['rss_http_401', '网站要求登录或授权（HTTP 401），暂时无法获取更新'],
 ];
-for (const [last_error_code, label] of [
-  ...accessFailureLabels,
-  ['web_feed_discovering', '正在查找订阅源'],
-  ['web_feed_discovery_retry', '订阅源检测暂时失败，稍后重试'],
-  ['web_rule_authoring', '正在解析此网站'],
-  ['web_rule_repairing', '正在修复网站解析，已有内容仍可阅读'],
-  ['web_rule_authoring_failed', '暂时无法解析此网站，已有内容仍可阅读'],
-  ['web_rule_agent_unavailable', '网站解析服务暂不可用'],
-]) {
+for (const [last_error_code, label] of accessFailureLabels) {
   assert.equal(sourceHealthLabel({ ...sourceHealth, last_error_code }), label);
   assert.equal(sourceHealthLabel({ ...sourceHealth, last_error_code, status: 'paused' }), '同步已暂停');
 }
 const categorizedSources = [{ folder_name: 'Z' }, { folder_name: null }, { folder_name: '阿' }];
 const chineseFolderOrder = sourceFolders(categorizedSources);
-const partialSource = { ...sourceHealth, status: 'active', gap_detected: false, last_error_code: 'web_rule_partial_parse' };
-assert.equal(sourceHealthLabel(partialSource), '正常更新，部分文章无法解析');
-assert.equal(sourceHealthLabel({ ...partialSource, status: 'paused' }), '同步已暂停');
-assert.equal(sourceHealthLabel({ ...partialSource, last_error_code: 'web_rule_missing_fields' }), '上游暂时异常，已有内容不受影响', 'a listing with no usable articles must not claim normal updates');
-assert.equal(sourceHealthLabel({ ...partialSource, gap_detected: true }), sourceHealthLabel({ ...sourceHealth, status: 'active' }), 'history gaps retain priority over partial parsing');
 assert.deepEqual(chineseFolderOrder, ['阿', 'Z', UNCATEGORIZED_FOLDER]);
 await i18n.changeLanguage('en');
-assert.equal(sourceHealthLabel(partialSource), 'Updating normally; some articles could not be parsed');
-for (const last_error_code of ['web_http_403', 'web_rss_http_403', 'rss_http_403']) {
-  assert.equal(sourceHealthLabel({ ...sourceHealth, last_error_code }), 'The website denied server access (HTTP 403); updates are unavailable for now');
-}
-assert.equal(sourceHealthLabel({ ...sourceHealth, last_error_code: 'web_challenge_required' }), 'The website requires browser verification; the server cannot fetch updates for now');
-assert.equal(sourceHealthLabel({ ...sourceHealth, last_error_code: 'web_http_401' }), 'The website requires sign-in or authorization (HTTP 401); updates are unavailable for now');
+assert.equal(sourceHealthLabel({ ...sourceHealth, last_error_code: 'rss_http_403' }), 'The website denied server access (HTTP 403); updates are unavailable for now');
+assert.equal(sourceHealthLabel({ ...sourceHealth, last_error_code: 'rss_challenge_required' }), 'The website requires browser verification; the server cannot fetch updates for now');
+assert.equal(sourceHealthLabel({ ...sourceHealth, last_error_code: 'rss_http_401' }), 'The website requires sign-in or authorization (HTTP 401); updates are unavailable for now');
 assert.deepEqual(sourceFolders(categorizedSources), chineseFolderOrder, 'switching interface language must preserve category indices and mounted feed identity');
-assert.equal(sourceHealthLabel({ ...sourceHealth, last_error_code: 'web_feed_discovering' }), 'Finding a feed');
 assert.equal(sourceHealthLabel({ ...sourceHealth, status: 'paused' }), 'Sync paused', 'status helpers resolve the current interface language at call time');
 await i18n.changeLanguage('zh-CN');
 assert.match(sources, /sourceSecondaryLabel\(item\)/, 'subscription rows must expose a non-duplicated canonical path');

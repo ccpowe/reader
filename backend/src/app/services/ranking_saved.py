@@ -11,7 +11,7 @@ from sqlalchemy import exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.enums import CacheStatus, MediaType, SourceVisibility
+from app.domain.enums import CacheStatus, MediaType, SourceKind, SourceVisibility
 from app.ingestion.source_identity import canonical_reddit_identity
 from app.services.ranking_snapshots import (
     RankingRequest,
@@ -100,7 +100,7 @@ async def persist_ranking_item(
                         if request.kind == "techtwitter"
                         else "https://github.com/trending"
                     ),
-                    kind="hackernews" if request.kind == "hacker_news" else "web",
+                    kind=SourceKind.RANKING_ARCHIVE,
                     display_name=data.title,
                     visibility=SourceVisibility.SHARED,
                     status="paused",

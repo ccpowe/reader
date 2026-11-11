@@ -54,65 +54,6 @@ async def test_fresh_install_needs_only_bare_postgres():
         await connection.close()
 
 
-async def test_existing_profiles_and_bcrypt_survive_legacy_auth_detachment():
-    connection = await guarded_connection()
-    user_id, banned_id = uuid4(), uuid4()
-    old_hash = BcryptHasher().hash("legacy")
-    try:
-        await reset_public(connection)
-        _run_alembic(_test_dsn(), "upgrade", "20260910_27")
-        await connection.execute("""
-            CREATE SCHEMA auth;
-            CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, encrypted_password text,
-                                     banned_until timestamptz, deleted_at timestamptz);
-            ALTER TABLE profiles ADD CONSTRAINT legacy_auth_user_fk
-                FOREIGN KEY(id) REFERENCES auth.users(id);
-            CREATE FUNCTION public.handle_new_user() RETURNS trigger LANGUAGE plpgsql AS $$
-            BEGIN INSERT INTO profiles(id) VALUES(NEW.id); RETURN NEW; END $$;
-            CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users
-                FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-        """)
-        await connection.execute(
-            "INSERT INTO auth.users(id,email,encrypted_password) "
-            "VALUES($1,'  Legacy@Example.com  ',$2)",
-            user_id,
-            old_hash,
-        )
-        await connection.execute(
-            "INSERT INTO auth.users(id,email,encrypted_password,banned_until) "
-            "VALUES($1,'banned@example.com',$2,now()+interval '1 year')",
-            banned_id,
-            old_hash,
-        )
-        await connection.execute(
-            "UPDATE profiles SET display_name='Preserved' WHERE id=$1", user_id
-        )
-        _run_alembic(_test_dsn(), "upgrade", "head")
-        assert (
-            await connection.fetchval("SELECT password_hash FROM reader_users WHERE id=$1", user_id)
-            == old_hash
-        )
-        assert (
-            await connection.fetchval("SELECT email FROM reader_users WHERE id=$1", user_id)
-            == "legacy@example.com"
-        )
-        assert (
-            await connection.fetchval("SELECT id FROM reader_users WHERE id=$1", banned_id) is None
-        )
-        await connection.execute("DROP SCHEMA auth CASCADE")
-        assert (
-            await connection.fetchval("SELECT display_name FROM profiles WHERE id=$1", user_id)
-            == "Preserved"
-        )
-        assert (
-            await connection.fetchval(
-                "SELECT count(*) FROM pg_constraint "
-                "WHERE conrelid='profiles'::regclass AND contype='f'"
-            )
-            == 0
-        )
-    finally:
-        await connection.close()
 
 
 @pytest.fixture

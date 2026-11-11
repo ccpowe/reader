@@ -78,7 +78,7 @@ export function ArticleReaderScreen({
   const isVideo = item.source_kind === 'youtube';
   const isReddit = item.source_kind === 'reddit';
   const isX = item.source_kind === 'x';
-  const isWebArticle = item.source_kind === 'web' || item.source_kind === 'rss';
+  const isWebArticle = item.source_kind === 'rss';
   const videoId = isVideo ? youtubeVideoId(item.external_url) : null;
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
   const [article, setArticle] = useState<Article | null>(null);

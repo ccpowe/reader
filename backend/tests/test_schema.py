@@ -13,10 +13,7 @@ def test_core_tables_are_registered() -> None:
         "source_subscriptions",
         "source_sync_runs",
         "source_sync_states",
-        "web_rule_jobs",
-        "web_rule_agent_runtime",
         "ingestion_candidates",
-        "web_frontier",
         "provider_quota_usage",
         "worker_loop_heartbeats",
         "app_schema_contracts",
@@ -135,25 +132,6 @@ def test_candidate_identity_and_feed_sort_are_database_enforced() -> None:
     assert Base.metadata.tables["content_media"].c.is_active.nullable is False
 
 
-def test_web_frontier_tracks_discovery_and_fetch_evidence() -> None:
-    frontier = Base.metadata.tables["web_frontier"]
-
-    assert {
-        "original_url",
-        "normalized_url",
-        "canonical_url",
-        "etag",
-        "last_modified",
-        "content_hash",
-    }.issubset(frontier.columns.keys())
-    status_constraint = next(
-        constraint
-        for constraint in frontier.constraints
-        if constraint.name == "ck_web_frontier_status"
-    )
-    assert "pending" in str(status_constraint.sqltext)
-    assert "fetched" in str(status_constraint.sqltext)
-    assert "uncertain" in str(status_constraint.sqltext)
 
 
 def test_runtime_safety_columns_and_claim_index_are_registered() -> None:

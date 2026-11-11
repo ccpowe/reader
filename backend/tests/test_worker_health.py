@@ -66,29 +66,6 @@ def test_worker_readiness_ignores_retired_realtime_worker(legacy_row: bool) -> N
     assert {loop["loop_name"] for loop in report["loops"]} == set(names)
 
 
-@pytest.mark.parametrize(
-    "mode,failed,age,expected",
-    [
-        ("disabled", False, 0, "disabled"),
-        ("paused", False, 0, "paused"),
-        ("active", False, 0, "healthy"),
-        ("active", True, 0, "failing"),
-        ("active", False, 61, "stale"),
-    ],
-)
-def test_optional_rule_author_health_does_not_break_existing_sync_readiness(
-    mode, failed, age, expected
-):
-    now = datetime.now(UTC)
-    rows = [_row(name, now=now) for name in REQUIRED_WORKER_LOOPS]
-    author = _row("web_rule_author", now=now, failed=failed, age=age)
-    author.last_metrics = {"mode": mode, "pending_count": 3}
-    report = summarize_worker_readiness([*rows, author], now=now)
-    assert report["status"] == "ready"
-    assert report["failures"] == []
-    author_health = next(loop for loop in report["loops"] if loop["loop_name"] == "web_rule_author")
-    assert author_health["state"] == expected
-    assert author_health["last_metrics"]["pending_count"] == 3
 
 
 @pytest.mark.asyncio
