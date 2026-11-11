@@ -1,5 +1,6 @@
 """The account flow end to end against a real, freshly migrated database."""
 
+import asyncio
 from io import BytesIO
 
 import pytest
@@ -206,3 +207,61 @@ async def test_operator_password_reset_ends_sessions(monkeypatch) -> None:
     assert missing.value.code == "user_not_found"
     assert _code(me) == (401, "not_authenticated")
     assert login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_avatar_version_outside_the_integer_range_is_a_422(monkeypatch) -> None:
+    async with api_client(postgres_dsn(), monkeypatch) as client:
+        user_id = (await _register(client))["user"]["id"]
+        too_big = await client.get(f"/avatars/{user_id}/2147483648")
+        zero = await client.get(f"/avatars/{user_id}/0")
+        largest = await client.get(f"/avatars/{user_id}/2147483647")
+
+    assert _code(too_big) == (422, "invalid_request")
+    assert _code(zero) == (422, "invalid_request")
+    assert _code(largest) == (404, "avatar_not_found")
+
+
+@pytest.mark.asyncio
+async def test_two_simultaneous_refreshes_with_one_token(monkeypatch) -> None:
+    async with api_client(postgres_dsn(), monkeypatch) as client:
+        tokens = await _register(client)
+        body = {"refresh_token": tokens["refresh_token"]}
+        first, second = await asyncio.gather(
+            client.post("/auth/refresh", json=body), client.post("/auth/refresh", json=body)
+        )
+        winner = first if first.status_code == 200 else second
+        after = await client.get("/me", headers=_bearer(winner.json()))
+
+    # The row lock serializes them: exactly one wins, the other is seen as reuse,
+    # and reuse ends the session for both.
+    assert sorted([first.status_code, second.status_code]) == [200, 401]
+    loser = second if winner is first else first
+    assert loser.json()["error"]["code"] == "refresh_token_reused"
+    assert _code(after) == (401, "not_authenticated")
+
+
+@pytest.mark.asyncio
+async def test_password_change_ends_the_users_other_devices(monkeypatch) -> None:
+    async with api_client(postgres_dsn(), monkeypatch) as client:
+        phone = await _register(client)
+        laptop = (
+            await client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
+        ).json()
+        changed = await client.patch(
+            "/me/password",
+            json={"current_password": PASSWORD, "password": "new password 123"},
+            headers=_bearer(phone),
+        )
+        phone_me = await client.get("/me", headers=_bearer(phone))
+        laptop_me = await client.get("/me", headers=_bearer(laptop))
+        laptop_refresh = await client.post(
+            "/auth/refresh", json={"refresh_token": laptop["refresh_token"]}
+        )
+        new_me = await client.get("/me", headers=_bearer(changed.json()))
+
+    assert changed.status_code == 200
+    assert _code(phone_me) == (401, "not_authenticated")
+    assert _code(laptop_me) == (401, "not_authenticated")
+    assert _code(laptop_refresh) == (401, "invalid_refresh_token")
+    assert new_me.status_code == 200

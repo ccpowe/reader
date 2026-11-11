@@ -98,6 +98,19 @@ def test_supported_avatar_formats(fmt: str, mime: str) -> None:
     validate_avatar(_image(fmt), mime)
 
 
+def _png_with_broken_checksum() -> bytes:
+    data = bytearray(_image("PNG"))
+    data[data.index(b"IDAT") + 6] ^= 0xFF  # flip a compressed byte; the CRC no longer matches
+    return bytes(data)
+
+
+def test_png_with_broken_checksum_is_rejected_not_a_server_error() -> None:
+    with pytest.raises(AppError) as raised:
+        validate_avatar(_png_with_broken_checksum(), "image/png")
+
+    assert raised.value.code == "invalid_avatar"
+
+
 @pytest.mark.parametrize(
     ("data", "mime"),
     [

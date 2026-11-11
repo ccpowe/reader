@@ -7,7 +7,7 @@ from uuid import UUID
 
 import anyio
 from email_validator import EmailNotValidError, validate_email
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Path, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -304,7 +304,11 @@ async def upload_avatar(
         **error_responses((404, "avatar_not_found"), access="public"),
     },
 )
-async def get_avatar(user_id: UUID, version: int, db: AsyncSession = Depends(get_session)):
+async def get_avatar(
+    user_id: UUID,
+    version: int = Path(ge=1, le=2_147_483_647),
+    db: AsyncSession = Depends(get_session),
+):
     """Versioned URL: a new upload gets a new URL, so images can be cached forever."""
     avatar = await service.get_avatar(db, user_id, version)
     return Response(

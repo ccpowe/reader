@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from reader.core.errors import AppError, error_responses
+from reader.core.server_access import document_server_token
 from reader.core.settings import Settings, get_settings
 from reader.system.heartbeats import load_loop_reports
 
@@ -55,6 +56,7 @@ class WorkerReadyResponse(BaseModel):
 @router.get(
     "/.well-known/reader.json",
     response_model=DiscoveryResponse,
+    dependencies=[Depends(document_server_token)],
     responses=error_responses((503, "server_not_configured"), access="server"),
 )
 async def discovery(request: Request, settings: Settings = Depends(get_settings)):
@@ -109,14 +111,15 @@ async def ready(request: Request, settings: Settings = Depends(get_settings)):
     response_model=WorkerReadyResponse,
     responses=error_responses((503, "worker_not_ready"), access="public"),
 )
-async def worker_ready(request: Request):
+async def worker_ready(request: Request, settings: Settings = Depends(get_settings)):
     """Every background loop has succeeded recently."""
     factory = getattr(request.app.state, "session_factory", None)
     if factory is None:
         raise AppError(503, "worker_not_ready", "The database is not configured.")
     try:
-        async with factory() as session:
-            reports = await load_loop_reports(session)
+        async with asyncio.timeout(settings.readiness_timeout_seconds):
+            async with factory() as session:
+                reports = await load_loop_reports(session)
     except Exception:
         logger.warning("Worker readiness could not be loaded.", exc_info=True)
         raise AppError(503, "worker_not_ready", "Worker status is unavailable.") from None

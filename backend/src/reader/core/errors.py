@@ -95,7 +95,8 @@ def error_responses(
     also a signed-in user.
     """
     by_status: dict[int, list[str]] = defaultdict(list)
-    for status, code in (*_ACCESS_ERRORS[access], *errors):
+    # Declaring 422 here also stops FastAPI adding its own {"detail": ...} schema.
+    for status, code in (*_ACCESS_ERRORS[access], (422, "invalid_request"), *errors):
         if code not in by_status[status]:
             by_status[status].append(code)
     return {

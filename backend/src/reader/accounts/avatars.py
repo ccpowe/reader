@@ -34,6 +34,7 @@ def validate_avatar(data: bytes, declared_type: str) -> None:
         UnidentifiedImageError,
         OSError,
         ValueError,
+        SyntaxError,  # Pillow's verify() reports a broken PNG checksum this way
         Image.DecompressionBombError,
         Image.DecompressionBombWarning,
     ):

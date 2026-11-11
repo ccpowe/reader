@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -133,3 +134,30 @@ def test_loop_state(values, seconds_later, state) -> None:
 
 def test_missing_loop() -> None:
     assert summarize("cleanup", None).state == "missing"
+
+
+class _HangingSession:
+    """A session factory whose connection never answers."""
+
+    async def __aenter__(self):
+        await asyncio.sleep(30)
+
+    async def __aexit__(self, *_exc):
+        return False
+
+
+@pytest.mark.asyncio
+async def test_worker_ready_gives_up_on_a_stuck_database(monkeypatch) -> None:
+    _configure(monkeypatch, readiness_timeout_seconds="0.5")
+    app = create_app()
+    app.state.session_factory = _HangingSession
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        started = asyncio.get_running_loop().time()
+        response = await client.get("/worker-ready")
+        elapsed = asyncio.get_running_loop().time() - started
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "worker_not_ready"
+    assert elapsed < 5

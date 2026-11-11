@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from reader.accounts.api import auth_router, avatar_router, me_router
 from reader.core.db import build_engine, build_session_factory
@@ -28,6 +29,28 @@ async def lifespan(app: FastAPI):
     finally:
         if engine is not None:
             await engine.dispose()
+
+
+def _openapi_with_combined_security(app: FastAPI):
+    """FastAPI lists each auth dependency as an alternative ("either"); Reader needs
+    the server token and the user token together, so merge them into one requirement.
+    """
+
+    def openapi() -> dict:
+        if app.openapi_schema is None:
+            schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+            for path in schema.get("paths", {}).values():
+                for operation in path.values():
+                    requirements = operation.get("security")
+                    if requirements and len(requirements) > 1:
+                        merged: dict[str, list] = {}
+                        for requirement in requirements:
+                            merged.update(requirement)
+                        operation["security"] = [merged]
+            app.openapi_schema = schema
+        return app.openapi_schema
+
+    return openapi
 
 
 def create_app() -> FastAPI:
@@ -53,6 +76,7 @@ def create_app() -> FastAPI:
     )
     for router in (system_router, auth_router, me_router, avatar_router):
         app.include_router(router)
+    app.openapi = _openapi_with_combined_security(app)
     return app
 
 

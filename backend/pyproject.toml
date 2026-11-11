@@ -34,7 +34,7 @@ mcp = [
 
 [project.scripts]
 reader-worker = "app.workers.main:main"
-reader-admin = "app.admin.cli:main"
+reader-admin = "reader.cli:main"
 reader-mcp = "app.mcp.server:main"
 
 [dependency-groups]

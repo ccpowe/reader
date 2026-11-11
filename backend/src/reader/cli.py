@@ -1,6 +1,9 @@
 """reader-admin: operator commands that run on the server, never over HTTP.
 
 reader-admin users reset-password EMAIL
+
+Commands not yet ported (codex-auth, translation-quota) are handed to the old
+`app.admin.cli` until their modules move to `reader`.
 """
 
 from __future__ import annotations
@@ -48,8 +51,16 @@ async def _reset_password(email: str, password: str) -> dict:
     return {"user_id": str(user_id), "status": "password_reset", "sessions_revoked": True}
 
 
+_NOT_YET_PORTED = frozenset({"codex-auth", "translation-quota"})
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    arguments = sys.argv[1:] if argv is None else argv
+    if arguments and arguments[0] in _NOT_YET_PORTED:
+        from app.admin.cli import main as old_main
+
+        return old_main(arguments)
+    args = build_parser().parse_args(arguments)
     try:
         if args.command == "users" and args.action == "reset-password":
             email = normalize_email(args.email)
