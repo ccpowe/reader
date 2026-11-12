@@ -6,6 +6,7 @@ import '../../global.css';
 
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -50,6 +51,8 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <Routes />
           </QueryClientProvider>
+          {/* light icons on the dark theme, dark on the light one (P20) */}
+          <StatusBar style="auto" />
         </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

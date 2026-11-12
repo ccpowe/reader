@@ -77,3 +77,10 @@ test('only http(s) addresses pass', () => {
     assert.equal(safeHttpUrl(bad), null, String(bad));
   }
 });
+
+test('the reader document takes the app theme, since WebView does not report dark mode', () => {
+  const base = { url: 'https://e.com', title: 't', bodyHtml: '<p>x</p>' };
+  assert.match(readerDocument({ ...base, theme: 'dark' }), /<html data-theme="dark"/);
+  assert.match(readerDocument(base), /<html data-theme="light"/);
+  assert.match(readerDocument(base), /:root\[data-theme=dark\]\{color-scheme:dark;--bg:#191919/);
+});

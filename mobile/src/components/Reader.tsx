@@ -10,7 +10,7 @@
 import { IconArticle, IconBrandYoutube, IconLanguage, IconMessages, IconWorld } from '@tabler/icons-react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useReducer, useRef, useState } from 'react';
-import { BackHandler, Linking, Share, View } from 'react-native';
+import { Appearance, BackHandler, Linking, Share, useColorScheme, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import type {
   ShouldStartLoadRequest,
@@ -41,6 +41,7 @@ import { ArticleView, type ReaderTool } from '@/screens/ArticleView';
 import { Button, Text, Toast } from '@/ui';
 import { duration } from '@/ui/theme';
 import { t } from '@/lib/i18n';
+import { useMountEffect } from '@/lib/use-mount-effect';
 
 const toastLife = {
   animationName: {
@@ -84,6 +85,21 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
   );
   const [notice, setNotice] = useState<{ id: number; message: string } | null>(null);
   const web = useRef<WebViewHandle | null>(null);
+  // The reader document follows the app's light / dark theme (P20). It is built with the theme of
+  // the moment reader mode opens; a later change is applied in place, since a new document would
+  // reload the page (scroll and translations lost).
+  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const [theme, setTheme] = useState<'light' | 'dark'>(scheme);
+  useMountEffect(() => {
+    const listener = Appearance.addChangeListener(({ colorScheme }) => {
+      const next = JSON.stringify(colorScheme === 'dark' ? 'dark' : 'light');
+      // Only the app's own reader document (marked), never a site's page.
+      web.current?.injectJavaScript(
+        `if(document.querySelector('meta[name="reader-document"]'))document.documentElement.setAttribute('data-theme',${next});true;`,
+      );
+    });
+    return () => listener.remove();
+  });
   const [host, setHost] = useState<WebTranslationHost | null>(null);
   const [mode, setMode] = useState<TranslationMode>('original');
   const [translation, setTranslation] = useState<HostState | null>(null);
@@ -137,6 +153,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
   /** Reader mode: the server's full body, or else the article the open page gives (old app). */
   async function toggleReader() {
     if (view === 'reader') return dispatch({ type: 'switch', view: 'page' });
+    setTheme(scheme);
     if (readable) return dispatch({ type: 'switch', view: 'reader' });
     if (!host || extracting) return;
     setExtracting(true);
@@ -215,6 +232,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
             publishedAt: doc.publishedAt,
             bodyHtml: '',
             lang: extracted.lang,
+            theme,
           }),
           baseUrl: extracted.url,
         }
@@ -228,6 +246,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
               publishedAt: doc.publishedAt,
               imageUrl: safeHttpUrl(doc.imageUrl),
               bodyHtml: doc.bodyHtml ?? '',
+              theme,
             }),
             baseUrl: url,
           }

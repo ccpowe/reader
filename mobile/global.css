@@ -28,8 +28,10 @@
  * extra levels below are marked "mobile". Accent is near-black like the old app (pending user
  * confirmation, DECISIONS 待确认); links stay blue.
  *
- * Dark: quietpaper has light only. The dark values below are a DRAFT derived by role, to be
- * calibrated in design step 6 (DECISIONS P20).
+ * Dark: quietpaper has light only. The dark values below are derived by role and were checked on
+ * the device (2026-11-12, P20): the accent is light gray rather than white, so the + button,
+ * badges and switches stand out less; the logo keeps its light tile; third-party web pages keep
+ * their own colors (no forced darkening).
  */
 
 @theme {
@@ -116,7 +118,7 @@
       --color-dot-green: #46a171;
     }
 
-    /* DRAFT, not calibrated (P20, design step 6). */
+    /* Calibrated on the device (2026-11-12, P20). */
     @variant dark {
       --color-canvas: #191919;
       --color-sidebar: #202020;
@@ -147,8 +149,8 @@
       --color-pressed: rgba(255, 255, 255, 0.1);
       --color-selected: rgba(255, 255, 255, 0.055);
 
-      --color-accent: #e6e5e3;
-      --color-accent-pressed: #ffffff;
+      --color-accent: #cfcdc8;
+      --color-accent-pressed: #e6e5e3;
       --color-accent-soft: rgba(255, 255, 255, 0.08);
       --color-accent-soft-pressed: rgba(255, 255, 255, 0.12);
       --color-accent-soft-text: #e6e5e3;

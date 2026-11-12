@@ -111,10 +111,13 @@ export function articleDate(iso: string): string {
   return t().time.date(date);
 }
 
-/** Colors of the reader document: the app's light and dark themes (global.css), P25 scale. */
+/**
+ * Colors of the reader document: the app's light and dark themes (global.css), P25 scale. The app
+ * says which one (`data-theme`): Android WebView does not pass the system's dark mode to pages.
+ */
 const css = `
 :root{--bg:#fcfbf8;--text:#2c2c2b;--muted:#7d7a75;--line:rgba(42,28,0,.07);--sunken:#f0efed;--link:#1f76cc}
-@media (prefers-color-scheme:dark){:root{--bg:#191919;--text:#e6e5e3;--muted:#9b9994;--line:rgba(255,255,255,.07);--sunken:#2c2c2b;--link:#5aa2e8}}
+:root[data-theme=dark]{color-scheme:dark;--bg:#191919;--text:#e6e5e3;--muted:#9b9994;--line:rgba(255,255,255,.07);--sunken:#2c2c2b;--link:#5aa2e8}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,sans-serif;margin:0;padding:24px 24px 96px;-webkit-text-size-adjust:100%}
 article{margin:0 auto;max-width:42rem}
@@ -168,12 +171,14 @@ export function readerDocument(article: {
   /** empty for an article extracted from the page: the runtime mounts it after purifying (web-translation-host) */
   bodyHtml: string;
   lang?: string | null;
+  /** the app's color scheme */
+  theme?: 'light' | 'dark';
 }): string {
   const byline = [article.author ?? article.sourceName, article.publishedAt ? articleDate(article.publishedAt) : null].filter(Boolean).join(' · ');
   const hero = article.imageUrl && !showsImage(article.bodyHtml, article.imageUrl) ? `<figure><img alt="" src="${escapeHtml(article.imageUrl)}"></figure>` : '';
   return (
-    `<!doctype html><html${article.lang && /^[a-zA-Z0-9-]{1,50}$/.test(article.lang) ? ` lang="${article.lang}"` : ''}><head><meta charset="utf-8">` +
-    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    `<!doctype html><html data-theme="${article.theme === 'dark' ? 'dark' : 'light'}"${article.lang && /^[a-zA-Z0-9-]{1,50}$/.test(article.lang) ? ` lang="${article.lang}"` : ''}><head><meta charset="utf-8">` +
+    '<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="reader-document" content="1">' +
     `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; img-src http: https: data:; media-src http: https:; style-src 'unsafe-inline'; form-action 'none'; frame-src 'none'">` +
     `<base href="${escapeHtml(article.url)}"><style>${css}</style></head><body><article>` +
     `<h1>${escapeHtml(article.title)}</h1>` +
