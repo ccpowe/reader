@@ -2,7 +2,7 @@
 // 一个 model 生成 C1、C2 和按容器展开的 C3；符号与细节以源码为准。
 // sources 属性中的路径相对仓库根目录。组件表示稳定职责，不逐文件/函数建模。
 // 元素、职责边界或依赖变化时同步更新；普通内部重构只需修正源码入口。
-// 同一源码可在 API、Worker 中分别实例化，不因此建立跨进程调用关系。
+// 同一源码可在 API、Worker 中分别实例化（如翻译服务），不因此建立跨进程调用关系。
 // 只画已实现的能力；可选能力标明条件，不表示线上已启用。
 // Dynamic / Deployment View 按实际需要再加；生成的图和 JSON 不作为第二份模型维护。
 workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
@@ -11,331 +11,275 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
 
     model {
         reader = person "读者" "连接 Reader 服务，订阅、浏览、收藏、阅读和翻译内容。"
-        operator = person "管理员" "通过管理命令维护用户、翻译配额及 Codex 订阅凭据。"
-        aiHost = softwareSystem "AI 宿主" "通过本地 stdio MCP 查询 Reader、读取公开字幕并按用户要求添加订阅；模型筛选和简报编排属于宿主。" "External"
+        operator = person "管理员" "在服务器上用管理命令重置密码、签发 MCP 令牌、导入 Codex 登录、查看翻译用量。"
+        aiHost = softwareSystem "AI 助手" "通过 /mcp 读取用户的订阅更新、榜单和公开字幕，按用户要求添加订阅；判断热点和撰写简报属于 AI。" "External"
 
-        websites = softwareSystem "内容网站与 RSS" "提供文章、RSS/Atom、来源头像和可提取网页。" "External"
-        youtube = softwareSystem "YouTube" "提供频道、视频、播放器及字幕。" "External"
-        x = softwareSystem "X" "Scweet 采集的上游社交平台，也提供客户端阅读的原网页。" "External"
-        reddit = softwareSystem "Reddit" "提供 subreddit 榜单 RSS；hot 快照也驱动已订阅内容入库。" "External"
-        hackerNews = softwareSystem "Hacker News" "通过 Firebase API 提供榜单与条目。" "External"
-        github = softwareSystem "GitHub" "通过 Trending 页面提供排行。" "External"
-        techTwitter = softwareSystem "TechTwitter" "提供 X 技术热门 TRENDING 前 50 条；独立于 X 账号订阅采集。" "External"
-        productHunt = softwareSystem "Product Hunt" "可选官方 GraphQL API；按洛杉矶日期提供每日发布记录及 RANKING 排序，不承诺还原历史结榜名次。" "External,Optional"
+        websites = softwareSystem "内容网站与 RSS" "提供文章、RSS/Atom 与站点图标；阅读页加载原网页。" "External"
+        youtube = softwareSystem "YouTube" "提供频道（Data API 与公开 Atom）、播放器和字幕。" "External"
+        x = softwareSystem "X" "Scweet 采集的上游；阅读页加载原网页。" "External"
+        reddit = softwareSystem "Reddit" "subreddit 的公开 RSS：既是订阅来源，也是榜单。" "External"
+        hackerNews = softwareSystem "Hacker News" "通过 Firebase API 提供榜单。" "External"
+        github = softwareSystem "GitHub" "通过 Trending 页面提供榜单。" "External"
+        techTwitter = softwareSystem "TechTwitter" "提供 X 技术热门榜单。" "External"
+        productHunt = softwareSystem "Product Hunt" "可选官方 GraphQL API，按洛杉矶日期提供每日发布榜单。" "External,Optional"
         models = softwareSystem "模型提供方" "DeepSeek、OpenRouter 与 Codex 订阅执行翻译。" "External" {
             properties {
-                "sources" "backend/src/app/llm/factory.py"
+                "sources" "backend/src/reader/translation/engines.py"
             }
         }
-
         codexIdentity = softwareSystem "OpenAI 认证" "为导入的 Codex ChatGPT 登录交换新的访问／刷新令牌。" "External,Optional"
 
-        system = softwareSystem "Reader" "聚合订阅内容与排行，提供个人收藏、阅读和翻译。" {
-            client = container "Reader 客户端" "Expo 原生应用，含同源代码的 Web 预览入口；WebView 阅读能力为原生实现。" "Expo / React Native / TypeScript" {
+        system = softwareSystem "Reader" "聚合订阅内容与榜单，提供收藏、阅读和翻译。" {
+            client = container "Reader 客户端" "Expo Android App（另有仅供开发的 Web 预览）；WebView 阅读能力为原生实现。" "Expo Router / React Native / TypeScript" {
                 properties {
-                    "sources" "mobile/index.ts; mobile/App.tsx"
+                    "sources" "mobile/src/app/_layout.tsx"
                 }
-                shell = component "应用壳与导航" "组织连接、登录和业务页面；服务器或用户变化时重建页面与查询上下文。" "React" {
+                routes = component "路由与页面装配" "按会话状态决定可用路由；五个标签页、阅读页与设置页只做装配：读数据、持有页面状态、交给视图。" "Expo Router / React" {
                     properties {
-                        "sources" "mobile/App.tsx; mobile/components/MainAppShell.tsx; mobile/domain/mainNavigation.ts"
+                        "sources" "mobile/src/app/"
                     }
                 }
-                screens = component "内容与账户界面" "展示信息流、排行、订阅、收藏与个人资料，处理用户操作。" "React Native" {
+                views = component "视图与组件" "信息流、榜单、订阅、收藏、我的等视图与共享 UI 组件，只接数据和回调。" "React Native / uniwind" {
                     properties {
-                        "sources" "mobile/screens/HomeScreen.tsx; mobile/screens/RankingsScreen.tsx; mobile/screens/SourcesScreen.tsx; mobile/screens/SavedScreen.tsx; mobile/screens/ProfileScreen.tsx; mobile/screens/EmailAuthScreen.tsx"
+                        "sources" "mobile/src/screens/; mobile/src/components/; mobile/src/ui/"
                     }
                 }
-                connection = component "连接与会话" "服务发现、runtime 切换、会话恢复和刷新；隔离服务器身份及过期请求。" "TypeScript" {
+                session = component "连接与会话" "服务发现、会话状态机与唯一的会话存储：恢复、登录、刷新、换发、退出与身份切换。" "TypeScript" {
                     properties {
-                        "sources" "mobile/lib/connection/; mobile/lib/readerAuth.ts"
+                        "sources" "mobile/src/lib/connection/; mobile/src/lib/app-session.ts"
                     }
                 }
-                data = component "查询与 API 客户端" "组织业务 HTTP 请求及查询缓存；携带当前身份，校验响应所属连接。" "TanStack Query / fetch" {
+                data = component "查询、命令与 API 客户端" "每个页面的服务端数据与命令；查询键以服务器和账户身份开头，命令自己更新缓存并在失败时回滚。" "TanStack Query / fetch" {
                     properties {
-                        "sources" "mobile/lib/api.ts; mobile/lib/readerTransport.ts; mobile/lib/readerTransport.native.ts; mobile/state/; mobile/hooks/useInboxFeed.ts; mobile/hooks/useSources.ts; mobile/hooks/useSavedContent.ts; mobile/hooks/useRanking.ts; mobile/hooks/useTranslationPreference.ts"
+                        "sources" "mobile/src/lib/queries/; mobile/src/lib/query.ts; mobile/src/lib/api/"
                     }
                 }
-                reading = component "阅读宿主与桥接" "Web/RSS 默认原网页；按需展示本地阅读文档，校验提取、导航与媒体消息及当前页身份。" "React Native WebView" {
+                logic = component "页面纯逻辑与文字" "数据整理、表单规则、页面状态机与界面文字表；可在 node --test 下运行。" "TypeScript" {
                     properties {
-                        "sources" "mobile/screens/ArticleReaderScreen.tsx; mobile/screens/RankingPreviewScreen.tsx; mobile/components/TranslatableWebView.tsx; mobile/domain/webReader.ts"
+                        "sources" "mobile/src/lib/feed.ts; mobile/src/lib/boards.ts; mobile/src/lib/subscriptions.ts; mobile/src/lib/saved.ts; mobile/src/lib/me.ts; mobile/src/lib/reader.ts; mobile/src/lib/reader-page.ts; mobile/src/lib/i18n/"
                     }
                 }
-                readerContent = component "正文提取与阅读文档" "对当前 DOM 副本提取正文，在应用阅读文档中再次净化；结果仅供当前阅读，不写入 Content。" "Readability / DOMPurify / DOM" {
+                readerHost = component "阅读页宿主" "选择原网页、阅读模式或 YouTube 播放器；校验页面消息与文档身份，调度实时翻译并回送结果。" "React Native WebView" {
                     properties {
-                        "sources" "mobile/domain/webReaderExtraction.ts; mobile/domain/readerHtml.ts"
+                        "sources" "mobile/src/components/Reader.tsx; mobile/src/components/TranslatedWebView.tsx; mobile/src/components/CaptionPlayer.tsx; mobile/src/lib/web-translation-host.ts; mobile/src/lib/caption-host.ts; mobile/src/lib/translation-scheduler.ts"
                     }
                 }
-                pageRuntime = component "页面注入运行时" "在 WebView 文档中发现段落与字幕并应用译文；不持有 Reader 凭据。" "JavaScript / DOM" {
+                pageRuntime = component "页面注入运行时" "在 WebView 文档中发现段落与字幕、提取正文、应用译文；不持有 Reader 凭据。" "TypeScript → 生成的脚本 / DOM" {
                     properties {
-                        "sources" "mobile/domain/webTranslation.ts; mobile/domain/webTranslationRuntime.ts; mobile/domain/youtubeTranslation.ts; mobile/scripts/generate-translation-runtime-sources.mjs"
-                    }
-                }
-                translation = component "翻译调度与结果收敛" "安排实时、普通片段与标题请求，批处理、重试并丢弃过期结果。" "React Hooks / TypeScript" {
-                    properties {
-                        "sources" "mobile/hooks/useRealtimeTranslationScheduler.ts; mobile/hooks/useSegmentTranslationQueue.ts; mobile/hooks/useTitleTranslationConvergence.ts"
-                    }
-                }
-                language = component "界面语言" "管理客户端界面语言；与服务端翻译偏好独立。" "React / i18next" {
-                    properties {
-                        "sources" "mobile/i18n/"
+                        "sources" "mobile/src/lib/injected/; mobile/scripts/generate-translation-runtime-sources.mjs"
                     }
                 }
             }
 
-            localState = container "客户端本地状态" "连接坐标、界面语言及隔离的会话凭据；查询缓存另在内存中，不是离线文章库。" "SecureStore / localStorage / sessionStorage" "Database" {
+            localState = container "客户端本地状态" "连接、部署令牌与账户令牌在原生端的 SecureStore（Web 预览为 localStorage）；界面语言在 AsyncStorage。查询缓存只在内存，不是离线文章库。" "SecureStore / AsyncStorage / localStorage" "Database" {
                 properties {
-                    "sources" "mobile/lib/connection/storage.ts; mobile/lib/connection/secretStorage.native.ts; mobile/lib/connection/secretStorage.ts; mobile/i18n/store.ts; mobile/App.tsx"
-                    "platforms" "原生公开数据使用 Expo SQLite localStorage 适配、凭据使用 SecureStore；Web 凭据使用 sessionStorage/内存。"
-                }
-            }
-            mcp = container "Reader MCP" "AI 宿主启动的单账户 stdio 进程；管理 Reader HTTP 会话、冻结榜单分页与原始字幕读取，不直接访问数据库。" "Python / MCP SDK" "Optional" {
-                properties {
-                    "sources" "backend/src/app/mcp/"
+                    "sources" "mobile/src/lib/connection/storage.native.ts; mobile/src/lib/connection/storage.ts; mobile/src/lib/interface-language.ts"
                 }
             }
 
-            api = container "Reader API" "服务发现、认证和用户业务；直接处理交互翻译，也建立持久工作。" "Python / FastAPI" {
+            api = container "Reader API" "服务发现、账户、订阅、信息流、收藏、榜单、翻译请求与 /mcp。" "Python / FastAPI" {
                 properties {
-                    "sources" "backend/src/app/main.py; backend/src/app/api/router.py"
-                    "persistence" "组件可直接使用 storage/ 中的 SQLAlchemy Session/ORM，不存在强制经过的统一 Repository。"
+                    "sources" "backend/src/reader/main.py"
                 }
-                entry = component "入口、发现与认证" "HTTP 路由装配、就绪检查、部署访问令牌、用户会话与权限依赖。" "FastAPI / JWT" {
+                gate = component "入口、门禁与账户" "应用装配、部署令牌门禁、服务发现与就绪检查；注册、登录、会话与刷新令牌、资料与头像。" "FastAPI / JWT / Argon2" {
                     properties {
-                        "sources" "backend/src/app/main.py; backend/src/app/api/router.py; backend/src/app/api/discovery.py; backend/src/app/api/auth.py; backend/src/app/core/server_access.py; backend/src/app/core/auth.py; backend/src/app/services/auth.py"
+                        "sources" "backend/src/reader/main.py; backend/src/reader/core/server_access.py; backend/src/reader/system/; backend/src/reader/accounts/"
                     }
                 }
-                sources = component "来源与订阅" "管理来源和用户订阅，集中订阅事务与只读健康查询，解析 YouTube 频道并代理来源头像。" "FastAPI / SQLAlchemy / HTTPX" {
+                subscriptions = component "订阅" "订阅用例与路由；添加网站时查找 RSS／Atom，解析 YouTube 频道，中转来源图标。" "FastAPI / SQLAlchemy / HTTPX" {
                     properties {
-                        "sources" "backend/src/app/api/sources.py; backend/src/app/services/subscriptions.py; backend/src/app/services/source_health.py; backend/src/app/ingestion/source_identity.py; backend/src/app/ingestion/youtube.py"
+                        "sources" "backend/src/reader/subscriptions/; backend/src/reader/ingestion/feed_discovery.py; backend/src/reader/ingestion/identity.py; backend/src/reader/ingestion/youtube.py"
                     }
                 }
-                content = component "信息流、收藏与资料" "按用户范围查询内容、维护收藏，管理个人资料和头像。" "FastAPI / SQLAlchemy" {
+                reading = component "信息流与收藏" "按用户范围查询信息流、更新统计、单篇文章与收藏，附上已完成的标题译文。" "FastAPI / SQLAlchemy" {
                     properties {
-                        "sources" "backend/src/app/api/feed.py; backend/src/app/api/saved.py; backend/src/app/api/profile.py; backend/src/app/api/avatars.py; backend/src/app/services/ranking_saved.py; backend/src/app/domain/x_relations.py; backend/src/app/api/mcp_updates.py; backend/src/app/services/mcp_updates.py"
+                        "sources" "backend/src/reader/reading/"
                     }
                 }
-                rankings = component "排行快照" "读取或刷新榜单；发布适用 Reddit hot 快照时写入持久候选。" "Python / HTTPX / SQLAlchemy" {
+                boards = component "榜单" "打开时按需抓取并缓存每个榜单的最新快照；从榜单收藏为没有来源的文章。" "FastAPI / HTTPX / SQLAlchemy" {
                     properties {
-                        "sources" "backend/src/app/api/rankings.py; backend/src/app/services/ranking_snapshots.py; backend/src/app/services/rankings.py"
+                        "sources" "backend/src/reader/boards/"
                     }
                 }
-                translationPolicy = component "翻译请求与策略" "校验文本、访问范围、用户偏好与配额，分派标题及片段翻译路径。" "FastAPI / Python" {
+                translation = component "翻译服务" "POST /translations 与翻译偏好；缓存、领取、按全局字符额度分批调用模型、写回，最多等待片刻后返回已完成部分。" "Python / asyncio / HTTPX" {
                     properties {
-                        "sources" "backend/src/app/api/translations.py; backend/src/app/api/translation_preferences.py; backend/src/app/translation/requests.py; backend/src/app/translation/quota.py"
+                        "sources" "backend/src/reader/translation/api.py; backend/src/reader/translation/service.py; backend/src/reader/translation/engines.py; backend/src/reader/translation/budget.py; backend/src/reader/translation/codex_auth.py"
                     }
                 }
-                interactive = component "直接与实时翻译" "在 API 进程内执行模型请求、合并实时在途需求；普通片段可回退到持久工作。" "asyncio / LangChain" {
+                mcp = component "MCP 端点" "/mcp（Streamable HTTP）：个人令牌选定用户，工具直接调用订阅、信息流和榜单用例；读取公开 YouTube 字幕。" "MCP SDK" {
                     properties {
-                        "sources" "backend/src/app/translation/interactive.py; backend/src/app/translation/realtime.py; backend/src/app/translation/executor.py; backend/src/app/translation/providers/langchain.py; backend/src/app/translation/factory.py; backend/src/app/llm/factory.py"
-                    }
-                }
-                translationState = component "翻译需求与持久状态" "投影成功结果、建立缺失 Work、保存 Artifact，并通知空闲消费者。" "SQLAlchemy / PostgreSQL" {
-                    properties {
-                        "sources" "backend/src/app/translation/projection.py; backend/src/app/translation/demand.py; backend/src/app/translation/store.py; backend/migrations/versions/20260803_11_translation_work_notify.py"
+                        "sources" "backend/src/reader/mcp/"
                     }
                 }
             }
 
-            worker = container "Reader Worker" "执行来源扫描、候选入库、排行刷新、持久翻译与清理。" "Python / asyncio" {
+            worker = container "Reader Worker" "来源扫描、后台标题翻译与每日清理。" "Python / asyncio" {
                 properties {
-                    "sources" "backend/src/app/workers/main.py"
-                    "persistence" "与 API 共用 storage/、业务源码和 PostgreSQL；各自拥有运行时实例，不通过 RPC 互相调度。"
+                    "sources" "backend/src/reader/worker.py"
                 }
-                loops = component "循环调度与健康状态" "运行并监督各后台循环，记录持久心跳；翻译使用独立数据库资源。" "asyncio" {
+                loops = component "循环与心跳" "运行三个循环，每次运行后写心跳；一个循环出错不影响其他循环。" "asyncio" {
                     properties {
-                        "sources" "backend/src/app/workers/main.py; backend/src/app/workers/health.py"
+                        "sources" "backend/src/reader/worker.py; backend/src/reader/system/heartbeats.py"
                     }
                 }
-                scan = component "来源扫描与接入" "领取来源租约，选择 RSS/YouTube/X adapter 并写入候选；不逐篇补抓网页正文。" "Python / HTTPX" {
+                scan = component "来源扫描与入库" "领取到期来源的租约，经适配器读取上游，在一个事务里写入新条目、分配序号并为新标题排队翻译。" "Python / HTTPX / SQLAlchemy" {
                     properties {
-                        "sources" "backend/src/app/workers/sync.py; backend/src/app/services/scan_state.py; backend/src/app/ingestion/candidate_queue.py; backend/src/app/ingestion/sources/; backend/src/app/ingestion/url_safety.py"
+                        "sources" "backend/src/reader/ingestion/scanner.py; backend/src/reader/ingestion/adapters/; backend/src/reader/ingestion/url_safety.py"
                     }
                 }
-                candidates = component "候选入库" "领取持久候选，去重并写入内容、来源条目与媒体；按配置建立标题翻译 Work。" "Python / SQLAlchemy" {
+                titles = component "后台标题翻译" "领取排队的标题，按语言和引擎分组交给同一个翻译服务。" "Python / asyncio" {
                     properties {
-                        "sources" "backend/src/app/workers/candidates.py; backend/src/app/ingestion/candidate_queue.py; backend/src/app/ingestion/models.py; backend/src/app/domain/x_relations.py; backend/src/app/translation/store.py"
+                        "sources" "backend/src/reader/translation/titles.py; backend/src/reader/translation/service.py"
                     }
                 }
-                rankings = component "排行刷新" "定期刷新榜单快照；适用 Reddit hot 条目进入同一持久候选队列。" "Python / HTTPX / SQLAlchemy" {
+                cleanup = component "每日清理" "按来源保留最新若干篇文章（更早的只保留有人收藏的）和有限扫描历史，清理久未使用的译文、无人打开的榜单快照和已结束的会话。" "Python / SQLAlchemy" {
                     properties {
-                        "sources" "backend/src/app/services/ranking_snapshots.py; backend/src/app/services/rankings.py"
-                    }
-                }
-                translation = component "持久翻译执行" "前台/后台 lane 领取 Work、批量调用模型并保存结果；通知唤醒并辅以轮询。" "asyncio / SQLAlchemy / LangChain" {
-                    properties {
-                        "sources" "backend/src/app/translation/executor.py; backend/src/app/translation/store.py; backend/src/app/translation/notifier.py; backend/src/app/translation/providers/langchain.py; backend/src/app/llm/factory.py"
-                    }
-                }
-                cleanup = component "保留与清理" "清理孤立来源、过量未收藏内容和过期翻译，保护收藏及仍有效的引用。" "Python / SQLAlchemy" {
-                    properties {
-                        "sources" "backend/src/app/workers/cleanup.py; backend/src/app/workers/content_retention.py; backend/src/app/translation/lifecycle.py"
+                        "sources" "backend/src/reader/ingestion/retention.py; backend/src/reader/translation/titles.py"
                     }
                 }
             }
 
-            database = container "Reader 数据库" "业务与用户数据、翻译 Artifact/Work、候选、租约、配额及心跳。" "PostgreSQL" "Database" {
+            database = container "Reader 数据库" "14 张表：用户与会话、来源与订阅、文章与收藏、翻译缓存兼任务队列、榜单快照、扫描与额度状态、Worker 心跳。" "PostgreSQL" "Database" {
                 properties {
-                    "sources" "backend/src/app/storage/; backend/migrations/; backend/src/app/translation/notifier.py"
+                    "sources" "backend/src/reader/models.py; backend/migrations/"
                 }
             }
-            codexCredentials = container "Codex 凭据库" "Reader 专用登录及刷新状态；API 与 Worker 通过文件锁协调并原子更新，Docker 卷跨容器重建保留。" "JSON / File lock / Docker volume" "Database,Optional" {
+            codexCredentials = container "Codex 凭据文件" "Reader 专用登录及刷新状态；API 与 Worker 通过文件锁协调并原子更新，Docker 卷跨容器重建保留。" "JSON / File lock / Docker volume" "Database,Optional" {
                 properties {
-                    "sources" "backend/src/app/llm/codex_auth.py; backend/src/app/admin/codex_auth.py; compose.yaml"
+                    "sources" "backend/src/reader/translation/codex_auth.py; compose.yaml"
                 }
             }
-            admin = container "Reader 管理 CLI" "按需运行，管理用户和翻译配额；Codex 凭据命令直接访问独立文件库，无需数据库。" "Python / argparse" {
+            admin = container "Reader 管理命令" "reader-admin：重置密码、签发／撤销 MCP 令牌、导入和检查 Codex 登录、查看翻译用量。" "Python / argparse" {
                 properties {
-                    "sources" "backend/src/app/admin/cli.py; backend/pyproject.toml"
+                    "sources" "backend/src/reader/cli.py"
                 }
             }
-            scweet = container "Scweet 配套服务" "仅选择 Scweet 作为 X 供应商时使用；内部令牌认证，独立管理采集账号和状态。" "Python / FastAPI / Scweet" "Optional" {
+            scweet = container "Scweet 配套服务" "可选：采集 X 账号；内部令牌认证，独立管理采集账号和状态。" "Python / FastAPI / Scweet" "Optional" {
                 properties {
                     "sources" "services/scweet_service/app.py; services/docker-compose.scweet.yml"
                 }
             }
-            scweetState = container "Scweet 状态库" "保存 Scweet 采集账号与运行状态；独立于 Reader 业务数据库。" "SQLite" "Database,Optional" {
+            scweetState = container "Scweet 状态库" "保存 Scweet 采集账号与运行状态；独立于 Reader 数据库。" "SQLite" "Database,Optional" {
                 properties {
-                    "sources" "services/scweet_service/app.py; services/scweet_service/Dockerfile; services/docker-compose.scweet.yml"
+                    "sources" "services/scweet_service/app.py; services/docker-compose.scweet.yml"
                 }
             }
         }
 
-        // C1：系统边界与外部依赖。只描述 Reader 实际使用的外部能力。
+        // C1：系统边界与外部依赖。
         reader -> system "订阅、浏览、收藏、阅读和翻译"
-        operator -> system "维护用户和配额"
-        reader -> aiHost "请求信息筛选、简报与追问"
-        aiHost -> system "通过 MCP 查询信息和添加订阅"
-        system -> websites "获取内容、feed 与头像；加载阅读页面"
-        system -> youtube "获取频道内容，播放视频并读取字幕"
-        system -> x "加载原网页；选择 Scweet 时采集内容"
-        system -> reddit "获取榜单及订阅热门内容，加载原网页"
-        system -> hackerNews "获取榜单条目"
-        system -> github "获取 Trending 排行"
-        system -> techTwitter "读取 X 技术热门排行"
-        system -> productHunt "按日期读取每日热门发布（需配置令牌）"
+        operator -> system "运维账户、MCP 令牌与翻译"
+        reader -> aiHost "请求热点简报与追问"
+        aiHost -> system "通过 MCP 读取信息、添加订阅"
+        system -> websites "读取 feed 与图标；加载原网页"
+        system -> youtube "扫描频道，播放视频并读取字幕"
+        system -> x "加载原网页；经 Scweet 采集"
+        system -> reddit "读取订阅与榜单；加载原网页"
+        system -> hackerNews "读取榜单"
+        system -> github "读取 Trending"
+        system -> techTwitter "读取 X 技术热门"
+        system -> productHunt "按日期读取每日发布（需配置令牌）"
         system -> models "请求翻译"
-        system -> codexIdentity "按需刷新 Codex 订阅凭据"
+        system -> codexIdentity "按需刷新 Codex 登录"
 
-        // C2：运行单元与数据存储。数据库工作队列不是另一套消息服务。
+        // C2：运行单元与数据存储。翻译任务队列在数据库表里，不是另一套消息服务。
         reader -> system.client "操作应用" "界面交互" "ContainerRelationship"
         operator -> system.admin "执行管理命令" "CLI" "ContainerRelationship"
-        system.client -> system.api "服务发现、账户与业务请求" "HTTP(S) / JSON" "ContainerRelationship"
-        aiHost -> system.mcp "发现与调用六个工具" "MCP / stdio" "ContainerRelationship"
-        system.mcp -> system.api "按账户查询更新、排行及添加订阅" "HTTP(S) / JSON / Reader 会话" "ContainerRelationship"
-        system.mcp -> youtube "获取原始字幕，不翻译或转写" "HTTPS / 字幕接口" "ContainerRelationship"
-        system.client -> system.localState "保存连接、语言及隔离的凭据" "平台存储 API" "ContainerRelationship"
+        aiHost -> system.api "调用 MCP 工具" "MCP / Streamable HTTP / 部署令牌 + 个人令牌" "ContainerRelationship"
+        system.client -> system.api "服务发现、账户、业务与翻译请求" "HTTP(S) / JSON" "ContainerRelationship"
+        system.client -> system.localState "保存连接、令牌与界面语言" "平台存储 API" "ContainerRelationship"
         system.client -> websites "加载原网页或打开外链" "HTTPS / WebView / 系统浏览器" "ContainerRelationship"
-        system.client -> youtube "加载视频与字幕" "HTTPS / 原生 WebView" "ContainerRelationship"
+        system.client -> youtube "播放视频并读取字幕" "HTTPS / 原生 WebView" "ContainerRelationship"
         system.client -> x "加载原网页" "HTTPS / 原生 WebView" "ContainerRelationship"
         system.client -> reddit "加载原网页" "HTTPS / 原生 WebView" "ContainerRelationship"
-        system.api -> system.database "读写业务、会话、配额及翻译状态，发布通知" "SQL / NOTIFY" "ContainerRelationship"
-        system.api -> websites "代理来源头像；添加网站时查找 RSS／Atom" "HTTPS" "ContainerRelationship"
-        system.api -> youtube "解析频道" "HTTPS" "ContainerRelationship"
-        system.api -> reddit "刷新榜单" "HTTPS / RSS" "ContainerRelationship"
-        system.api -> hackerNews "刷新榜单" "HTTPS / Firebase JSON API" "ContainerRelationship"
-        system.api -> github "刷新榜单" "HTTPS / HTML" "ContainerRelationship"
-        system.api -> techTwitter "初始化或刷新共享榜单" "HTTPS / JSON API" "ContainerRelationship"
-        system.api -> productHunt "初始化或刷新日期榜单" "HTTPS / GraphQL / Bearer" "ContainerRelationship"
-        system.api -> models "直接和实时翻译" "HTTPS / 模型 API" "ContainerRelationship"
-        system.worker -> system.database "领取任务、读写内容和结果，监听通知" "SQL / LISTEN / NOTIFY" "ContainerRelationship"
-        system.worker -> websites "抓取 RSS／Atom feed" "HTTPS / RSS" "ContainerRelationship"
-        system.worker -> youtube "扫描频道" "HTTPS / Data API / 回退抓取" "ContainerRelationship"
-        system.worker -> system.scweet "采集 X" "HTTP / 内部令牌" "ContainerRelationship"
-        system.worker -> reddit "刷新榜单并产生订阅候选" "HTTPS / RSS" "ContainerRelationship"
-        system.worker -> hackerNews "刷新榜单" "HTTPS / Firebase JSON API" "ContainerRelationship"
-        system.worker -> github "刷新榜单" "HTTPS / HTML" "ContainerRelationship"
-        system.worker -> techTwitter "每 15 分钟刷新共享榜单" "HTTPS / JSON API" "ContainerRelationship"
-        system.worker -> productHunt "每 30 分钟刷新当天发布榜单" "HTTPS / GraphQL / Bearer" "ContainerRelationship"
-        system.worker -> models "持久翻译" "HTTPS / 模型 API" "ContainerRelationship"
-        system.admin -> system.database "管理用户及配额" "SQL" "ContainerRelationship"
-        system.api -> system.codexCredentials "读取并按需原子更新订阅凭据" "File / Lock" "ContainerRelationship"
-        system.worker -> system.codexCredentials "读取并按需原子更新订阅凭据" "File / Lock" "ContainerRelationship"
-        system.admin -> system.codexCredentials "导入、检查和按需刷新独立登录" "File / Lock" "ContainerRelationship"
-        system.api -> codexIdentity "刷新接近过期或被 401 拒绝的登录" "HTTPS / OAuth" "ContainerRelationship"
-        system.worker -> codexIdentity "按需刷新订阅登录" "HTTPS / OAuth" "ContainerRelationship"
-        system.admin -> codexIdentity "显式检查需要续期的登录" "HTTPS / OAuth" "ContainerRelationship"
+        system.api -> system.database "读写业务数据、会话、快照与翻译" "SQL" "ContainerRelationship"
+        system.api -> websites "添加网站时查找 feed；中转来源图标" "HTTPS" "ContainerRelationship"
+        system.api -> youtube "解析频道；MCP 读取字幕" "HTTPS" "ContainerRelationship"
+        system.api -> reddit "抓取 subreddit 榜单" "HTTPS / RSS" "ContainerRelationship"
+        system.api -> hackerNews "抓取榜单" "HTTPS / Firebase JSON API" "ContainerRelationship"
+        system.api -> github "抓取 Trending" "HTTPS / HTML" "ContainerRelationship"
+        system.api -> techTwitter "抓取技术热门" "HTTPS / JSON API" "ContainerRelationship"
+        system.api -> productHunt "抓取日期榜单" "HTTPS / GraphQL / Bearer" "ContainerRelationship"
+        system.api -> models "翻译请求" "HTTPS / 模型 API" "ContainerRelationship"
+        system.api -> system.codexCredentials "读取并按需原子更新登录" "File / Lock" "ContainerRelationship"
+        system.api -> codexIdentity "按需刷新登录" "HTTPS / OAuth" "ContainerRelationship"
+        system.worker -> system.database "领取来源与标题，写入文章、译文与心跳" "SQL" "ContainerRelationship"
+        system.worker -> websites "读取 RSS／Atom feed" "HTTPS / RSS" "ContainerRelationship"
+        system.worker -> youtube "扫描频道" "HTTPS / Data API / Atom" "ContainerRelationship"
+        system.worker -> reddit "读取已订阅的 subreddit" "HTTPS / RSS" "ContainerRelationship"
+        system.worker -> system.scweet "采集 X 账号" "HTTP / 内部令牌" "ContainerRelationship"
+        system.worker -> models "后台标题翻译" "HTTPS / 模型 API" "ContainerRelationship"
+        system.worker -> system.codexCredentials "读取并按需原子更新登录" "File / Lock" "ContainerRelationship"
+        system.worker -> codexIdentity "按需刷新登录" "HTTPS / OAuth" "ContainerRelationship"
+        system.admin -> system.database "重置密码、MCP 令牌、翻译用量" "SQL" "ContainerRelationship"
+        system.admin -> system.codexCredentials "导入、检查和刷新专用登录" "File / Lock" "ContainerRelationship"
+        system.admin -> codexIdentity "显式刷新登录" "HTTPS / OAuth" "ContainerRelationship"
         system.scweet -> x "请求上游内容" "HTTPS / GraphQL" "ContainerRelationship"
         system.scweet -> system.scweetState "管理采集账号与状态" "SQLite" "ContainerRelationship"
 
         // C3 客户端：页面注入运行时在 WebView 文档中执行；凭据留在应用侧。
-        reader -> system.client.shell "操作应用"
-        system.client.shell -> system.client.connection "恢复连接与会话" "函数 / 状态订阅"
-        system.client.shell -> system.client.data "提供并清理查询上下文" "React Provider"
-        system.client.shell -> system.client.screens "挂载业务页面" "React"
-        system.client.shell -> system.client.reading "打开阅读界面" "React"
-        system.client.shell -> system.client.language "初始化并监听界面语言" "React / 生命周期"
-        system.client.screens -> system.client.data "查询和修改业务数据" "Hooks / 函数"
-        system.client.screens -> system.client.connection "登录、登出及切换服务" "函数"
-        system.client.data -> system.client.connection "获取身份，刷新会话并校验请求代次" "函数"
-        system.client.data -> system.client.translation "收敛标题和榜单译文" "Hooks"
-        system.client.translation -> system.client.data "提交翻译请求与查询结果" "API 函数"
-        system.client.reading -> system.client.data "读取文章、收藏及翻译偏好" "Hooks / 函数"
-        system.client.reading -> system.client.translation "安排可见片段与字幕翻译" "Hook"
-        system.client.reading -> system.client.pageRuntime "注入运行时，请求正文并应用译文" "injectJavaScript"
-        system.client.reading -> system.client.readerContent "构造应用控制的空阅读文档" "TypeScript"
-        system.client.pageRuntime -> system.client.readerContent "提取原文副本；阅读文档内净化后挂载" "DOM / 函数"
-        system.client.pageRuntime -> system.client.reading "提交有界正文、导航、段落和字幕消息" "postMessage"
-        system.client.connection -> system.localState "保存连接坐标与隔离的凭据" "平台存储 API"
-        system.client.language -> system.localState "保存界面语言" "localStorage"
-        system.client.connection -> system.api "发现服务并管理账户会话" "HTTP(S) / JSON"
-        system.client.data -> system.api "请求业务与翻译接口" "HTTP(S) / JSON"
-        system.client.reading -> websites "加载原文与外链" "HTTPS / WebView / 系统浏览器"
-        system.client.reading -> youtube "加载视频页面" "HTTPS / 原生 WebView"
-        system.client.reading -> x "加载原网页" "HTTPS / 原生 WebView"
-        system.client.reading -> reddit "加载原网页" "HTTPS / 原生 WebView"
-        system.client.pageRuntime -> youtube "在页面上下文读取字幕" "HTTPS / timedtext"
+        reader -> system.client.routes "操作应用"
+        system.client.routes -> system.client.session "读取会话状态，登录、退出与切换服务器" "Hook / 函数"
+        system.client.routes -> system.client.data "读取数据并执行命令" "Hooks / 函数"
+        system.client.routes -> system.client.views "交给数据和回调" "React props"
+        system.client.routes -> system.client.readerHost "打开阅读页" "React"
+        system.client.routes -> system.client.logic "整理数据、校验表单、页面状态机" "函数"
+        system.client.views -> system.client.logic "读取界面文字" "t()"
+        system.client.data -> system.client.session "取当前身份与访问令牌" "函数"
+        system.client.data -> system.client.logic "把 API 数据整理成卡片与行" "函数"
+        system.client.readerHost -> system.client.data "读取文章、收藏与翻译偏好" "Hooks"
+        system.client.readerHost -> system.client.pageRuntime "注入运行时，请求正文并回送译文" "injectJavaScript"
+        system.client.pageRuntime -> system.client.readerHost "提交正文、导航、段落和字幕消息" "postMessage"
+        system.client.session -> system.localState "保存连接与令牌" "SecureStore"
+        system.client.logic -> system.localState "保存界面语言" "AsyncStorage"
+        system.client.session -> system.api "服务发现与账户会话" "HTTP(S) / JSON"
+        system.client.data -> system.api "业务请求" "HTTP(S) / JSON"
+        system.client.readerHost -> system.api "实时翻译请求" "HTTP(S) / JSON"
+        system.client.readerHost -> websites "加载原网页与外链" "HTTPS / WebView / 系统浏览器"
+        system.client.readerHost -> youtube "加载嵌入播放器" "HTTPS / 原生 WebView"
+        system.client.readerHost -> x "加载原网页" "HTTPS / 原生 WebView"
+        system.client.readerHost -> reddit "加载原网页" "HTTPS / 原生 WebView"
+        system.client.pageRuntime -> youtube "在页面里读取字幕轨" "HTTPS / timedtext"
 
-        // C3 API：路由及服务直接使用 ORM；翻译代码在本进程内执行。
-        system.client -> system.api.entry "请求服务发现与受保护接口" "HTTP(S) / JSON"
-        system.api.entry -> system.api.sources "路由与认证依赖" "ASGI / Python"
-        system.api.entry -> system.api.content "路由与认证依赖" "ASGI / Python"
-        system.api.entry -> system.api.rankings "路由与认证依赖" "ASGI / Python"
-        system.api.entry -> system.api.translationPolicy "路由与认证依赖" "ASGI / Python"
-        system.api.entry -> system.database "验证会话、维护账户并检查就绪状态" "SQL"
-        system.api.sources -> system.database "维护来源和用户订阅" "SQL"
-        system.api.sources -> websites "代理来源头像" "HTTPS"
-        system.api.sources -> youtube "解析频道标识" "HTTPS"
-        system.api.content -> system.database "查询内容、维护收藏和个人资料" "SQL"
-        system.api.content -> system.api.translationState "投影标题译文并建立缺失需求" "Python / async"
-        system.api.rankings -> system.database "读取/发布快照及 Reddit hot 候选" "SQL"
-        system.api.rankings -> reddit "获取 subreddit 榜单" "HTTPS / RSS"
-        system.api.rankings -> hackerNews "获取榜单和条目" "HTTPS / Firebase JSON API"
-        system.api.rankings -> github "获取 Trending" "HTTPS / HTML"
-        system.api.rankings -> techTwitter "获取 TRENDING 前 50 条" "HTTPS / JSON API"
-        system.api.rankings -> productHunt "按日期获取每日发布记录" "HTTPS / GraphQL"
-        system.api.translationPolicy -> system.database "校验内容访问、偏好及配额" "SQL"
-        system.api.translationPolicy -> system.api.translationState "解析标题需求及缓存投影" "Python"
-        system.api.translationPolicy -> system.api.interactive "分派普通或实时片段" "Python / async"
-        system.api.interactive -> system.api.translationState "读写结果；适用时建立持久工作" "Python / async"
-        system.api.interactive -> models "调用配置的翻译模型" "HTTPS / 模型 API"
-        system.api.interactive -> system.codexCredentials "锁内刷新并原子写回订阅凭据" "File / Lock"
-        system.api.interactive -> codexIdentity "按需续期；401 后有界重试" "HTTPS / OAuth"
-        system.api.translationState -> system.database "读写 Artifact/Work 并唤醒消费者" "SQL / NOTIFY"
+        // C3 API：路由直接调用本包用例与 ORM；MCP 工具直接调用其他包的用例。
+        system.client -> system.api.gate "服务发现、账户与受保护接口" "HTTP(S) / JSON"
+        aiHost -> system.api.mcp "调用工具" "MCP / Streamable HTTP"
+        system.api.gate -> system.database "会话、账户、头像与就绪检查" "SQL"
+        system.api.subscriptions -> system.database "维护来源和订阅" "SQL"
+        system.api.subscriptions -> websites "查找 feed；中转来源图标" "HTTPS"
+        system.api.subscriptions -> youtube "解析频道" "HTTPS"
+        system.api.reading -> system.database "查询信息流、文章与收藏" "SQL"
+        system.api.boards -> system.database "读写快照；保存榜单条目" "SQL"
+        system.api.boards -> reddit "抓取 subreddit 榜单" "HTTPS / RSS"
+        system.api.boards -> hackerNews "抓取榜单" "HTTPS / Firebase JSON API"
+        system.api.boards -> github "抓取 Trending" "HTTPS / HTML"
+        system.api.boards -> techTwitter "抓取技术热门" "HTTPS / JSON API"
+        system.api.boards -> productHunt "抓取日期榜单" "HTTPS / GraphQL"
+        system.api.translation -> system.database "查缓存、领取、写回；预留字符额度" "SQL"
+        system.api.translation -> models "调用翻译模型" "HTTPS / 模型 API"
+        system.api.translation -> system.codexCredentials "锁内刷新并原子写回登录" "File / Lock"
+        system.api.translation -> codexIdentity "按需续期" "HTTPS / OAuth"
+        system.api.mcp -> system.api.gate "按个人令牌选定用户" "Python"
+        system.api.mcp -> system.api.subscriptions "添加订阅" "Python"
+        system.api.mcp -> system.api.reading "更新统计、更新列表与单条内容" "Python"
+        system.api.mcp -> system.api.boards "读取榜单" "Python"
+        system.api.mcp -> youtube "读取公开字幕，不翻译" "HTTPS"
 
-        // C3 Worker：扫描和排行通过持久候选交接入库，API 同样可写入这些状态。
-        // 不画扫描器→候选执行器或 API→Worker 的同步调用。
+        // C3 Worker：三个循环各自运行，经数据库协调；不画 API→Worker 的同步调用。
         system.worker.loops -> system.worker.scan "运行扫描循环" "asyncio"
-        system.worker.loops -> system.worker.candidates "运行候选处理循环" "asyncio"
-        system.worker.loops -> system.worker.rankings "运行排行刷新循环" "asyncio"
-        system.worker.loops -> system.worker.translation "监督前台/后台翻译 lane" "asyncio"
-        system.worker.loops -> system.worker.cleanup "运行清理循环" "asyncio"
-        system.worker.loops -> system.database "记录 Worker 心跳" "SQL"
-        system.worker.scan -> system.database "领取来源租约并写入候选" "SQL"
-        system.worker.scan -> websites "抓取 RSS／Atom feed" "HTTPS / RSS"
-        system.worker.scan -> youtube "扫描频道内容" "HTTPS / Data API / 回退抓取"
-        system.worker.scan -> system.scweet "采集 X（选择 Scweet 时）" "HTTP / 内部令牌"
-        system.worker.candidates -> system.database "领取候选并入库；按配置建立标题 Work" "SQL / NOTIFY"
-        system.worker.rankings -> system.database "发布快照及适用 Reddit hot 候选" "SQL"
-        system.worker.rankings -> reddit "获取 subreddit 榜单" "HTTPS / RSS"
-        system.worker.rankings -> hackerNews "获取榜单和条目" "HTTPS / Firebase JSON API"
-        system.worker.rankings -> github "获取 Trending" "HTTPS / HTML"
-        system.worker.rankings -> techTwitter "获取 TRENDING 前 50 条" "HTTPS / JSON API"
-        system.worker.rankings -> productHunt "刷新洛杉矶当天的发布榜单" "HTTPS / GraphQL"
-        system.worker.translation -> system.database "领取 Work、保存 Artifact、等待通知" "SQL / LISTEN / NOTIFY"
-        system.worker.translation -> models "执行持久翻译" "HTTPS / 模型 API"
-        system.worker.translation -> system.codexCredentials "锁内刷新并原子写回订阅凭据" "File / Lock"
-        system.worker.translation -> codexIdentity "按需续期；401 后有界重试" "HTTPS / OAuth"
-        system.worker.cleanup -> system.database "清理孤立状态并保护有效引用" "SQL"
+        system.worker.loops -> system.worker.titles "运行标题翻译循环" "asyncio"
+        system.worker.loops -> system.worker.cleanup "每日运行清理" "asyncio"
+        system.worker.loops -> system.database "记录心跳" "SQL"
+        system.worker.scan -> system.database "领取来源租约，写入文章并排队标题" "SQL"
+        system.worker.scan -> websites "读取 RSS／Atom feed" "HTTPS / RSS"
+        system.worker.scan -> youtube "扫描频道" "HTTPS / Data API / Atom"
+        system.worker.scan -> reddit "读取 subreddit" "HTTPS / RSS"
+        system.worker.scan -> system.scweet "采集 X 账号" "HTTP / 内部令牌"
+        system.worker.titles -> system.database "领取排队标题并写回译文" "SQL"
+        system.worker.titles -> models "批量翻译标题" "HTTPS / 模型 API"
+        system.worker.titles -> system.codexCredentials "锁内刷新并原子写回登录" "File / Lock"
+        system.worker.titles -> codexIdentity "按需续期" "HTTPS / OAuth"
+        system.worker.cleanup -> system.database "删除过期数据，保护收藏" "SQL"
     }
 
     views {
@@ -346,12 +290,12 @@ workspace "Reader" "基于仓库代码的 C1-C3 架构模型" {
         }
         container system "C2-Containers" {
             title "C2 · Reader 运行单元与数据存储"
-            include reader operator aiHost system.client system.localState system.mcp system.api system.worker system.database system.codexCredentials system.admin system.scweet system.scweetState
+            include reader operator aiHost system.client system.localState system.api system.worker system.database system.codexCredentials system.admin system.scweet system.scweetState
             autoLayout lr 350 80
         }
         container system "C2-ExternalDependencies" {
             title "C2 · Reader 外部依赖"
-            include system.client system.mcp system.api system.worker system.scweet aiHost websites youtube x reddit hackerNews github techTwitter productHunt models codexIdentity
+            include system.client system.api system.worker system.scweet aiHost websites youtube x reddit hackerNews github techTwitter productHunt models codexIdentity
             autoLayout lr 350 80
         }
         component system.client "C3-Client" {

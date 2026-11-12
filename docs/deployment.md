@@ -30,7 +30,7 @@
 | 访问范围 | 本机 HTTP、局域网 HTTP 或公网 HTTPS；公网部署还需域名、证书和反向代理 | 只监听本机时，手机和其他设备无法连接；本机和受信局域网不要求额外配置 HTTPS |
 | Web 预览 | 是否启动 `mobile/` 的 Expo Web 开发预览 | 不影响后端和 Android；Web 只是开发预览，不能替代依赖原生 WebView 的 Android 体验 |
 | Android | 下载现有 [Release APK](https://github.com/ccpowe/reader/releases)，或用 EAS 重新构建 | 不影响 Web 和后端；未安装客户端时只能通过 API 或 Web 预览验收 |
-| 翻译 | 选择 DeepSeek、OpenRouter 或 Codex 订阅，在 `backend/.env` 配置对应凭据及默认引擎 | 翻译不可用，翻译循环失败且 `/worker-ready` 不能通过；只能交付为用户明确接受的受限部署 |
+| 翻译 | 选择 DeepSeek、OpenRouter 或 Codex 订阅，在 `backend/.env` 配置对应凭据及默认引擎 | 翻译不可用（标题不排队，翻译请求返回 `translation_unavailable`），订阅、阅读、榜单和收藏不受影响 |
 | X 内容 | 专用 X 账号的 `auth_token` Cookie、私有 Scweet 服务及服务间 token | 只有 X 同步不可用，其他来源、阅读和翻译不受影响 |
 | YouTube | 可选的 YouTube Data API v3 key | 回退到公开 Atom feed，仍可订阅公开频道，但数据完整性降低 |
 
@@ -127,16 +127,11 @@ Reader 只读取公开频道，不需要 OAuth client secret。未设置 key 或
 `APP_TRANSLATION_DEFAULT_ENGINE_ID` 设为 `openrouter-minimax-m3`，并配置
 `APP_OPENROUTER_API_KEY`。
 
-长时间运行的 Worker 要求配置与默认翻译引擎匹配的有效凭据（API key 或下述 Codex 登录文件）。缺少该配置时，
-翻译循环会失败，`/worker-ready` 不能通过，不应宣布完整部署成功。
-`/worker-ready` 只验证配置可构建且循环正在运行，不会主动请求模型，因此不能证明
-key 的鉴权和额度真实可用。部署 Agent 默认只检查 key 已配置、不是示例占位值，
-并验证 `/worker-ready`；只有在获得明确授权后，才通过一次真实翻译请求做在线验收。
-未执行在线验收时，交付结论应标明“翻译循环已启动，模型凭证未做在线验证”。
+引擎是否可用只看凭据是否已配置（`GET /me/translation-preference` 的 `engines[].available`），`/worker-ready` 不反映模型凭据，也不会主动请求模型，因此不能证明 key 的鉴权和额度真实可用。部署 Agent 默认只检查 key 已配置、不是示例占位值；只有在获得明确授权后，才通过一次真实翻译请求做在线验收。未执行在线验收时，交付结论应标明“翻译引擎已配置，模型凭证未做在线验证”。
 
 ### Codex 订阅翻译
 
-引擎 ID 为 `codex-subscription`，默认模型 `gpt-6-luna`，推理强度固定为 `low`。Reader 使用独立的凭据库，按需用 `refresh_token` 续期并保存完整的新令牌；不会自动读取个人的 `~/.codex`，也不依赖宿主机 Codex 常驻。服务端用户共用这份订阅额度，继续受 Reader 翻译配额约束。
+引擎 ID 为 `codex-subscription`，默认模型 `gpt-6-luna`，推理强度固定为 `low`。Reader 使用独立的凭据库，按需用 `refresh_token` 续期并保存完整的新令牌；不会自动读取个人的 `~/.codex`，也不依赖宿主机 Codex 常驻。服务端用户共用这份订阅额度，同样受部署的全局翻译字符额度约束。
 
 **首次登录与导入**：先在有 Codex CLI 的机器上创建专用于 Reader 的登录目录，按 [Codex 官方认证说明](https://developers.openai.com/codex/auth) 完成 ChatGPT 登录。例如：
 
@@ -163,7 +158,7 @@ APP_CODEX_SUBSCRIPTION_REQUEST_TIMEOUT_SECONDS=60
 
 Compose 将专用命名卷 `codex-auth` 挂载给 API 和 Worker，路径固定为 `/var/lib/reader-codex/auth.json`。初始化工具将卷目录设为 UID/GID 10001、权限 0700，凭据文件和锁文件为 0600。卷可写且独立于容器的只读根文件系统；容器重建、升级和普通 `down` 均保留卷，删除卷会丢失登录。无需 `compose.override.yaml` 或宿主机个人 Codex 目录挂载。若之前使用了只读挂载示例，请先移除该覆盖配置再升级。
 
-导入命令通过 stdin 传送凭据，保存成功后重启 API、Worker，让启动时尚未配置的路由生效。首次 `up` 到完成导入之间翻译未就绪，`/worker-ready` 可能返回 503；只配置模型名并不等于登录完成。`status` 仅检查本地凭据，不发送模型请求；`codex-auth refresh` 在即将过期时执行 OAuth 续期，可单独检查刷新链，但不验证模型额度或推理权限。
+导入命令通过 stdin 传送凭据。引擎是否可用在每次选用时按凭据文件判断，导入后无需重启；修改 `.env.docker` 等环境配置后才需要重启 API 和 Worker。首次 `up` 到完成导入之间该引擎不可用；只配置模型名并不等于登录完成。`status` 仅检查本地凭据，不发送模型请求；`codex-auth refresh` 在即将过期时执行 OAuth 续期，可单独检查刷新链，但不验证模型额度或推理权限。
 
 **非 Docker 部署**：在 `backend/.env` 指定 Reader 自有存储路径，两进程应以同一系统用户运行并访问同一个可写私有目录，然后在 `backend/` 执行：
 
@@ -178,7 +173,7 @@ uv run reader-admin codex-auth import --source /absolute/private/reader-codex-bo
 uv run reader-admin codex-auth status
 ```
 
-导入后重启 API、Worker。凭据管理命令不依赖数据库。原先指向 Codex 原始文件的配置需迁移到新的 Reader 目录并执行导入；未导入的文件会显示为非 Reader 管理的登录。
+修改 `backend/.env` 后重启 API 和 Worker；导入凭据本身无需重启。凭据管理命令不依赖数据库。原先指向 Codex 原始文件的配置需迁移到新的 Reader 目录并执行导入；未导入的文件会显示为非 Reader 管理的登录。
 
 **自动续期与恢复**：请求前若访问令牌剩余寿命不足 120 秒，Reader 获取跨进程文件锁，重新读取凭据，再按需刷新。刷新完成后原子替换文件；等待的进程采用新令牌，不重复消费旧刷新令牌。推理返回 401 时最多刷新后重试一次，403 和限流不会触发该强制刷新。锁和 OAuth 请求有界等待；刷新期间取消翻译不会提前释放锁，正在进行的刷新仍完成写回。多机部署不支持复制文件各自刷新，当前方案要求共享同一台主机上支持文件锁和原子替换的文件系统。
 
@@ -189,9 +184,9 @@ uv run reader-admin codex-auth status
 # 非 Docker：uv run reader-admin codex-auth import --source /path/to/fresh/auth.json --replace
 ```
 
-过期但仍可刷新的凭据在进程重启时仍可建立路由；重新导入用于恢复不可刷新或被撤销的登录，不是日常操作。备份中的旧刷新令牌可能已被消费，恢复旧卷后不能假定还能续期，应准备重新授权。
+过期但仍可刷新的凭据照常可用，使用前会自动续期；重新导入用于恢复不可刷新或被撤销的登录，不是日常操作。备份中的旧刷新令牌可能已被消费，恢复旧卷后不能假定还能续期，应准备重新授权。
 
-此实现参考 [Hermes 的刷新事务](https://github.com/NousResearch/hermes-agent/blob/51b5c314e9de80b5c0e70b57f227fb1700d6eb2a/hermes_cli/auth_codex.py)、[OpenClaw 的集中凭据管理](https://github.com/openclaw/openclaw/blob/main/src/agents/auth-profiles/oauth-manager.ts) 及 [Codex OAuth 协议实现](https://github.com/openai/codex/blob/f5f08c54cb7a774594d3579c5731ea3e87f01c48/codex-rs/login/src/oauth/client.rs)。订阅推理仍调用 `chatgpt.com/backend-api/codex/responses`，并非公开、稳定的 OpenAI API 契约；模型权限、额度及端点兼容性以真实调用为准。该引擎仅用于翻译，网页规则 Agent 继续使用 DeepSeek／OpenRouter。常规测试只用模拟 OAuth 和模型响应，在线验收需另行明确授权。
+此实现参考 [Hermes 的刷新事务](https://github.com/NousResearch/hermes-agent/blob/51b5c314e9de80b5c0e70b57f227fb1700d6eb2a/hermes_cli/auth_codex.py)、[OpenClaw 的集中凭据管理](https://github.com/openclaw/openclaw/blob/main/src/agents/auth-profiles/oauth-manager.ts) 及 [Codex OAuth 协议实现](https://github.com/openai/codex/blob/f5f08c54cb7a774594d3579c5731ea3e87f01c48/codex-rs/login/src/oauth/client.rs)。订阅推理仍调用 `chatgpt.com/backend-api/codex/responses`，并非公开、稳定的 OpenAI API 契约；模型权限、额度及端点兼容性以真实调用为准。该引擎仅用于翻译。常规测试只用模拟 OAuth 和模型响应，在线验收需另行明确授权。
 
 ### X 内容（可选：Scweet）
 
@@ -228,7 +223,6 @@ Scweet 是 Reader 当前的 X 采集实现。它使用一个专用 X 账号的�
    API 和 Scweet 在同一主机时使用：
 
    ```dotenv
-   APP_X_PROVIDER=scweet
    APP_SCWEET_SERVICE_URL=http://127.0.0.1:8090
    APP_SCWEET_SERVICE_TOKEN=<与 /etc/reader/scweet.env 相同的值>
    ```
@@ -265,25 +259,13 @@ PostgreSQL 18 持久 volume 挂载 `/var/lib/postgresql`，默认数据位于其
 子目录；不能把旧主版本数据目录直接交给新版本启动。数据库端口只绑定 loopback。
 容器健康检查之后还须执行 Alembic 并验证 `/ready`。定期备份数据库并验证恢复。
 
-已有 Supabase 部署使用 `scripts/migrate_supabase.py` 只读导出业务表、账号必要字段
-和头像，再导入空的 PostgreSQL 目标库。保留 UUID/原密码哈希，校验后再切换 API/Worker。
-原 Supabase 保留供回退，旧会话不迁移，用户重新登录。执行参数见
-[迁移脚本](../backend/scripts/migrate_supabase.py) 的 `--help`；当前账户与数据归属见
-[架构说明](ARCHITECTURE.md#数据归属)。
-
 不再需要 Auth 回调白名单、Storage bucket 或邮件模板。注册立即可用。忘记密码通过
 `uv run reader-admin users reset-password <email>` 由管理员重置；已登录用户输入当前密码
 即可修改密码或邮箱。
 
 ## 4. 启动 API 与 Worker
 
-已有部署升级到候选载荷迁移 `20260925_30` 时，**先停止旧 API 和全部 Worker，再迁移，
-最后启动新版进程**；API 的排行路径同样可以生产候选，不能只停扫描器。该迁移将队列中的
-可用性与列表观察标记改为显式字段，保留原哈希、租约和基线属性；新版要求
-`reader-runtime-v26`，不兼容旧、新候选写入进程并行运行。Docker 的 `./docker-init.sh up`
-已按停止旧进程、迁移、启动新进程的顺序执行。需要回退本次载荷变更时，也先停止所有
-写入者，再于 `backend/` 执行 `uv run alembic downgrade 20260922_29`，随后切回旧版代码；
-不要让旧消费者读取未回退的新版载荷。
+迁移从 `migrations/versions/0001_baseline` 开始。旧版后端（`app` 包）创建的数据库不能升级，需要新建数据库后再执行迁移；之后的版本按迁移顺序升级。Docker 的 `./docker-init.sh up` 会先停止旧进程、执行迁移，再启动新进程。
 
 ```bash
 cd backend
@@ -293,14 +275,13 @@ uv run alembic upgrade head
 ```
 
 
-来源扫描只发起普通 HTTP 请求，不需要浏览器或模型密钥；Worker 的翻译循环需要默认模型凭证。
-迁移历史已合并为单一基线：2026-11-10 之前创建的数据库无法升级，需要新建数据库后再执行迁移。
+来源扫描只发起普通 HTTP 请求，不需要浏览器或模型密钥；后台标题翻译只在默认（或用户所选）引擎已配置凭据时才排队。
 
 在独立的进程管理单元启动 API 和 Worker：
 
 ```bash
 cd backend
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn reader.main:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
 ```bash
@@ -314,14 +295,10 @@ uv run reader-worker
 
 更新已有 systemd 部署时，代码同步本身不会替换已加载的 Python 进程。完成依赖安装和
 迁移后必须显式重启 `reader-api` 与受影响的 worker，并核对新 `MainPID`、启动时间和
-journal；否则新版 APK 仍会命中旧进程中相同的未版本化 `/v1` 路由。实时网页／字幕
+journal；否则新版 APK 仍会命中旧进程中的旧路由。实时网页／字幕
 翻译的后端更新不要求重新构建 APK，只有客户端 bridge、调度或错误文案变化才需要新包。
 
-实时翻译默认保留三条数据库连接、零 overflow 和五秒 checkout timeout。不要为了提高
-DeepSeek 并发而按同样数字扩大数据库池：配置与翻译缓存的 session 必须在模型等待前
-结束，缓存持久化使用独立短 session。若日志出现 `translation_storage_busy` 或
-`QueuePool` timeout，先检查运行代码版本和事务生命周期，再根据 PostgreSQL 的总连接预算
-调整池大小。
+API 与 Worker 各自使用一个数据库连接池（默认 `APP_DATABASE_POOL_SIZE=5`，取连接最多等 `APP_DATABASE_POOL_TIMEOUT_SECONDS`）。翻译服务在调用模型前结束数据库事务，不会在等待模型时占住连接；不要为了提高模型并发而扩大连接池，模型并发由 `APP_TRANSLATION_MAX_CONCURRENCY` 控制。连接池大小按 PostgreSQL 的总连接预算调整。
 
 ## 5. 验收
 
@@ -336,7 +313,7 @@ curl -fsS "$READER_API_BASE_URL/worker-ready"
 ```
 
 通过客户端或从受限配置读取 header 的脚本检查 discovery，避免 token 写入命令历史。
-正确 token 返回 200，文档仅含 `protocol_version: 2`、`server_id`、`api_base_url`；
+正确 token 返回 200，文档仅含 `protocol_version: 3`、`server_id`、`api_base_url`；
 缺少或错误 token 必须拒绝 discovery、注册、登录和业务请求。不得泄露 database URL、
 JWT secret 或 provider key。在 APK 输入同一地址和 token，验证注册直接登录、退出、
 再次登录、改密、头像和一条来源的同步。
@@ -345,9 +322,8 @@ JWT secret 或 provider key。在 APK 输入同一地址和 token，验证注册
 
 - [ ] 开始安装前已让用户确认目标系统、访问范围、体验入口和可选能力。
 - [ ] `backend/.env`、私有配置和 provider key 都未提交。
-- [ ] API、Worker、数据库迁移和 `/ready` 均通过；完整部署的 `/worker-ready` 也通过，受限部署则已明确记录翻译循环未就绪。
+- [ ] API、Worker、数据库迁移、`/ready` 和 `/worker-ready` 均通过；未配置模型凭据的部署已明确记录翻译不可用。
 - [ ] 更新部署已重启实际 systemd 进程，并核对新 PID、启动时间和最新 journal。
-- [ ] 实时翻译日志未出现 `QueuePool` timeout，provider、quota 与 persistence 耗时可区分。
 - [ ] 客户端通过用户选择的本机／局域网 HTTP 或公网 HTTPS 地址完成连接、注册、登录与同步测试。
 - [ ] 启用 X 功能前完成条款、政策与账户风险审查；不需要时保持关闭。
 - [ ] APK 作为 GitHub Release asset 上传，而不是提交进仓库。

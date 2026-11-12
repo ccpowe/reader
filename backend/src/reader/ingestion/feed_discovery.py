@@ -1,4 +1,4 @@
-"""Bounded RSS/Atom autodiscovery before authoring a website crawling rule."""
+"""Bounded RSS/Atom autodiscovery for a website the user wants to follow."""
 
 from __future__ import annotations
 
