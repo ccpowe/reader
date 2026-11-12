@@ -82,6 +82,8 @@ export default function Today() {
   const [page, setPage] = useState(0);
   const [channel, setChannel] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [markingAll, setMarkingAll] = useState(false);
+  const [markError, setMarkError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState<{ id: number; message: string } | null>(null);
 
@@ -105,6 +107,28 @@ export default function Today() {
     setPickerOpen(false);
     const subscription = list.find((s) => s.id === id);
     if (subscription) void markViewed(identity, subscription).catch(() => undefined); // the count is a hint; a failure costs nothing
+  }
+
+  /** Clear one subscription's new-content count without opening it. */
+  async function markRead(id: string) {
+    const subscription = list.find((s) => s.id === id);
+    if (!subscription) return;
+    setMarkError(null);
+    try {
+      await markViewed(identity, subscription);
+    } catch (error) {
+      setMarkError(t().today.markReadFailed(errorMessage(error)));
+    }
+  }
+
+  /** 全部标为已读: every subscription with new items, up to what the list shows now. */
+  async function markAllRead() {
+    setMarkingAll(true);
+    setMarkError(null);
+    const results = await Promise.allSettled(list.filter((s) => s.new_count > 0).map((s) => markViewed(identity, s)));
+    setMarkingAll(false);
+    const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failed) setMarkError(t().today.markReadFailed(errorMessage(failed.reason)));
   }
 
   async function toggleHome(id: string, include: boolean) {
@@ -183,6 +207,7 @@ export default function Today() {
         onClearChannel={() => setChannel(null)}
         onOpenChannels={() => {
           setSearch('');
+          setMarkError(null);
           setPickerOpen(true);
         }}
         onSelectFolder={selectFolder}
@@ -199,10 +224,10 @@ export default function Today() {
         <ChannelPicker
           channel={shownChannel}
           groups={groups}
-          onClear={() => {
-            setChannel(null);
-            setPickerOpen(false);
-          }}
+          error={markError}
+          markingAll={markingAll}
+          onMarkAllRead={() => void markAllRead()}
+          onMarkRead={(id) => void markRead(id)}
           onSearch={setSearch}
           onSelect={selectChannel}
           onToggleHome={(id, include) => void toggleHome(id, include)}
