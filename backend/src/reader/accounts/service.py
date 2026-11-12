@@ -267,6 +267,19 @@ async def set_avatar(db: AsyncSession, user_id: UUID, data: bytes, content_type:
     return user
 
 
+async def remove_avatar(db: AsyncSession, user_id: UUID) -> User:
+    """Back to no avatar; the version moves on so the old public address stops working."""
+    user = await db.scalar(select(User).where(User.id == user_id).with_for_update())
+    if user is None:
+        raise AppError(401, "not_authenticated", "The account no longer exists.")
+    if user.avatar_content_type is not None:
+        user.avatar_data = None
+        user.avatar_content_type = None
+        user.avatar_version += 1
+        await db.commit()
+    return user
+
+
 async def get_avatar(db: AsyncSession, user_id: UUID, version: int) -> Avatar:
     user = await db.scalar(
         select(User)

@@ -1745,6 +1745,43 @@ export type UpdateMeMePatchResponses = {
 
 export type UpdateMeMePatchResponse = UpdateMeMePatchResponses[keyof UpdateMeMePatchResponses];
 
+export type RemoveAvatarMeAvatarDeleteData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/me/avatar';
+};
+
+export type RemoveAvatarMeAvatarDeleteErrors = {
+    /**
+     * Error codes: `invalid_server_token`, `not_authenticated`
+     */
+    401: ErrorResponse;
+    /**
+     * Error codes: `invalid_request`
+     */
+    422: ErrorResponse;
+    /**
+     * Error codes: `too_many_attempts`
+     */
+    429: ErrorResponse;
+    /**
+     * Error codes: `database_unavailable`
+     */
+    503: ErrorResponse;
+};
+
+export type RemoveAvatarMeAvatarDeleteError = RemoveAvatarMeAvatarDeleteErrors[keyof RemoveAvatarMeAvatarDeleteErrors];
+
+export type RemoveAvatarMeAvatarDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: MeResponse;
+};
+
+export type RemoveAvatarMeAvatarDeleteResponse = RemoveAvatarMeAvatarDeleteResponses[keyof RemoveAvatarMeAvatarDeleteResponses];
+
 export type UploadAvatarMeAvatarPutData = {
     body: Blob | File;
     path?: never;

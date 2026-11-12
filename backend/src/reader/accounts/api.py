@@ -113,7 +113,7 @@ def _tokens(tokens: service.Tokens, response: Response) -> TokensResponse:
 
 def _me(user: User, request: Request, settings: Settings) -> MeResponse:
     avatar_url = None
-    if user.avatar_version > 0:
+    if user.avatar_content_type is not None:
         base = str(settings.public_api_base_url or request.base_url).rstrip("/")
         avatar_url = f"{base}/avatars/{user.id}/{user.avatar_version}"
     return MeResponse(
@@ -300,6 +300,17 @@ async def upload_avatar(
     payload = bytes(data)
     await anyio.to_thread.run_sync(validate_avatar, payload, content_type)
     return _me(await service.set_avatar(db, user.id, payload, content_type), request, settings)
+
+
+@me_router.delete("/avatar", response_model=MeResponse, responses=error_responses())
+async def remove_avatar(
+    request: Request,
+    user: CurrentUser = Depends(current_user),
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_session),
+):
+    """Remove the avatar (no avatar is not an error)."""
+    return _me(await service.remove_avatar(db, user.id), request, settings)
 
 
 # --- Public avatar images ---------------------------------------------------------

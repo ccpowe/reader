@@ -19,8 +19,10 @@ export type Query = Record<string, string | number | boolean | null | undefined 
 export type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   query?: Query;
-  /** JSON body; a `FormData` is sent as multipart */
+  /** JSON body; a `FormData` is sent as multipart; a `Blob` as is, with `contentType` */
   body?: unknown;
+  /** The type of a `Blob` body (an avatar: image/jpeg …) */
+  contentType?: string;
   signal?: AbortSignal;
   /** false for sign-in, register, refresh and discovery */
   authenticated?: boolean;
@@ -87,7 +89,10 @@ export function createApiClient(config: ApiClientConfig) {
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     let body: BodyInit | undefined;
     if (options.body instanceof FormData) body = options.body;
-    else if (options.body !== undefined) {
+    else if (typeof Blob !== 'undefined' && options.body instanceof Blob) {
+      headers['Content-Type'] = options.contentType || options.body.type || 'application/octet-stream';
+      body = options.body;
+    } else if (options.body !== undefined) {
       headers['Content-Type'] = 'application/json';
       body = JSON.stringify(options.body);
     }

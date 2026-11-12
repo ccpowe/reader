@@ -43,6 +43,18 @@ test('only the refresh of the current tokens is applied', () => {
   assert.equal(sessionReducer(out, { type: 'refreshed', spent: 'r2', tokens: tokens(4) }), out);
 });
 
+test('a password change replaces the tokens of the same account only', () => {
+  const owner = (signedIn as Extract<SessionState, { status: 'signed-in' }>).user;
+  const next = sessionReducer(signedIn, { type: 'reissued', server, owner, tokens: tokens(5) });
+  assert.deepEqual(next, { ...signedIn, tokens: tokens(5) });
+  assert.equal(identityOf(next), identityOf(signedIn), 'same identity: the cache stays');
+  assert.equal(sessionReducer(signedIn, { type: 'reissued', server: { ...server }, owner, tokens: tokens(5) }), signedIn);
+  // an earlier sign-in of the same account (another user object) is not this one
+  assert.equal(sessionReducer(signedIn, { type: 'reissued', server, owner: { ...user }, tokens: tokens(5) }), signedIn);
+  const out = sessionReducer(signedIn, { type: 'signed-out', reason: 'user' });
+  assert.equal(sessionReducer(out, { type: 'reissued', server, owner, tokens: tokens(5) }), out);
+});
+
 test('a sign-in sent over an earlier connection does not apply', () => {
   const other = { ...server, serverId: 'srv-2', apiBaseUrl: 'https://other.example' };
   const switched: SessionState = { status: 'signed-out', server: other, reason: null };

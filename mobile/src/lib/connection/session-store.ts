@@ -101,6 +101,13 @@ export function createSessionStore(options: {
         dispatch({ type: 'refreshed', spent, tokens: tokensOf(response).tokens });
       } catch (error) {
         if (isApiError(error) && error.problem.kind === 'http' && error.problem.status === 401) {
+          // A password change of this sign-in revokes the old tokens on purpose: its new ones are
+          // on their way, so wait for them rather than signing out.
+          if (reissuing && reissuing.owner === rejected.owner) {
+            await reissuing.done.catch(() => undefined);
+            if (state.status === 'signed-in' && state.user === rejected.owner && state.tokens.refresh !== spent)
+              return currentCredential(server);
+          }
           // The session ended on the server (revoked, expired, or the refresh token was used elsewhere).
           if (state.status === 'signed-in' && state.tokens.refresh === spent) dispatch({ type: 'signed-out', reason: 'expired' });
           return null;
@@ -133,6 +140,8 @@ export function createSessionStore(options: {
   }
 
   let attempt: object | null = null;
+  /** A password change in flight, for the sign-in (user object) that asked for it. */
+  let reissuing: { owner: User; done: Promise<void> } | null = null;
 
   async function authenticate(path: '/auth/login' | '/auth/register', body: object): Promise<'done' | 'busy' | 'ignored'> {
     const server = serverOf(state);
@@ -191,6 +200,25 @@ export function createSessionStore(options: {
 
     register(email: string, password: string, displayName: string | null) {
       return authenticate('/auth/register', { email, password, display_name: displayName });
+    },
+
+    /**
+     * Change the password. The server ends every session and starts a new one for this device,
+     * whose tokens replace ours (signed out or switched meanwhile: they are not applied).
+     * Errors (wrong_password …) are thrown as is.
+     */
+    async changePassword(currentPassword: string, password: string): Promise<void> {
+      if (state.status !== 'signed-in') throw new Error('not signed in');
+      const { server, user: owner } = state;
+      const done = apiFor(server)
+        .request<TokensResponse>('/me/password', { method: 'PATCH', body: { current_password: currentPassword, password } })
+        .then((response) => dispatch({ type: 'reissued', server, owner, tokens: tokensOf(response).tokens }));
+      reissuing = { owner, done };
+      try {
+        await done;
+      } finally {
+        if (reissuing?.done === done) reissuing = null;
+      }
     },
 
     /** Signs out here at once; telling the server is best effort. */

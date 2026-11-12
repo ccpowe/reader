@@ -4,9 +4,8 @@
  * R4-B). The floating + adds a subscription. Searching lists matching subscriptions directly.
  * Unsubscribing acts at once with Undo (P27). Presentational: data and callbacks come from the route.
  */
-import { IconArrowLeft, IconChevronLeft, IconFolder, IconLayoutGrid, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react-native';
-import { useState, type ReactNode } from 'react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { IconChevronLeft, IconFolder, IconLayoutGrid, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react-native';
+import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
@@ -26,7 +25,6 @@ import {
   EmptyState,
   Fab,
   Icon,
-  IconButton,
   Input,
   Message,
   PageHeader,
@@ -37,7 +35,6 @@ import {
   Switch,
   Tabs,
   Text,
-  TopBar,
 } from '@/ui';
 
 function FolderBar({ name, count, onBack }: { name: string; count: number; onBack?: () => void }) {
@@ -378,29 +375,4 @@ export function SubscriptionMenu({
 }
 
 /** One subscription's own page (opened from 订阅): back, its name, then its feed. Back returns to 订阅. */
-export function SubscriptionFeedView({
-  title,
-  banner,
-  onBack,
-  children,
-}: {
-  title: string;
-  banner?: string | null;
-  onBack?: () => void;
-  children: ReactNode;
-}) {
-  const insets = useSafeAreaInsets();
-  return (
-    <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
-      <TopBar leading={<IconButton icon={IconArrowLeft} label="返回" onPress={onBack} />} title={title} />
-      {banner ? (
-        <Message bar kind="warning">
-          {banner}
-        </Message>
-      ) : null}
-      <View className="flex-1" style={{ paddingBottom: insets.bottom }}>
-        {children}
-      </View>
-    </View>
-  );
-}
+export { PushedPage as SubscriptionFeedView } from './PushedPage';

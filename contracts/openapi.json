@@ -3579,6 +3579,72 @@
       }
     },
     "/me/avatar": {
+      "delete": {
+        "description": "Remove the avatar (no avatar is not an error).",
+        "operationId": "remove_avatar_me_avatar_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error codes: `invalid_server_token`, `not_authenticated`"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error codes: `invalid_request`"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error codes: `too_many_attempts`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Error codes: `database_unavailable`"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": [],
+            "ReaderServerToken": []
+          }
+        ],
+        "summary": "Remove Avatar",
+        "tags": [
+          "accounts"
+        ]
+      },
       "put": {
         "description": "Send the raw image bytes with a JPEG, PNG or WebP Content-Type.",
         "operationId": "upload_avatar_me_avatar_put",

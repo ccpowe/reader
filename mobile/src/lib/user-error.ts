@@ -65,6 +65,13 @@ const codes: Record<string, string> = {
   feed_not_found: '这个网站没有找到 RSS / Atom。可以试试直接填它的 RSS 地址。',
   source_unreachable: '连不上这个地址。检查地址是否正确，稍后再试。',
   subscription_not_found: '这个订阅已经不存在了。',
+  wrong_password: '当前密码不对。',
+  avatar_too_large: '图片太大了，最大 5 MB。',
+  unsupported_avatar_type: '只支持 JPEG、PNG 或 WebP 图片。',
+  invalid_avatar: '这张图片读不出来，换一张试试。',
+  unknown_engine: '服务器没有这个翻译引擎。',
+  engine_unavailable: '这个翻译引擎现在不可用。',
+  translation_unavailable: '服务器暂时不能翻译，请稍后再试。',
 };
 
 const fields: Record<string, string> = {

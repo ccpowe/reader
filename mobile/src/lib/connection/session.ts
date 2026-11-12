@@ -42,6 +42,8 @@ export type SessionEvent =
   | { type: 'connected'; server: Server }
   | { type: 'signed-in'; /** the server the sign-in was sent to */ server: Server; user: User; tokens: Tokens }
   | { type: 'refreshed'; /** the refresh token that was spent */ spent: string; tokens: Tokens }
+  /** a password change ended every session and started a new one for this device */
+  | { type: 'reissued'; server: Server; /** the sign-in it was asked by (its user object) */ owner: User; tokens: Tokens }
   | { type: 'signed-out'; reason: Exclude<SignedOutReason, null> }
   | { type: 'server-token-rejected' }
   | { type: 'forget-server' };
@@ -73,6 +75,9 @@ export function sessionReducer(state: SessionState, event: SessionEvent): Sessio
     case 'signed-in':
       // A refresh that finished after another one replaced the tokens is stale: ignore it.
       if (event.type === 'refreshed') return event.spent === state.tokens.refresh ? { ...state, tokens: event.tokens } : state;
+      // The same sign-in only (same server and user object; the identity and its cache stay): an
+      // answer for an earlier sign-in, even of the same account, carries tokens already revoked.
+      if (event.type === 'reissued') return event.server === state.server && event.owner === state.user ? { ...state, tokens: event.tokens } : state;
       if (event.type === 'signed-out') return { status: 'signed-out', server: state.server, reason: event.reason };
       if (event.type === 'server-token-rejected') return { status: 'no-server', lastBase: state.server.base, tokenRejected: true };
       if (event.type === 'forget-server') return { status: 'no-server', lastBase: state.server.base };

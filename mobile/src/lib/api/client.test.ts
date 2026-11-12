@@ -51,6 +51,15 @@ test('sends the server token, the access token and a JSON body', async () => {
   assert.equal(calls[0].init.redirect, 'error');
 });
 
+test('a Blob body is sent as is with its type (avatar upload)', async () => {
+  const { impl, calls } = fakeFetch([json(200, {})]);
+  const api = createApiClient({ apiBaseUrl: 'https://r.example', serverToken: 'srv', tokens: tokens('a1', null).source, fetch: impl });
+  const image = new Blob([new Uint8Array([1, 2, 3])]);
+  await api.request('/me/avatar', { method: 'PUT', body: image, contentType: 'image/jpeg' });
+  assert.equal(header(calls[0], 'Content-Type'), 'image/jpeg');
+  assert.equal(calls[0].init.body, image);
+});
+
 test('unauthenticated requests carry no bearer token', async () => {
   const { impl, calls } = fakeFetch([json(200, {})]);
   const api = createApiClient({ apiBaseUrl: 'https://r.example', serverToken: 'srv', tokens: tokens('a1', null).source, fetch: impl });

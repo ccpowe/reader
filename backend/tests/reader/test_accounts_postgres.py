@@ -164,6 +164,10 @@ async def test_avatar_upload_and_versioned_public_url(monkeypatch) -> None:
         url = second.json()["avatar_url"].removeprefix("http://reader.test")
         image = await client.get(url, headers={"X-Reader-Server-Token": ""})
         stale = await client.get(first.json()["avatar_url"].removeprefix("http://reader.test"))
+        removed = await client.delete("/me/avatar", headers=headers)
+        removed_again = await client.delete("/me/avatar", headers=headers)
+        gone = await client.get(url, headers={"X-Reader-Server-Token": ""})
+        me = await client.get("/me", headers=headers)
 
     assert _code(wrong_type) == (415, "unsupported_avatar_type")
     assert _code(too_large) == (413, "avatar_too_large")
@@ -174,6 +178,9 @@ async def test_avatar_upload_and_versioned_public_url(monkeypatch) -> None:
     assert image.headers["content-type"] == "image/png"
     assert "immutable" in image.headers["cache-control"]
     assert _code(stale) == (404, "avatar_not_found")
+    assert removed.json()["avatar_url"] is None and removed_again.status_code == 200
+    assert _code(gone) == (404, "avatar_not_found")
+    assert me.json()["avatar_url"] is None
 
 
 @pytest.mark.asyncio

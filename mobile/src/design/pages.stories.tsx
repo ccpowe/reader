@@ -186,7 +186,7 @@ export const SavedNoMatch = story('收藏 · 搜索无结果', () => (
 
 export const Me = story('我的', () => (
   <TabFrame tab="me">
-    <MeView email="me@example.com" engine="DeepSeek · deepseek-flash" interfaceLanguage="简体中文" server="reader.example.com" targetLanguage="简体中文" translationEnabled user={user} />
+    <MeView email="me@example.com" interfaceLanguage="简体中文" server="reader.example.com" translation={{ kind: 'ready', enabled: true, language: '简体中文', engine: 'DeepSeek · deepseek-flash' }} user={user} />
   </TabFrame>
 ));
 

@@ -30,6 +30,9 @@ function Routes() {
         <Stack.Screen name="article/[id]" />
         <Stack.Screen name="board-item" />
         <Stack.Screen name="subscription/[id]" />
+        <Stack.Screen name="profile" />
+        <Stack.Screen name="password" />
+        <Stack.Screen name="about" />
       </Stack.Protected>
     </Stack>
   );

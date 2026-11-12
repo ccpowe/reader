@@ -76,6 +76,33 @@ test('one refresh for many requests that hit an expired token', async () => {
   assert.equal(calls.filter((c) => c === '/auth/refresh').length, 1);
 });
 
+test('a password change keeps this device signed in even when an old-token refresh is refused meanwhile', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const { impl } = server_({
+    '/me/password': async () => {
+      await gate;
+      return json(200, tokens(3));
+    },
+    // the server has already revoked the old session
+    '/feed': (_, headers) =>
+      headers.Authorization === 'Bearer a3' ? json(200, { ok: true }) : json(401, { error: { code: 'not_authenticated', message: '' } }),
+    '/auth/refresh': () => json(401, { error: { code: 'not_authenticated', message: '' } }),
+  });
+  const { storage } = memoryStorage({ server, account: { user: { id: 'u1', email: 'me@x' }, tokens: { access: 'a1', refresh: 'r1', expiresAt: 1 } } });
+  const store = createSessionStore({ storage, fetch: impl });
+  await store.restore();
+  const change = store.changePassword('old-password', 'new-password');
+  const feed = store.api().request('/feed');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  release();
+  await change;
+  assert.deepEqual(await feed, { ok: true });
+  const state = store.getSnapshot();
+  assert.equal(state.status, 'signed-in');
+  assert.equal(state.status === 'signed-in' && state.tokens.access, 'a3');
+});
+
 test('a refresh the server refuses signs out with reason "expired"', async () => {
   const { impl } = server_({
     '/feed': () => json(401, { error: { code: 'not_authenticated', message: '' } }),
