@@ -5,7 +5,7 @@
 import { infiniteQueryOptions, queryOptions, type InfiniteData } from '@tanstack/react-query';
 
 import { isApiError } from '../api/errors';
-import type { MeResponse, PageFeedItem, SubscriptionResponse } from '../api/schema.gen';
+import type { ArticleDetail, MeResponse, PageFeedItem, SubscriptionResponse } from '../api/schema.gen';
 import { queryClient, session } from '../app-session';
 import { patchItems, scopeParams, type FeedScope } from '../feed';
 import { key } from '../query';
@@ -73,12 +73,15 @@ export async function setSaved(identity: string, articleId: string, saved: boole
   if (saving.has(articleId)) return;
   saving.add(articleId);
   const feeds = { queryKey: [identity, 'feed'] };
-  const apply = (value: boolean) =>
+  const detail = key(identity, 'article', articleId);
+  const apply = (value: boolean) => {
     queryClient.setQueriesData<FeedData>(feeds, (data) =>
       data ? { ...data, pages: patchItems(data.pages, articleId, { is_saved: value }) } : data,
     );
+    queryClient.setQueryData<ArticleDetail>(detail, (article) => (article ? { ...article, is_saved: value } : article));
+  };
   try {
-    await queryClient.cancelQueries(feeds);
+    await Promise.all([queryClient.cancelQueries(feeds), queryClient.cancelQueries({ queryKey: detail })]);
     apply(saved);
     await session.api().request(`/saved/${articleId}`, { method: saved ? 'PUT' : 'DELETE' });
     void queryClient.invalidateQueries({ queryKey: [identity, 'saved'] });
@@ -88,6 +91,7 @@ export async function setSaved(identity: string, articleId: string, saved: boole
       throw error;
     }
     void queryClient.invalidateQueries(feeds);
+    void queryClient.invalidateQueries({ queryKey: detail });
     void queryClient.invalidateQueries({ queryKey: [identity, 'saved'] });
     throw new UnknownOutcome();
   } finally {

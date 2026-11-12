@@ -1,104 +1,94 @@
 /**
- * Reader page (PRODUCT §3.6), old app layout (device screenshot), P23 R3-A: a top bar — back,
- * "文章", save, share, open in browser — above the page; on the right edge a floating pill with
- * translation (original ↔ bilingual, P24) and reader mode (original page ↔ reader view, P13).
- * The web content is a placeholder here; the real page hosts a WebView.
+ * Reader page shell (PRODUCT §3.6), old app layout (device screenshot), P23 R3-A: a top bar —
+ * back, "文章", save, share, open in browser — above the content; a thin load progress line; one
+ * in-place problem line; on the right edge a floating pill with the page's tools (translation
+ * original ↔ bilingual P24, reader mode P13 / player ↔ web page). The content (a WebView) is the
+ * `children`. Presentational: the route passes state and callbacks.
  */
-import {
-  IconArrowLeft,
-  IconBook,
-  IconBookmark,
-  IconBookmarkFilled,
-  IconExternalLink,
-  IconLanguage,
-  IconShare2,
-  IconWorld,
-} from '@tabler/icons-react-native';
-import { Pressable, ScrollView, View } from 'react-native';
+import type { Icon as TablerIcon } from '@tabler/icons-react-native';
+import { IconArrowLeft, IconBookmark, IconBookmarkFilled, IconExternalLink, IconShare2 } from '@tabler/icons-react-native';
+import type { ReactNode } from 'react';
+import { Pressable, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { cn } from '@/lib/cn';
-import { Icon, IconButton, Message, Text, TopBar, useShadow } from '@/ui';
+import { Icon, IconButton, Message, TopBar, useShadow } from '@/ui';
 
-export type ArticleBusy = 'none' | 'translating' | 'quota';
+export type ReaderTool = { key: string; icon: TablerIcon; label: string; on: boolean; onPress?: () => void };
 
-function FloatingTools({ bilingual, reader }: { bilingual: boolean; reader: boolean }) {
+function FloatingTools({ tools }: { tools: ReaderTool[] }) {
   const shadow = useShadow('md');
-  const tool = (on: boolean) => cn('h-12 w-12 items-center justify-center rounded-full active:bg-pressed', on ? 'bg-selected' : '');
+  if (tools.length === 0) return null;
   return (
     <View className="absolute right-2 top-1/2 rounded-full bg-raised p-1" style={shadow} testID="align-ignore">
-      <Pressable
-        accessibilityLabel="双语对照"
-        accessibilityRole="switch"
-        accessibilityState={{ checked: bilingual }}
-        className={tool(bilingual)}
-      >
-        <Icon icon={IconLanguage} size="toolbar" tone={bilingual ? 'strong' : 'neutral'} />
-      </Pressable>
-      <Pressable
-        accessibilityLabel="阅读模式"
-        accessibilityRole="switch"
-        accessibilityState={{ checked: reader }}
-        className={tool(reader)}
-      >
-        <Icon icon={reader ? IconBook : IconWorld} size="toolbar" tone={reader ? 'strong' : 'neutral'} />
-      </Pressable>
+      {tools.map((tool) => (
+        <Pressable
+          accessibilityLabel={tool.label}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: tool.on }}
+          className={cn('h-12 w-12 items-center justify-center rounded-full active:bg-pressed', tool.on ? 'bg-selected' : '')}
+          key={tool.key}
+          onPress={tool.onPress}
+        >
+          <Icon icon={tool.icon} size="toolbar" tone={tool.on ? 'strong' : 'neutral'} />
+        </Pressable>
+      ))}
     </View>
   );
 }
 
 export function ArticleView({
-  title,
-  paragraphs,
+  title = '文章',
   saved,
-  bilingual,
-  reader,
-  busy = 'none',
+  progress,
+  problem,
+  tools = [],
+  children,
+  onBack,
+  onToggleSave,
+  onShare,
+  onOpenExternal,
 }: {
-  host: string;
-  title: string;
-  paragraphs: { original: string; translated: string }[];
+  /** 文章, 视频 or 帖子 (old app) */
+  title?: string;
   saved: boolean;
-  bilingual: boolean;
-  reader: boolean;
-  busy?: ArticleBusy;
+  /** page load progress 0–1; hidden at 1 */
+  progress?: number;
+  /** one line about what went wrong, with an action */
+  problem?: { message: string; action?: ReactNode } | null;
+  tools?: ReaderTool[];
+  children: ReactNode;
+  onBack?: () => void;
+  onToggleSave?: () => void;
+  onShare?: () => void;
+  onOpenExternal?: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View className="flex-1 bg-canvas">
+    <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
       <TopBar
         actions={
           <>
-            <IconButton icon={saved ? IconBookmarkFilled : IconBookmark} label={saved ? '取消收藏' : '收藏'} on={saved} plain />
-            <IconButton icon={IconShare2} label="分享" />
-            <IconButton icon={IconExternalLink} label="在浏览器打开" />
+            <IconButton icon={saved ? IconBookmarkFilled : IconBookmark} label={saved ? '取消收藏' : '收藏'} on={saved} onPress={onToggleSave} plain />
+            <IconButton icon={IconShare2} label="分享" onPress={onShare} />
+            <IconButton icon={IconExternalLink} label="在浏览器打开" onPress={onOpenExternal} />
           </>
         }
-        leading={<IconButton icon={IconArrowLeft} label="返回" />}
-        title="文章"
+        leading={<IconButton icon={IconArrowLeft} label="返回" onPress={onBack} />}
+        title={title}
       />
-      {busy === 'none' ? null : (
-        <Message bar kind={busy === 'quota' ? 'warning' : 'info'}>
-          {busy === 'translating' ? '正在翻译，已完成 3 / 12 段' : '翻译额度用完，约 1 分钟后可再试'}
+      <View className="h-0.5 bg-sidebar">
+        {progress !== undefined && progress < 1 ? <View className="h-full bg-accent" style={{ width: `${Math.max(5, progress * 100)}%` }} /> : null}
+      </View>
+      {problem ? (
+        <Message action={problem.action} bar kind="warning">
+          {problem.message}
         </Message>
-      )}
-      <ScrollView contentContainerClassName="gap-4 px-6 pb-12 pt-6">
-        {!reader ? (
-          <Text level="caption" tone="tertiary">
-            原网页（原型占位，实际是网页本身）
-          </Text>
-        ) : null}
-        <Text level="h1">{title}</Text>
-        {paragraphs.map((paragraph, index) => (
-          <View className="gap-2" key={index}>
-            <Text level="body">{paragraph.original}</Text>
-            {bilingual ? (
-              <Text level="body" tone="secondary">
-                {paragraph.translated}
-              </Text>
-            ) : null}
-          </View>
-        ))}
-      </ScrollView>
-      <FloatingTools bilingual={bilingual} reader={reader} />
+      ) : null}
+      <View className="flex-1" style={{ paddingBottom: insets.bottom }}>
+        {children}
+      </View>
+      <FloatingTools tools={tools} />
     </View>
   );
 }

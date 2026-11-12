@@ -4,13 +4,16 @@
  */
 import type { Meta, StoryObj } from '@storybook/react-native';
 
-import { ArticleView } from '@/screens/ArticleView';
+import { IconArticle, IconLanguage, IconWorld } from '@tabler/icons-react-native';
+import { ScrollView, View } from 'react-native';
+
+import { ArticleView, type ReaderTool } from '@/screens/ArticleView';
 import { ConnectView, SignInView } from '@/screens/AuthViews';
 import { BoardItemView } from '@/screens/BoardItemView';
 import { BoardOptions, BoardsView } from '@/screens/BoardsView';
 import { FeedList, type FeedListState } from '@/components/FeedList';
 import { ChannelPicker } from '@/screens/ChannelPicker';
-import { EmptyState } from '@/ui';
+import { Button, EmptyState, Text } from '@/ui';
 import { MeView } from '@/screens/MeView';
 import { SavedView } from '@/screens/SavedView';
 import { AddSubscriptionForm, SubscriptionsView } from '@/screens/SubscriptionsView';
@@ -198,10 +201,46 @@ export const Me = story('我的', () => (
 
 // --- 阅读页 ---------------------------------------------------------------------
 
-export const ArticleWeb = story('阅读页 · 原网页', () => <ArticleView {...article} bilingual={false} reader={false} saved={false} />);
-export const ArticleBilingual = story('阅读页 · 阅读模式 + 双语', () => <ArticleView {...article} bilingual reader saved />);
-export const ArticleTranslating = story('阅读页 · 翻译中', () => <ArticleView {...article} bilingual busy="translating" reader saved={false} />);
-export const ArticleQuota = story('阅读页 · 额度用完', () => <ArticleView {...article} bilingual busy="quota" reader={false} saved={false} />);
+const articleBody = (bilingual: boolean) => (
+  <ScrollView contentContainerClassName="gap-4 px-6 pb-12 pt-6">
+    <Text level="h1">{article.title}</Text>
+    {article.paragraphs.map((paragraph, index) => (
+      <View className="gap-2" key={index}>
+        <Text level="body">{paragraph.original}</Text>
+        {bilingual ? (
+          <Text level="body" tone="secondary">
+            {paragraph.translated}
+          </Text>
+        ) : null}
+      </View>
+    ))}
+  </ScrollView>
+);
+const readerTools = (reader: boolean, bilingual: boolean): ReaderTool[] => [
+  { key: 'translate', icon: IconLanguage, label: '双语对照', on: bilingual },
+  { key: 'reader', icon: IconArticle, label: '阅读模式', on: reader },
+];
+
+export const ArticleWeb = story('阅读页 · 原网页（加载中）', () => (
+  <ArticleView progress={0.4} saved={false} tools={readerTools(false, false)}>
+    {articleBody(false)}
+  </ArticleView>
+));
+export const ArticleBilingual = story('阅读页 · 阅读模式 + 双语', () => (
+  <ArticleView saved tools={readerTools(true, true)}>
+    {articleBody(true)}
+  </ArticleView>
+));
+export const ArticleFailed = story('阅读页 · 网页没打开', () => (
+  <ArticleView problem={{ message: '页面没打开：网络问题', action: <Button title="重试" variant="ghost" /> }} saved={false} tools={readerTools(false, false)}>
+    <View />
+  </ArticleView>
+));
+export const ArticleVideo = story('阅读页 · 视频', () => (
+  <ArticleView saved={false} title="视频" tools={[{ key: 'player', icon: IconWorld, label: '打开视频网页', on: false }]}>
+    <View className="aspect-video w-full bg-sunken" />
+  </ArticleView>
+));
 
 // --- 榜单条目 -------------------------------------------------------------------
 
