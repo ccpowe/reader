@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
-const bundle = buildSync({ entryPoints: [`${root}/domain/webStorage.ts`], bundle: true, write: false, platform: 'node', format: 'esm' }).outputFiles[0].text;
+const bundle = buildSync({ entryPoints: [`${root}/src/lib/injected/webStorage.ts`], bundle: true, write: false, platform: 'node', format: 'esm' }).outputFiles[0].text;
 const { createWebStorageScript, WEB_STORAGE_CLEANUP_INTERVAL_MS } = await import(`data:text/javascript;base64,${Buffer.from(bundle).toString('base64')}`);
 const script = createWebStorageScript();
 let server;

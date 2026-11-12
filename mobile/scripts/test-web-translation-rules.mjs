@@ -9,7 +9,7 @@ const output = mkdtempSync(join(tmpdir(), 'reader-web-rules-'));
 const require = createRequire(import.meta.url);
 
 try {
-  execFileSync('pnpm', ['exec', 'tsc', 'domain/webTranslationRules.ts', '--ignoreConfig', '--target', 'es2022', '--module', 'commonjs', '--outDir', output], { stdio: 'pipe' });
+  execFileSync('pnpm', ['exec', 'tsc', 'src/lib/injected/webTranslationRules.ts', '--ignoreConfig', '--target', 'es2022', '--module', 'commonjs', '--outDir', output], { stdio: 'pipe' });
   const rules = require(join(output, 'webTranslationRules.js'));
   const selected = (url) => rules.selectWebTranslationRule(url).id;
 

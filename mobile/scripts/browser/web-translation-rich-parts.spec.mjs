@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test';
 import { buildSync } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-const source = JSON.parse(readFileSync(resolve('domain/translationRuntimeSources.generated.ts'), 'utf8').match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/)[1]);
-const bundle = buildSync({ entryPoints: [resolve('domain/webTranslationRules.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
+const source = JSON.parse(readFileSync(resolve('src/lib/injected/translationRuntimeSources.generated.ts'), 'utf8').match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/)[1]);
+const bundle = buildSync({ entryPoints: [resolve('src/lib/injected/webTranslationRules.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
 const { WEB_TRANSLATION_RULE_REGISTRY: rules } = await import(`data:text/javascript;base64,${Buffer.from(bundle).toString('base64')}`);
 async function start(page, html, selectedRules = rules) {
   await page.setContent(html);
@@ -122,7 +122,7 @@ test('transport plans bound JSON-escaped payloads across current and adjacent wi
   expect(Math.max(...sizes)).toBeLessThan(100000);
 });
 test('token splitting preserves exact Unicode and newline boundaries after independent trimming',async()=>{
-  const partBundle=buildSync({entryPoints:[resolve('domain/webTranslationParts.ts')],bundle:true,format:'esm',platform:'node',write:false}).outputFiles[0].text;
+  const partBundle=buildSync({entryPoints:[resolve('src/lib/injected/webTranslationParts.ts')],bundle:true,format:'esm',platform:'node',write:false}).outputFiles[0].text;
   const { splitWebTranslationPayload:split }=await import(`data:text/javascript;base64,${Buffer.from(partBundle).toString('base64')}`);
   const removeTokens=text=>text.replace(/⟪READER_(?:(?:OPEN|CLOSE)_)?\d+⟫/g,'');
   for(const payload of ['😀'.repeat(1000),('Meaningful prose\n\nAnother line 😀\n').repeat(200).trim(),`Opening ⟪READER_OPEN_0⟫${'linked words\n'.repeat(500)}⟪READER_CLOSE_0⟫ ending.`]){

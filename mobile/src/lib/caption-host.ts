@@ -1,5 +1,5 @@
 /**
- * The app's side of the YouTube caption runtime (domain/youtubeTranslation.ts, injected into the
+ * The app's side of the YouTube caption runtime (injected/youtubeTranslation.ts, injected into the
  * embedded player): the runtime reads the video's caption track and posts the caption list around
  * the playing moment; this host translates what it plans (POST /translations, purpose `caption`),
  * returns results, and passes on seek / mode / list-window commands.

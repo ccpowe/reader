@@ -1,20 +1,11 @@
 import type { TranslationDisplayMode } from './webTranslation';
 import { YOUTUBE_TRANSLATION_BOOTSTRAP_SOURCE } from './translationRuntimeSources.generated';
-import { i18n } from '../i18n';
 
 type YouTubeInterfaceMessages = {
   disableBilingualCaptions: string;
   enableBilingualCaptions: string;
   bilingual: string;
 };
-
-export function getYouTubeInterfaceMessages(): YouTubeInterfaceMessages {
-  return {
-    disableBilingualCaptions: i18n.t('reader:disableBilingualCaptions'),
-    enableBilingualCaptions: i18n.t('reader:enableBilingualCaptions'),
-    bilingual: i18n.t('reader:bilingual'),
-  };
-}
 
 type YouTubeTranslationBootstrapConfig = {
   channelToken: string;
@@ -56,7 +47,7 @@ type YouTubeTranslationWindow = Window & {
 export function createYouTubeTranslationScript(
   config: YouTubeTranslationBootstrapConfig,
 ): string {
-  const payload = JSON.stringify({ ...config, interfaceMessages: config.interfaceMessages ?? getYouTubeInterfaceMessages() })
+  const payload = JSON.stringify(config)
     .replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   return `(${YOUTUBE_TRANSLATION_BOOTSTRAP_SOURCE})(${payload});true;`;
 }

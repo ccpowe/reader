@@ -1,5 +1,5 @@
 /**
- * Where the reader left each list (old app: domain/listMemory.ts): the scroll offset and the first
+ * Where the reader left each list: the scroll offset and the first
  * visible item, so a list that was unmounted (another folder, the article page) comes back to the
  * same item even if items above it changed. The most recent `limit` lists are kept.
  * Pure: runs under `node --test`.

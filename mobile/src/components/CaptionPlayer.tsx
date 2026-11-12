@@ -1,5 +1,5 @@
 /**
- * The embedded YouTube player with the caption runtime injected (domain/youtubeTranslation.ts) and
+ * The embedded YouTube player with the caption runtime injected (lib/injected/youtubeTranslation.ts) and
  * its host (src/lib/caption-host.ts). The runtime must run before the player fetches its caption
  * track, so it is injected before the content loads, and again after (it is idempotent). One host
  * per document: the parent remounts this with a `key`, and gets the host through `onHost`.

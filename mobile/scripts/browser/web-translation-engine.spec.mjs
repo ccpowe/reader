@@ -6,12 +6,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const mobileRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const fixtures = resolve(mobileRoot, 'scripts/fixtures/web-translation-browser');
-const generated = readFileSync(resolve(mobileRoot, 'domain/translationRuntimeSources.generated.ts'), 'utf8');
+const generated = readFileSync(resolve(mobileRoot, 'src/lib/injected/translationRuntimeSources.generated.ts'), 'utf8');
 const runtimeMatch = generated.match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/);
 if (!runtimeMatch) throw new Error('generated web runtime source is missing');
 const runtimeSource = JSON.parse(runtimeMatch[1]);
 const rulesBundle = buildSync({
-  entryPoints: [resolve(mobileRoot, 'domain/webTranslationRules.ts')],
+  entryPoints: [resolve(mobileRoot, 'src/lib/injected/webTranslationRules.ts')],
   bundle: true,
   format: 'esm',
   platform: 'node',

@@ -1,5 +1,5 @@
 /**
- * The app's side of the web page runtime (domain/webTranslationRuntime.ts, injected into the
+ * The app's side of the web page runtime (injected/webTranslationRuntime.ts, injected into the
  * WebView): it proves which document is live, takes the page's translation plans, returns results,
  * and asks the page for its article (reader mode extracted from the page).
  *
@@ -58,7 +58,7 @@ export type BootstrapConfig = {
 export type HostDeps = {
   /** run script in the WebView; or set later with `attach` (the WebView mounts after the host) */
   inject?: (script: string) => void;
-  /** the bootstrap script for this config (domain/webTranslation.ts createWebTranslationScript) */
+  /** the bootstrap script for this config (injected/webTranslation.ts createWebTranslationScript) */
   bootstrap: (config: BootstrapConfig) => string;
   send: (texts: string[], signal: AbortSignal) => Promise<TranslatedItem[]>;
   onState: (state: HostState) => void;

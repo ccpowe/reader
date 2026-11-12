@@ -20,7 +20,7 @@ import { WebTranslationHost, type HostState, type TranslationMode } from '@/lib/
 import { WebView, type WebViewHandle } from '@/lib/webview';
 import { interfaceLanguage } from '@/lib/interface-language';
 
-/** Android keeps no HTTP cache for these pages; cleared once per app run (old app, domain/webStorage.ts). */
+/** Android keeps no HTTP cache for these pages; cleared once per app run (injected/webStorage.ts). */
 let clearedAndroidCache = false;
 
 export function TranslatedWebView({

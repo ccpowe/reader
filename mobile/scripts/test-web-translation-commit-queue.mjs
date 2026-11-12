@@ -3,7 +3,7 @@ import { buildSync } from 'esbuild';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const bundle = buildSync({ entryPoints: [resolve(root, 'domain/webTranslationCommitQueue.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
+const bundle = buildSync({ entryPoints: [resolve(root, 'src/lib/injected/webTranslationCommitQueue.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
 const { createWebTranslationCommitQueue } = await import(`data:text/javascript;base64,${Buffer.from(bundle).toString('base64')}`);
 function harness(options = {}) {
   const callbacks = new Set(); const outcomes = []; const committed = []; let clock = 0;

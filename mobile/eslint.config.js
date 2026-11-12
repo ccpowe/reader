@@ -5,9 +5,8 @@ module.exports = defineConfig([
   globalIgnores([
     '.expo/**',
     'dist/**',
-    'lib/generated/**',
     'src/lib/api/schema.gen.ts',
-    'domain/translationRuntimeSources.generated.ts',
+    'src/lib/injected/translationRuntimeSources.generated.ts',
     'test-results/**',
   ]),
   expoConfig,

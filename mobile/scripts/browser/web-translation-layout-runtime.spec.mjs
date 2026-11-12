@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
-const rulesSource = buildSync({ entryPoints: [resolve(root, 'domain/webTranslationRules.ts')], bundle: true, write: false, platform: 'node', format: 'esm' }).outputFiles[0].text;
+const rulesSource = buildSync({ entryPoints: [resolve(root, 'src/lib/injected/webTranslationRules.ts')], bundle: true, write: false, platform: 'node', format: 'esm' }).outputFiles[0].text;
 const { compileWebTranslationRule, WEB_TRANSLATION_RULE_REGISTRY } = await import(`data:text/javascript;base64,${Buffer.from(rulesSource).toString('base64')}`);
 const rule = compileWebTranslationRule({ id: 'layout-fixture', priority: 50, matches: [{ host: 'layout.example.test' }], rendering: { unclamp: { add: ['.clipped-description'] } } });
 const html = `<!doctype html><html><head><style>body{font:16px/22px Arial;margin:20px}.clipped-description{width:290px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}p{margin:0}</style></head><body><div class="clipped-description"><p>This natural flow description is long enough to extend beyond the first two lines. Its translation must become readable when an explicit safe layout rule enables unclamping.</p></div></body></html>`;
@@ -13,7 +13,7 @@ const html = `<!doctype html><html><head><style>body{font:16px/22px Arial;margin
 async function load(page, enabled) {
   await page.route('https://layout.example.test/article', route => route.fulfill({ body: html, contentType: 'text/html' }));
   await page.goto('https://layout.example.test/article');
-  const generated = readFileSync(resolve(root, 'domain/translationRuntimeSources.generated.ts'), 'utf8');
+  const generated = readFileSync(resolve(root, 'src/lib/injected/translationRuntimeSources.generated.ts'), 'utf8');
   const source = JSON.parse(generated.match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/)[1]);
   await page.evaluate(({ source, rules }) => {
     window.__messages = [];

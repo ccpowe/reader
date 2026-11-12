@@ -4,7 +4,7 @@
  */
 import { t } from './i18n/index.ts';
 
-/** The app identity YouTube's embed player wants as origin/referrer (old app: domain/media.ts). */
+/** The app identity YouTube's embed player wants as origin/referrer. */
 export const YOUTUBE_APP_REFERER = 'https://com.ccpower.reader';
 
 export function youtubeVideoId(url: string): string | null {

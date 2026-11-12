@@ -1,10 +1,10 @@
 /**
- * The scripts injected into reader WebViews, built from the typed runtime sources in `domain/`
- * (`pnpm run generate:translation-runtime`). Moves into src/ with the rest of the old tree (block 8).
+ * The scripts injected into reader WebViews, built from the typed runtime sources in `injected/`
+ * (`pnpm run generate:translation-runtime`).
  */
-import { YOUTUBE_TRANSLATION_BOOTSTRAP_SOURCE } from '../../domain/translationRuntimeSources.generated';
-import { createWebStorageScript } from '../../domain/webStorage';
-import { createWebTranslationScript } from '../../domain/webTranslation';
+import { YOUTUBE_TRANSLATION_BOOTSTRAP_SOURCE } from './injected/translationRuntimeSources.generated';
+import { createWebStorageScript } from './injected/webStorage';
+import { createWebTranslationScript } from './injected/webTranslation';
 
 import type { CaptionBootstrapConfig } from './caption-host';
 import { jsValue, type BootstrapConfig } from './web-translation-host';

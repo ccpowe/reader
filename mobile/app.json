@@ -48,7 +48,6 @@
       "expo-image-picker",
       "expo-web-browser",
       "expo-font",
-      "expo-sqlite",
       [
         "expo-localization",
         {
