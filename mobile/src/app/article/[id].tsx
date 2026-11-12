@@ -15,6 +15,8 @@ import { safeHttpUrl } from '@/lib/reader';
 import { errorMessage } from '@/lib/user-error';
 import { ArticleView } from '@/screens/ArticleView';
 import { Button, EmptyState, Skeleton } from '@/ui';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 function docOf(article: ArticleDetail, url: string): ReaderDoc {
   return {
@@ -34,6 +36,7 @@ function docOf(article: ArticleDetail, url: string): ReaderDoc {
 }
 
 export default function ArticleRoute() {
+  useLanguage(); // texts follow the interface language
   const { id } = useLocalSearchParams<{ id: string }>();
   const identity = useIdentity();
   const article = useQuery(articleQuery(identity, id));
@@ -47,15 +50,15 @@ export default function ArticleRoute() {
           return null;
         } catch (error) {
           return error instanceof UnknownOutcome
-            ? '没收到服务器的确认，已重新加载收藏状态。'
-            : `${current.is_saved ? '取消收藏' : '收藏'}没有成功：${errorMessage(error)}`;
+            ? t().common.bookmarkUnknown
+            : t().common.bookmarkFailed(current.is_saved, errorMessage(error));
         }
       };
       return <Reader doc={docOf(current, url)} key={id} onToggleSave={toggleSave} />;
     }
     return (
       <ArticleView onBack={() => router.back()} saved={article.data.is_saved}>
-        <EmptyState description="它的地址不是网页地址，为了安全不打开。" title="这条内容无法打开" />
+        <EmptyState description={t().common.unsafeAddress} title={t().common.unsafeAddressTitle} />
       </ArticleView>
     );
   }
@@ -63,9 +66,9 @@ export default function ArticleRoute() {
     <ArticleView onBack={() => router.back()} saved={false}>
       {article.isError ? (
         <EmptyState
-          action={<Button onPress={() => void article.refetch()} title="重试" />}
+          action={<Button onPress={() => void article.refetch()} title={t().common.retry} />}
           description={errorMessage(article.error)}
-          title="没能打开"
+          title={t().reader.openFailedTitle}
         />
       ) : (
         <View className="gap-4 px-6 py-6">

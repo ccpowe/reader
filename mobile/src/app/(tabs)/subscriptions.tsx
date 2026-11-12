@@ -25,6 +25,8 @@ import { errorMessage } from '@/lib/user-error';
 import { AddSubscriptionForm, SubscriptionMenu, SubscriptionsView, type SubscriptionsState } from '@/screens/SubscriptionsView';
 import { Button, Sheet, Toast } from '@/ui';
 import { duration } from '@/ui/theme';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 const toastLife = {
   animationName: { '0%': { opacity: 0 }, '4%': { opacity: 1 }, '94%': { opacity: 1 }, '100%': { opacity: 0 } },
@@ -41,9 +43,9 @@ function useOnline(): boolean {
   return useSyncExternalStore(onlineManager.subscribe.bind(onlineManager), () => onlineManager.isOnline());
 }
 
-const unknown = '没收到服务器的确认，已重新加载订阅列表。';
 
 export default function Subscriptions() {
+  useLanguage(); // texts follow the interface language
   const identity = useIdentity();
   const visible = useRef(true);
   useFocusEffect(
@@ -82,7 +84,9 @@ export default function Subscriptions() {
   }, []);
 
   const now = subscriptions.dataUpdatedAt;
-  const folders = useMemo(() => foldersOf(list, (s) => toItem(s, now, absoluteUrl(apiBase))), [list, now, apiBase]);
+  const lang = useLanguage(); // health lines and folder names are in the interface language
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- lang: the texts toItem builds
+  const folders = useMemo(() => foldersOf(list, (s) => toItem(s, now, absoluteUrl(apiBase))), [list, now, apiBase, lang]);
   const folderNames = folderList(list).filter((group) => group !== UNGROUPED);
   const menuSubscription = menuId ? list.find((s) => s.id === menuId) : undefined;
 
@@ -110,12 +114,12 @@ export default function Subscriptions() {
       setOpenFolder(subscription.group?.trim() || UNGROUPED);
       setSearch('');
       const name = subscription.name ?? displayAddress(subscription.url);
-      showNotice(existed ? `已经订阅过「${name}」` : `已添加「${name}」，等待首次扫描`);
+      showNotice(existed ? t().subs.alreadyFollowed(name) : t().subs.added(name));
     } catch (error) {
       // The input stays either way. Adding again is safe: a source already followed is not followed twice.
       setAddError(
         error instanceof UnknownOutcome
-          ? '没收到服务器的确认，不知道是否已添加。可以再点一次「添加」，不会重复订阅。'
+          ? t().subs.addUnknown
           : errorMessage(error),
       );
     } finally {
@@ -125,22 +129,22 @@ export default function Subscriptions() {
 
   function change(task: () => Promise<void>) {
     setMenuId(null);
-    task().catch((error: unknown) => showNotice(error instanceof UnknownOutcome ? unknown : `没能更改：${errorMessage(error)}`));
+    task().catch((error: unknown) => showNotice(error instanceof UnknownOutcome ? t().subs.listUnknown : t().common.changeFailed(errorMessage(error))));
   }
 
   function leave(subscription: SubscriptionResponse) {
     setMenuId(null);
     const undo = unsubscribeLater(identity, subscription, duration.toast, (error) =>
-      showNotice(`没能取消订阅：${errorMessage(error)}`),
+      showNotice(t().subs.leaveFailed(errorMessage(error))),
     );
-    showNotice(`已取消订阅「${subscription.name ?? displayAddress(subscription.url)}」`, undo);
+    showNotice(t().subs.left(subscription.name ?? displayAddress(subscription.url)), undo);
   }
 
   const name = me.data?.display_name || me.data?.email.split('@')[0] || '';
   return (
     <>
       <SubscriptionsView
-        banner={online ? null : '没有网络，显示的是之前的内容。'}
+        banner={online ? null : t().common.offline}
         expandedId={expandedId}
         onAdd={() => {
           setAddError(null);
@@ -175,7 +179,7 @@ export default function Subscriptions() {
                     notice.undo?.();
                     setNotice(null);
                   }}
-                  title="撤销"
+                  title={t().common.undo}
                   variant="ghost"
                 />
               ) : undefined
@@ -184,7 +188,7 @@ export default function Subscriptions() {
           />
         </Animated.View>
       ) : null}
-      <Sheet onClose={() => !submitting && setAdding(false)} title="添加订阅" visible={adding}>
+      <Sheet onClose={() => !submitting && setAdding(false)} title={t().subs.add} visible={adding}>
         <AddSubscriptionForm
           error={addError}
           folders={folderNames}
@@ -211,7 +215,7 @@ export default function Subscriptions() {
             onRename={(next) => change(() => updateSubscription(identity, menuSubscription, { name: next }))}
             onToggleHome={(include) => {
               setIncludeInHome(identity, menuSubscription, include).catch((error: unknown) =>
-                showNotice(error instanceof UnknownOutcome ? unknown : `没能更改：${errorMessage(error)}`),
+                showNotice(error instanceof UnknownOutcome ? t().subs.listUnknown : t().common.changeFailed(errorMessage(error))),
               );
             }}
             onUnsubscribe={() => leave(menuSubscription)}

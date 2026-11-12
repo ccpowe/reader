@@ -18,6 +18,8 @@ import { safeHttpUrl } from '@/lib/reader';
 import { errorMessage } from '@/lib/user-error';
 import { ArticleView } from '@/screens/ArticleView';
 import { EmptyState, Skeleton } from '@/ui';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 function docOf(view: BoardView, url: string, entry: BoardEntry | undefined, translatedTitle: string | undefined): ReaderDoc {
   const title = entry?.title ?? url;
@@ -38,6 +40,7 @@ function docOf(view: BoardView, url: string, entry: BoardEntry | undefined, tran
 }
 
 export default function BoardItemRoute() {
+  useLanguage(); // texts follow the interface language
   const params = useLocalSearchParams<{ board: BoardKey; variant: string; subreddit: string; url: string }>();
   const identity = useIdentity();
   const view: BoardView = { board: params.board, variant: params.variant ?? '', subreddit: params.subreddit || null };
@@ -52,7 +55,7 @@ export default function BoardItemRoute() {
   if (!url) {
     return (
       <ArticleView onBack={() => router.back()} saved={false}>
-        <EmptyState description="它的地址不是网页地址，为了安全不打开。" title="这条内容无法打开" />
+        <EmptyState description={t().common.unsafeAddress} title={t().common.unsafeAddressTitle} />
       </ArticleView>
     );
   }
@@ -74,9 +77,9 @@ export default function BoardItemRoute() {
       await setBoardSaved(identity, view, link, !doc.saved);
       return null;
     } catch (error) {
-      if (error instanceof UnknownOutcome) return '没收到服务器的确认，已重新加载收藏状态。';
-      if (errorCode(error) === 'board_item_not_found') return '榜单已经更新，这一条不在里面了，没法收藏。';
-      return `${doc.saved ? '取消收藏' : '收藏'}没有成功：${errorMessage(error)}`;
+      if (error instanceof UnknownOutcome) return t().common.bookmarkUnknown;
+      if (errorCode(error) === 'board_item_not_found') return t().boards.gone;
+      return t().common.bookmarkFailed(doc.saved, errorMessage(error));
     }
   }
 

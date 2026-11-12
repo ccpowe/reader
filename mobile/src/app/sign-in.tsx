@@ -7,8 +7,11 @@ import { authProblemField, authReducer, initialAuth, localMessages } from '@/lib
 import { newOp } from '@/lib/op';
 import { problemMessage } from '@/lib/user-error';
 import { SignInView } from '@/screens/AuthViews';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 export default function SignIn() {
+  useLanguage(); // texts follow the interface language
   const current = useSession();
   const [state, dispatch] = useReducer(authReducer, undefined, () => initialAuth());
 
@@ -38,7 +41,7 @@ export default function SignIn() {
       : typeof problem === 'string'
         ? localMessages[problem]
         : problem.kind === 'timeout'
-          ? '服务器没有及时响应，请再试一次。' // signing in is safe to repeat
+          ? t().auth.signInTimeout // signing in is safe to repeat
           : problemMessage(problem);
   const server = current.status === 'signed-out' ? current.server : null;
   return (

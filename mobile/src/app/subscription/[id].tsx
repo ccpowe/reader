@@ -14,6 +14,8 @@ import { displayAddress } from '@/lib/subscriptions';
 import { SubscriptionFeedView } from '@/screens/SubscriptionsView';
 import { EmptyState, Toast } from '@/ui';
 import { duration } from '@/ui/theme';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 const toastLife = {
   animationName: { '0%': { opacity: 0 }, '4%': { opacity: 1 }, '94%': { opacity: 1 }, '100%': { opacity: 0 } },
@@ -26,6 +28,7 @@ function useOnline(): boolean {
 }
 
 export default function SubscriptionFeed() {
+  useLanguage(); // texts follow the interface language
   const { id = '' } = useLocalSearchParams<{ id: string }>();
   const identity = useIdentity();
   const online = useOnline();
@@ -38,12 +41,12 @@ export default function SubscriptionFeed() {
 
   return (
     <SubscriptionFeedView
-      banner={online ? null : '没有网络，显示的是之前的内容。'}
+      banner={online ? null : t().common.offline}
       onBack={back}
       title={subscription ? (subscription.name ?? displayAddress(subscription.url)) : ''}
     >
       {gone ? (
-        <EmptyState description="它可能已经取消订阅了。" title="找不到这个订阅" />
+        <EmptyState description={t().subs.goneHint} title={t().subs.gone} />
       ) : (
         <FeedPage active identity={identity} onNotice={showNotice} scope={{ kind: 'subscription', id }} />
       )}

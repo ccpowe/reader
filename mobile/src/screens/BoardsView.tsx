@@ -15,6 +15,7 @@ import { BoardEntry, type BoardEntryItem } from '@/components/BoardEntry';
 import { BOARDS, VARIANTS, communityName, type BoardKey, type BoardView, type Freshness } from '@/lib/boards';
 import { Button, EmptyState, IconButton, Input, Message, PageHeader, SectionHeading, Skeleton, Tabs, Text } from '@/ui';
 import { delayLoading, duration } from '@/ui/theme';
+import { t } from '@/lib/i18n';
 
 export type { BoardKey, Freshness };
 
@@ -37,9 +38,9 @@ const appearLate = {
 } as const;
 
 function freshnessText(freshness: Freshness) {
-  if (freshness.kind === 'fresh') return `更新于 ${freshness.age}`;
-  if (freshness.kind === 'stale') return `${freshness.age}的数据，刷新失败`;
-  return `暂停中：${freshness.reason}，${freshness.resumesIn}后恢复`;
+  if (freshness.kind === 'fresh') return t().boards.updated(freshness.age);
+  if (freshness.kind === 'stale') return t().boards.staleData(freshness.age);
+  return t().boards.paused(freshness.reason, freshness.resumesIn);
 }
 
 function ContextLine({
@@ -64,7 +65,7 @@ function ContextLine({
           </Text>
         ) : null}
       </Text>
-      {onOpenOptions ? <IconButton icon={IconAdjustmentsHorizontal} label="调整榜单" onPress={onOpenOptions} /> : null}
+      {onOpenOptions ? <IconButton icon={IconAdjustmentsHorizontal} label={t().boards.adjustLabel} onPress={onOpenOptions} /> : null}
     </View>
   );
 }
@@ -94,8 +95,8 @@ export function BoardsView({
         </Message>
       ) : null}
       <PageHeader
-        aside={<IconButton disabled={refreshing} icon={IconRefresh} label="刷新" onPress={onRefresh} />}
-        title="榜单"
+        aside={<IconButton disabled={refreshing} icon={IconRefresh} label={t().boards.refresh} onPress={onRefresh} />}
+        title={t().boards.title}
         user={user}
       />
       <Tabs bordered onSelect={(key) => onSelectBoard?.(key)} options={BOARDS} selected={board} />
@@ -146,9 +147,9 @@ export function BoardList({
       <View className="flex-1">
         <ContextLine label={label} onOpenOptions={onOpenOptions} />
         <EmptyState
-          action={<Button onPress={onRetry} title="重试" />}
+          action={<Button onPress={onRetry} title={t().common.retry} />}
           description={`${state.reason}。`}
-          title="这个榜单暂不可用"
+          title={t().boards.unavailableTitle}
         />
       </View>
     );
@@ -157,22 +158,22 @@ export function BoardList({
     return (
       <View className="flex-1">
         <ContextLine label={label} onOpenOptions={onOpenOptions} />
-        <EmptyState action={<Button onPress={onRetry} title="重试" />} description={state.message} title="没能加载" />
+        <EmptyState action={<Button onPress={onRetry} title={t().common.retry} />} description={state.message} title={t().common.loadFailed} />
       </View>
     );
   }
   if (state.kind === 'no-community') {
     return (
       <EmptyState
-        action={<Button large onPress={onOpenOptions} title="选择社区" variant="primary" />}
-        description="Reddit 榜单按社区看。选一个已订阅的社区，或输入任意社区。"
-        title="还没选社区"
+        action={<Button large onPress={onOpenOptions} title={t().boards.pickCommunity} variant="primary" />}
+        description={t().boards.noCommunity}
+        title={t().boards.noCommunityTitle}
       />
     );
   }
   return (
     <FlatList
-      ListEmptyComponent={<EmptyState title="这个榜单现在是空的" />}
+      ListEmptyComponent={<EmptyState title={t().boards.empty} />}
       ListHeaderComponent={
         <>
           <ContextLine freshness={state.freshness} label={label} onOpenOptions={onOpenOptions} />
@@ -225,7 +226,7 @@ export function BoardOptions({
   if (view.board !== 'reddit') {
     return (
       <View className="-mx-4">
-        <SectionHeading inset="sheet" title={view.board === 'product_hunt' ? '日期（洛杉矶时间）' : '周期'} />
+        <SectionHeading inset="sheet" title={view.board === 'product_hunt' ? t().boards.phDate : t().boards.period} />
         <Tabs inset="sheet" onSelect={(key) => onApply?.({ ...view, variant: key })} options={choices} selected={view.variant} />
       </View>
     );
@@ -235,8 +236,8 @@ export function BoardOptions({
       <Input
         autoCapitalize="none"
         autoCorrect={false}
-        error={touched && typed.trim() && !community ? '社区名只能有字母、数字和下划线' : undefined}
-        label="社区"
+        error={touched && typed.trim() && !community ? t().boards.communityInvalid : undefined}
+        label={t().boards.community}
         onBlur={() => setTouched(true)}
         onChangeText={setTyped}
         placeholder="r/python"
@@ -244,7 +245,7 @@ export function BoardOptions({
       />
       {subscribedCommunities.length > 0 ? (
         <View className="-mx-4">
-          <SectionHeading inset="sheet" title="已订阅的社区" />
+          <SectionHeading inset="sheet" title={t().boards.subscribedCommunities} />
           <Tabs
             inset="sheet"
             onSelect={(key) => key && setTyped(key)}
@@ -254,7 +255,7 @@ export function BoardOptions({
         </View>
       ) : null}
       <View className="-mx-4">
-        <SectionHeading inset="sheet" title="排序" />
+        <SectionHeading inset="sheet" title={t().boards.sort} />
         <Tabs inset="sheet" onSelect={setSort} options={choices} selected={sort} />
       </View>
       <Button
@@ -262,12 +263,12 @@ export function BoardOptions({
         disabled={!community}
         large
         onPress={() => community && onApply?.({ ...view, subreddit: community, variant: sort })}
-        title="查看"
+        title={t().boards.view}
         variant="primary"
       />
       {!community && !typed.trim() ? (
         <Text level="caption" tone="secondary">
-          输入社区名，或点一个已订阅的社区。
+          {t().boards.communityHint}
         </Text>
       ) : null}
     </View>

@@ -16,10 +16,13 @@ import { errorMessage } from '@/lib/user-error';
 import { ChoiceList, ProfileView } from '@/screens/MeView';
 import { PushedPage } from '@/screens/PushedPage';
 import { EmptyState, Message, Sheet, Spinner } from '@/ui';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 const AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export default function Profile() {
+  useLanguage(); // texts follow the interface language
   const identity = useIdentity();
   const current = useSession();
   const me = useQuery(meQuery(identity));
@@ -50,7 +53,7 @@ export default function Profile() {
       if (visible.current) back();
     } catch (error) {
       if (error instanceof AccountChanged) return;
-      setNameError(`没有保存：${errorMessage(error)}`);
+      setNameError(t().me.notSaved(errorMessage(error)));
     } finally {
       setSaving(false);
     }
@@ -63,7 +66,7 @@ export default function Profile() {
       await task();
     } catch (error) {
       if (error instanceof AccountChanged) return;
-      setAvatarError(`头像没有更换：${errorMessage(error)}`);
+      setAvatarError(t().me.avatarFailed(errorMessage(error)));
     } finally {
       setAvatarBusy(false);
     }
@@ -82,7 +85,7 @@ export default function Profile() {
       const asset = result.canceled ? null : result.assets[0];
       if (!asset) return;
       const type = asset.mimeType ?? 'image/jpeg';
-      if (!AVATAR_TYPES.includes(type)) return setAvatarError('只支持 JPEG、PNG 或 WebP 图片。');
+      if (!AVATAR_TYPES.includes(type)) return setAvatarError(t().me.avatarType);
       await uploadAvatar(identity, asset.uri, type);
     });
   }
@@ -111,15 +114,15 @@ export default function Profile() {
       </>
     );
   } else if (me.isError) {
-    body = <EmptyState description={errorMessage(me.error)} title="没能加载" />;
+    body = <EmptyState description={errorMessage(me.error)} title={t().common.loadFailed} />;
   } else {
     body = <Spinner />;
   }
 
   return (
-    <PushedPage onBack={back} title="个人资料">
+    <PushedPage onBack={back} title={t().me.profile}>
       {body}
-      <Sheet onClose={() => setAvatarSheet(false)} title="头像" visible={avatarSheet}>
+      <Sheet onClose={() => setAvatarSheet(false)} title={t().me.avatar} visible={avatarSheet}>
         <ChoiceList
           onSelect={(key) => {
             if (key === 'pick') void pick();
@@ -128,7 +131,7 @@ export default function Profile() {
               void avatar(() => removeAvatar(identity));
             }
           }}
-          options={[{ key: 'pick', label: '从相册选择' }, ...(me.data?.avatar_url ? [{ key: 'remove', label: '删除头像' }] : [])]}
+          options={[{ key: 'pick', label: t().me.pickPhoto }, ...(me.data?.avatar_url ? [{ key: 'remove', label: t().me.removeAvatar }] : [])]}
           selected={null}
         />
       </Sheet>

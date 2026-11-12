@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { cn } from '@/lib/cn';
 import { Icon, IconButton, Message, TopBar, useShadow } from '@/ui';
+import { t } from '@/lib/i18n';
 
 export type ReaderTool = { key: string; icon: TablerIcon; label: string; on: boolean; onPress?: () => void };
 
@@ -38,7 +39,7 @@ function FloatingTools({ tools }: { tools: ReaderTool[] }) {
 }
 
 export function ArticleView({
-  title = '文章',
+  title = t().reader.article,
   saved,
   progress,
   problem,
@@ -69,12 +70,12 @@ export function ArticleView({
       <TopBar
         actions={
           <>
-            <IconButton icon={saved ? IconBookmarkFilled : IconBookmark} label={saved ? '取消收藏' : '收藏'} on={saved} onPress={onToggleSave} plain />
-            <IconButton icon={IconShare2} label="分享" onPress={onShare} />
-            <IconButton icon={IconExternalLink} label="在浏览器打开" onPress={onOpenExternal} />
+            <IconButton icon={saved ? IconBookmarkFilled : IconBookmark} label={saved ? t().common.unbookmark : t().common.bookmark} on={saved} onPress={onToggleSave} plain />
+            <IconButton icon={IconShare2} label={t().reader.share} onPress={onShare} />
+            <IconButton icon={IconExternalLink} label={t().reader.openExternal} onPress={onOpenExternal} />
           </>
         }
-        leading={<IconButton icon={IconArrowLeft} label="返回" onPress={onBack} />}
+        leading={<IconButton icon={IconArrowLeft} label={t().common.back} onPress={onBack} />}
         title={title}
       />
       <View className="h-0.5 bg-sidebar">

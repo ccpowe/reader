@@ -10,6 +10,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, Callout, Input, Message, Text } from '@/ui';
+import { t } from '@/lib/i18n';
 
 const logo = require('../../assets/reader-logo.png');
 
@@ -74,7 +75,7 @@ export function ConnectView({
 }: ConnectViewProps) {
   if (status === 'confirming' && server) {
     return (
-      <AuthFrame description="确认这是你的服务器再继续。" title="确认服务器">
+      <AuthFrame description={t().auth.confirmServerHint} title={t().auth.confirmServer}>
         <Callout>
           <Text level="body-strong">{server.serverId}</Text>
           <Text className="mt-1" level="desc" tone="secondary">
@@ -82,18 +83,18 @@ export function ConnectView({
           </Text>
           {server.apiBaseUrl !== server.base ? (
             <Text className="mt-1" level="desc" tone="secondary">
-              接口地址：{server.apiBaseUrl}
+              {t().auth.apiAddress(server.apiBaseUrl)}
             </Text>
           ) : null}
         </Callout>
-        <Button large onPress={onConfirm} title="确认并继续" variant="primary" />
-        <Button large onPress={onBack} title="返回修改" variant="ghost" />
+        <Button large onPress={onConfirm} title={t().auth.confirmContinue} variant="primary" />
+        <Button large onPress={onBack} title={t().auth.backToEdit} variant="ghost" />
       </AuthFrame>
     );
   }
   const checking = status === 'checking';
   return (
-    <AuthFrame description="输入你部署的 Reader 服务器地址，以及管理员设置的服务器口令。" title="连接服务器">
+    <AuthFrame description={t().auth.connectHint} title={t().auth.connect}>
       {notice ? <Message kind="warning">{notice}</Message> : null}
       <Input
         autoCapitalize="none"
@@ -102,7 +103,7 @@ export function ConnectView({
         editable={!checking}
         error={addressError}
         keyboardType="url"
-        label="服务器地址"
+        label={t().auth.serverAddress}
         onChangeText={(value) => onChange?.('address', value)}
         placeholder="https://reader.example.com"
         returnKeyType="next"
@@ -113,15 +114,15 @@ export function ConnectView({
         autoCorrect={false}
         editable={!checking}
         error={tokenError}
-        label="服务器口令"
+        label={t().auth.serverToken}
         onChangeText={(value) => onChange?.('token', value)}
         onSubmitEditing={onSubmit}
-        placeholder="部署时设置的口令"
+        placeholder={t().auth.serverTokenPlaceholder}
         returnKeyType="go"
         secureTextEntry
         value={token}
       />
-      <Button className="mt-2" large loading={checking} onPress={onSubmit} title="连接" variant="primary" />
+      <Button className="mt-2" large loading={checking} onPress={onSubmit} title={t().auth.connectButton} variant="primary" />
     </AuthFrame>
   );
 }
@@ -165,24 +166,18 @@ export function SignInView({
   const register = mode === 'register';
   return (
     <AuthFrame
-      description={
-        <>
-          {register ? '在 ' : '登录到 '}
-          <Text level="read">{serverLabel}</Text>
-          {register ? ' 创建账号。' : '。'}
-        </>
-      }
-      title={register ? '注册' : '登录'}
+      description={register ? t().auth.registerAt(serverLabel) : t().auth.signInTo(serverLabel)}
+      title={register ? t().auth.register : t().auth.signIn}
     >
-      {expired && !formError ? <Message kind="warning">登录已过期，请重新登录。</Message> : null}
+      {expired && !formError ? <Message kind="warning">{t().auth.expired}</Message> : null}
       {register ? (
         <Input
           autoComplete="name"
           editable={!submitting}
-          hint="可以不填，之后在「我的」里修改。"
-          label="名字"
+          hint={t().auth.nameHint}
+          label={t().auth.name}
           onChangeText={(value) => onChange?.('displayName', value)}
-          placeholder="怎么称呼你"
+          placeholder={t().auth.namePlaceholder}
           value={displayName}
         />
       ) : null}
@@ -193,7 +188,7 @@ export function SignInView({
         editable={!submitting}
         error={emailError}
         keyboardType="email-address"
-        label="邮箱"
+        label={t().auth.email}
         onChangeText={(value) => onChange?.('email', value)}
         placeholder="you@example.com"
         returnKeyType="next"
@@ -204,8 +199,8 @@ export function SignInView({
         autoComplete={register ? 'new-password' : 'current-password'}
         editable={!submitting}
         error={passwordError}
-        hint={register ? '至少 8 个字符。' : undefined}
-        label="密码"
+        hint={register ? t().auth.passwordHint : undefined}
+        label={t().auth.password}
         onChangeText={(value) => onChange?.('password', value)}
         onSubmitEditing={onSubmit}
         returnKeyType="go"
@@ -214,11 +209,11 @@ export function SignInView({
         value={password}
       />
       {formError ? <Message kind="danger">{formError}</Message> : null}
-      <Button className="mt-2" large loading={submitting} onPress={onSubmit} title={register ? '注册' : '登录'} variant="primary" />
-      <Button disabled={submitting} onPress={onSwitchMode} title={register ? '已有账号？登录' : '还没有账号？注册'} variant="ghost" />
+      <Button className="mt-2" large loading={submitting} onPress={onSubmit} title={register ? t().auth.register : t().auth.signIn} variant="primary" />
+      <Button disabled={submitting} onPress={onSwitchMode} title={register ? t().auth.haveAccount : t().auth.noAccount} variant="ghost" />
       <Pressable accessibilityRole="button" className="mt-6 h-11 items-center justify-center active:opacity-60" disabled={submitting} onPress={onChangeServer}>
         <Text level="ui" tone="secondary">
-          更换服务器
+          {t().auth.changeServer}
         </Text>
       </Pressable>
     </AuthFrame>

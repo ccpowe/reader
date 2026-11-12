@@ -34,6 +34,8 @@ import { errorMessage } from '@/lib/user-error';
 import { BoardList, BoardOptions, BoardsView, type BoardState } from '@/screens/BoardsView';
 import { Sheet, Toast } from '@/ui';
 import { duration } from '@/ui/theme';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 const toastLife = {
   animationName: { '0%': { opacity: 0 }, '4%': { opacity: 1 }, '94%': { opacity: 1 }, '100%': { opacity: 0 } },
@@ -84,14 +86,14 @@ function BoardPage({
     else state = { kind: 'failed', message: errorMessage(error) };
   } else {
     // Translations turned off since: shown no longer.
-    const t = preference.data?.enabled ? translations.data : undefined;
-    const board = t ? withTranslations(query.data, t.titles, t.descriptions, t.fingerprint) : query.data;
+    const tr = preference.data?.enabled ? translations.data : undefined;
+    const board = tr ? withTranslations(query.data, tr.titles, tr.descriptions, tr.fingerprint) : query.data;
     const now = query.dataUpdatedAt;
     state = {
       kind: 'ready',
       rows: board.items.map((entry) => toRow(entry, view.board, now)),
       freshness: freshness(board, now),
-      refreshFailed: query.isRefetchError && !refreshing ? `刷新没有成功：${errorMessage(query.error)}` : null,
+      refreshFailed: query.isRefetchError && !refreshing ? t().common.refreshFailedWith(errorMessage(query.error)) : null,
     };
   }
 
@@ -116,6 +118,7 @@ function BoardPage({
 }
 
 export default function Boards() {
+  useLanguage(); // texts follow the interface language
   const identity = useIdentity();
   const focused = useIsFocused();
   const visible = useRef(true);
@@ -159,7 +162,7 @@ export default function Boards() {
       await refreshBoard(identity, view);
     } catch (error) {
       if (visible.current)
-        setNotice((current) => ({ id: (current?.id ?? 0) + 1, message: `刷新没有成功：${errorMessage(error)}` }));
+        setNotice((current) => ({ id: (current?.id ?? 0) + 1, message: t().common.refreshFailedWith(errorMessage(error)) }));
     } finally {
       setRefreshing(null);
     }
@@ -170,7 +173,7 @@ export default function Boards() {
   return (
     <>
       <BoardsView
-        banner={online ? null : '没有网络，显示的是之前的内容。'}
+        banner={online ? null : t().common.offline}
         board={board}
         onRefresh={() => void refresh(board)}
         onSelectBoard={selectBoard}
@@ -208,7 +211,7 @@ export default function Boards() {
       ) : null}
       <Sheet
         onClose={() => setOptions(null)}
-        title={optionsView ? `调整 ${BOARDS.find((b) => b.key === optionsView.board)?.label ?? ''}` : ''}
+        title={optionsView ? t().boards.adjust(BOARDS.find((b) => b.key === optionsView.board)?.label ?? '') : ''}
         visible={optionsView !== null}
       >
         {optionsView ? (

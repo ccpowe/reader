@@ -21,6 +21,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { Avatar, Button, Divider, Icon, Input, Message, PageHeader, SectionHeading, Spinner, Switch, Text } from '@/ui';
+import { t } from '@/lib/i18n';
 
 function SettingRow({
   icon,
@@ -107,7 +108,7 @@ export function MeView({
 }) {
   const ready = translation.kind === 'ready' && !translation.saving ? translation : null;
   const saving = translation.kind === 'ready' && translation.saving;
-  const pending = translation.kind === 'loading' ? '加载中…' : undefined;
+  const pending = translation.kind === 'loading' ? t().common.loading : undefined;
   return (
     <View className="flex-1 bg-canvas">
       {banner ? (
@@ -116,7 +117,7 @@ export function MeView({
         </Message>
       ) : null}
       <ScrollView className="flex-1" contentContainerClassName="pb-8">
-        <PageHeader title="我的" user={user} />
+        <PageHeader title={t().me.title} user={user} />
         <Pressable
           accessibilityRole="button"
           className="flex-row items-center gap-4 px-6 py-4 active:bg-pressed"
@@ -134,55 +135,55 @@ export function MeView({
           <Icon icon={IconChevronRight} />
         </Pressable>
         <Divider inset />
-        <SectionHeading title="阅读与翻译" />
-        <SettingRow icon={IconWorld} label="界面语言" onPress={onInterfaceLanguage} value={interfaceLanguage} />
+        <SectionHeading title={t().me.reading} />
+        <SettingRow icon={IconWorld} label={t().me.interfaceLanguage} onPress={onInterfaceLanguage} value={interfaceLanguage} />
         {translation.kind === 'failed' ? (
           <View className="mx-6 py-3">
-            <Message action={<Button onPress={onRetryTranslation} title="重试" variant="ghost" />} kind="danger">
-              {`翻译设置没加载出来：${translation.message}`}
+            <Message action={<Button onPress={onRetryTranslation} title={t().common.retry} variant="ghost" />} kind="danger">
+              {t().me.translationLoadFailed(translation.message)}
             </Message>
           </View>
         ) : null}
         <SettingRow
           control={
             ready ? (
-              <Switch label="内容翻译" onChange={onToggleTranslation} value={ready.enabled} />
+              <Switch label={t().me.translation} onChange={onToggleTranslation} value={ready.enabled} />
             ) : translation.kind === 'loading' || saving ? (
               <Spinner />
             ) : undefined
           }
           disabled={!ready}
           icon={IconLetterT}
-          label="内容翻译"
-          value="标题自动翻译，正文按需翻译"
+          label={t().me.translation}
+          value={t().me.translationHint}
         />
         <SettingRow
           disabled={!ready}
           icon={IconLanguage}
-          label="翻译语言"
+          label={t().me.targetLanguage}
           onPress={onTargetLanguage}
-          value={translation.kind === 'ready' ? `内容语言：${translation.language}` : pending}
+          value={translation.kind === 'ready' ? t().me.contentLanguage(translation.language) : pending}
         />
         <SettingRow
           disabled={!ready}
           icon={IconCpu}
-          label="翻译引擎"
+          label={t().me.engine}
           onPress={onEngine}
           value={translation.kind === 'ready' ? translation.engine : pending}
         />
-        <SectionHeading title="账户与连接" />
-        <SettingRow icon={IconLock} label="修改密码" onPress={onChangePassword} />
-        <SettingRow icon={IconServer} label="更换服务器" onPress={onChangeServer} value={server} />
-        <SettingRow icon={IconInfoCircle} label="关于 Reader" onPress={onAbout} />
+        <SectionHeading title={t().me.account} />
+        <SettingRow icon={IconLock} label={t().me.changePassword} onPress={onChangePassword} />
+        <SettingRow icon={IconServer} label={t().me.changeServer} onPress={onChangeServer} value={server} />
+        <SettingRow icon={IconInfoCircle} label={t().me.about} onPress={onAbout} />
         <Pressable
           accessibilityRole="button"
           className="mt-8 h-11 items-center justify-center self-center rounded-md px-4 active:bg-pressed"
           onPress={onSignOut}
         >
-          <Text tone="danger">退出登录</Text>
+          <Text tone="danger">{t().me.signOut}</Text>
         </Pressable>
         <Text className="mt-4 text-center tracking-widest" level="caption" tone="tertiary">
-          READER · 好内容，慢慢读。
+          {`READER · ${t().me.tagline}`}
         </Text>
       </ScrollView>
     </View>
@@ -243,7 +244,7 @@ export function ConfirmSheet({
     <View className="gap-3">
       <Text tone="secondary">{message}</Text>
       <Button large onPress={onConfirm} title={action} variant="danger" />
-      <Button onPress={onCancel} title="取消" variant="ghost" />
+      <Button onPress={onCancel} title={t().common.cancel} variant="ghost" />
     </View>
   );
 }
@@ -276,21 +277,21 @@ export function ProfileView({
   return (
     <ScrollView contentContainerClassName="gap-6 px-6 py-6" keyboardShouldPersistTaps="handled">
       <Pressable
-        accessibilityHint="更换或删除头像"
-        accessibilityLabel="头像"
+        accessibilityHint={t().me.changeAvatarHint}
+        accessibilityLabel={t().me.avatar}
         accessibilityRole="button"
         className="items-center gap-2 self-center active:opacity-70"
         disabled={avatarBusy}
         onPress={onAvatar}
       >
         <Avatar name={typed || email} size={88} uri={avatarUrl} />
-        {avatarBusy ? <Spinner /> : <Text tone="secondary">更换头像</Text>}
+        {avatarBusy ? <Spinner /> : <Text tone="secondary">{t().me.changeAvatar}</Text>}
       </Pressable>
       <Input
         editable={!saving}
         error={error}
-        hint="不填就显示邮箱前面的部分。"
-        label="昵称"
+        hint={t().me.nicknameHint}
+        label={t().me.nickname}
         maxLength={120}
         onChangeText={(text) => {
           setTyped(text);
@@ -301,7 +302,7 @@ export function ProfileView({
         value={typed}
       />
       <View className="gap-1">
-        <Text level="ui-strong">邮箱</Text>
+        <Text level="ui-strong">{t().me.email}</Text>
         <Text tone="secondary">{email}</Text>
       </View>
       <Button
@@ -309,7 +310,7 @@ export function ProfileView({
         large
         loading={saving}
         onPress={() => onSave?.(typed)}
-        title="保存"
+        title={t().common.save}
         variant="primary"
       />
     </ScrollView>
@@ -343,7 +344,7 @@ export function PasswordView({
         autoComplete="current-password"
         editable={!saving}
         error={field('current')}
-        label="当前密码"
+        label={t().me.currentPassword}
         onChangeText={edit(setCurrent)}
         secureTextEntry
         value={current}
@@ -353,8 +354,8 @@ export function PasswordView({
         autoComplete="new-password"
         editable={!saving}
         error={field('next')}
-        hint="8 到 128 个字符。"
-        label="新密码"
+        hint={t().me.newPasswordHint}
+        label={t().me.newPassword}
         onChangeText={edit(setNext)}
         secureTextEntry
         value={next}
@@ -364,7 +365,7 @@ export function PasswordView({
         autoComplete="new-password"
         editable={!saving}
         error={field('confirm')}
-        label="再输一次新密码"
+        label={t().me.confirmPassword}
         onChangeText={edit(setConfirm)}
         onSubmitEditing={() => onSubmit?.(current, next, confirm)}
         secureTextEntry
@@ -372,14 +373,14 @@ export function PasswordView({
       />
       {problem?.field === 'form' ? <Message kind="danger">{problem.message}</Message> : null}
       <Text level="desc" tone="tertiary">
-        改完后，其他设备上的登录会失效，需要重新登录。
+        {t().me.passwordNote}
       </Text>
       <Button
         disabled={saving}
         large
         loading={saving}
         onPress={() => onSubmit?.(current, next, confirm)}
-        title="修改密码"
+        title={t().me.changePassword}
         variant="primary"
       />
     </ScrollView>
@@ -392,11 +393,11 @@ export function AboutView({ appVersion, server }: { appVersion: string; server: 
     <ScrollView contentContainerClassName="gap-6 py-8">
       <View className="items-center gap-2">
         <Text level="h1">READER</Text>
-        <Text tone="secondary">好内容，慢慢读。</Text>
+        <Text tone="secondary">{t().me.tagline}</Text>
       </View>
       <View>
-        <SettingRow icon={IconInfoCircle} label="App 版本" value={appVersion} />
-        <SettingRow icon={IconServer} label="服务器" value={server} />
+        <SettingRow icon={IconInfoCircle} label={t().me.appVersion} value={appVersion} />
+        <SettingRow icon={IconServer} label={t().me.server} value={server} />
       </View>
     </ScrollView>
   );

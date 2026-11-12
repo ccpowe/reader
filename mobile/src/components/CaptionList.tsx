@@ -15,6 +15,7 @@ import { FlatList, Pressable, View } from 'react-native';
 import { captionTime, type Caption, type CaptionTimeline } from '@/lib/caption-host';
 import { cn } from '@/lib/cn';
 import { Text } from '@/ui';
+import { t } from '@/lib/i18n';
 
 const VIEWABILITY = { itemVisiblePercentThreshold: 10 };
 type ViewToken = { item: Caption; isViewable: boolean };
@@ -32,7 +33,7 @@ function CaptionRow({
 }) {
   return (
     <Pressable
-      accessibilityLabel={`跳转到 ${captionTime(caption.startMs)}：${caption.source}`}
+      accessibilityLabel={t().reader.seekTo(captionTime(caption.startMs), caption.source)}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       className={cn('flex-row gap-4 rounded-lg px-3 py-3 active:bg-pressed', active ? 'bg-selected' : '')}

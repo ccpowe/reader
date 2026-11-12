@@ -18,6 +18,7 @@ import { useMountEffect } from '@/lib/use-mount-effect';
 import { CAPTION_MESSAGES, WEB_STORAGE_SCRIPT, captionScript, webTranslationScript } from '@/lib/web-runtime';
 import { WebTranslationHost, type HostState, type TranslationMode } from '@/lib/web-translation-host';
 import { WebView, type WebViewHandle } from '@/lib/webview';
+import { interfaceLanguage } from '@/lib/interface-language';
 
 /** Android keeps no HTTP cache for these pages; cleared once per app run (old app, domain/webStorage.ts). */
 let clearedAndroidCache = false;
@@ -81,7 +82,12 @@ export function TranslatedWebView({
   useMountEffect(() => {
     onHost?.(host);
     if (captionHost) captions?.onHost?.(captionHost);
+    // The player's 双语 button follows the interface language: the script, injected again, relabels it.
+    const stopFollowing = captionHost
+      ? interfaceLanguage.subscribe(() => web.current?.injectJavaScript(captionHost.script(CAPTION_MESSAGES)))
+      : () => undefined;
     return () => {
+      stopFollowing();
       host.dispose();
       captionHost?.dispose();
       onHost?.(null);

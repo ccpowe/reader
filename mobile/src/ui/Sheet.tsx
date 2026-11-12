@@ -8,6 +8,7 @@ import { IconX } from '@tabler/icons-react-native';
 import { IconButton } from './Button';
 import { Text } from './Text';
 import { useShadow } from './useShadow';
+import { t } from '@/lib/i18n';
 
 /**
  * qp-sheet: mobile bottom sheet (raised surface, top corners --radius-2xl, handle). quietpaper has
@@ -31,7 +32,7 @@ export function Sheet({
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
       {/* A field in the sheet stays above the keyboard: the sheet rises with it. */}
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-        <Pressable accessibilityLabel="关闭" className="flex-1 bg-overlay" onPress={onClose} />
+        <Pressable accessibilityLabel={t().common.close} className="flex-1 bg-overlay" onPress={onClose} />
         <SheetBody bottomInset={insets.bottom} onClose={onClose} subtitle={subtitle} title={title}>
           {children}
         </SheetBody>
@@ -68,7 +69,7 @@ export function SheetBody({
               </Text>
             ) : null}
           </View>
-          {onClose ? <IconButton icon={IconX} label="关闭" onPress={onClose} /> : null}
+          {onClose ? <IconButton icon={IconX} label={t().common.close} onPress={onClose} /> : null}
         </View>
       ) : null}
       {children}

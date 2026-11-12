@@ -12,10 +12,13 @@ import { passwordProblem } from '@/lib/me';
 import { errorMessage } from '@/lib/user-error';
 import { PasswordView } from '@/screens/MeView';
 import { PushedPage } from '@/screens/PushedPage';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 type Problem = { field: 'current' | 'next' | 'confirm' | 'form'; message: string } | null;
 
 export default function Password() {
+  useLanguage(); // texts follow the interface language
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<Problem>(null);
   // A save that finishes after the user left this page does not navigate (react-guidelines §1).
@@ -42,7 +45,7 @@ export default function Password() {
     } catch (error) {
       setProblem(
         errorCode(error) === 'wrong_password'
-          ? { field: 'current', message: '当前密码不对。' }
+          ? { field: 'current', message: t().me.wrongPassword }
           : { field: 'form', message: errorMessage(error) },
       );
     } finally {
@@ -51,7 +54,7 @@ export default function Password() {
   }
 
   return (
-    <PushedPage onBack={back} title="修改密码">
+    <PushedPage onBack={back} title={t().me.changePassword}>
       <PasswordView
         onEdit={() => setProblem(null)}
         onSubmit={(c, n, f) => void submit(c, n, f)}

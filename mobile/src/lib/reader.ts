@@ -2,6 +2,7 @@
  * The reader page's pure logic: which view an article opens in, YouTube URLs, and the reader-mode
  * document (the app's own HTML around the article body). Pure: runs under `node --test`.
  */
+import { t } from './i18n/index.ts';
 
 /** The app identity YouTube's embed player wants as origin/referrer (old app: domain/media.ts). */
 export const YOUTUBE_APP_REFERER = 'https://com.ccpower.reader';
@@ -107,7 +108,7 @@ export function hasFullBody(html: string | null | undefined): boolean {
 export function articleDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
-  return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月 ${date.getDate()} 日`;
+  return t().time.date(date);
 }
 
 /** Colors of the reader document: the app's light and dark themes (global.css), P25 scale. */

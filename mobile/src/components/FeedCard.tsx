@@ -20,6 +20,8 @@ import { memo } from 'react';
 import { Image, Pressable, View } from 'react-native';
 
 import { Avatar, Badge, Icon, IconButton, Text } from '@/ui';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 export type SourceKind = 'rss' | 'web' | 'youtube' | 'x' | 'reddit' | 'github';
 
@@ -76,11 +78,11 @@ function BottomRow({ item, onToggleSave }: { item: FeedCardItem; onToggleSave?: 
       <Text level="caption-strong" tone="secondary">
         {item.seenAgo}
       </Text>
-      {thread ? <Badge>共 {thread} 条</Badge> : null}
+      {thread ? <Badge>{t().feed.thread(thread)}</Badge> : null}
       <View className="flex-1" />
       <IconButton
         icon={item.isSaved ? IconBookmarkFilled : IconBookmark}
-        label={item.isSaved ? '取消收藏' : '收藏'}
+        label={item.isSaved ? t().common.unbookmark : t().common.bookmark}
         on={item.isSaved}
         onPress={onToggleSave}
         plain
@@ -97,7 +99,7 @@ function XPost({ item }: { item: FeedCardItem }) {
         <View className="flex-row items-center gap-1.5">
           <Icon icon={IconRepeat} size="xs" />
           <Text level="caption" tone="tertiary">
-            {x.repostedBy} 转发了
+            {t().feed.reposted(x.repostedBy)}
           </Text>
         </View>
       ) : null}
@@ -112,7 +114,7 @@ function XPost({ item }: { item: FeedCardItem }) {
           </Text>
           {x.replyTo ? (
             <Text level="caption" numberOfLines={1} tone="tertiary">
-              回复 @{x.replyTo}
+              {t().feed.replyTo(x.replyTo)}
             </Text>
           ) : null}
         </View>
@@ -180,6 +182,7 @@ export const FeedCard = memo(function FeedCard({
   onOpen?: (id: string) => void;
   onToggleSave?: (item: FeedCardItem) => void;
 }) {
+  useLanguage(); // memoized: follows the interface language itself
   return (
     <Pressable accessibilityRole="button" className="active:bg-pressed" onPress={() => onOpen?.(item.id)}>
       <View className="mx-6 border-b border-subtle pb-3 pt-6">

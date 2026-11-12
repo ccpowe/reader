@@ -17,6 +17,9 @@ import { feedQuery, setSaved, UnknownOutcome } from '@/lib/queries/today';
 import { isAborted } from '@/lib/query';
 import { errorMessage } from '@/lib/user-error';
 import { EmptyState } from '@/ui';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
+import type { Language } from '@/lib/i18n';
 
 function useApiBase(): string {
   const state = useSession();
@@ -27,14 +30,14 @@ function useApiBase(): string {
 const positions = createListMemory();
 
 /** Cards are rebuilt only for changed items: same API object and same minute → same card object. */
-const cardCache = new WeakMap<FeedItem, { minute: number; card: FeedCardItem }>();
-function cardsOf(items: FeedItem[], now: number, absolute: (url: string | null | undefined) => string | null): FeedCardItem[] {
+const cardCache = new WeakMap<FeedItem, { minute: number; lang: Language; card: FeedCardItem }>();
+function cardsOf(items: FeedItem[], now: number, absolute: (url: string | null | undefined) => string | null, lang: Language): FeedCardItem[] {
   const minute = Math.floor(now / 60_000);
   return items.map((item) => {
     const hit = cardCache.get(item);
-    if (hit && hit.minute === minute) return hit.card;
+    if (hit && hit.minute === minute && hit.lang === lang) return hit.card;
     const card = toCard(item, now, absolute);
-    cardCache.set(item, { minute, card });
+    cardCache.set(item, { minute, lang, card });
     return card;
   });
 }
@@ -52,14 +55,15 @@ export function FeedPage({
   onNotice: (message: string) => void;
 }) {
   const apiBase = useApiBase();
+  const lang = useLanguage(); // card texts (times, labels) are in the interface language
   const query = useInfiniteQuery({ ...feedQuery(identity, scope), subscribed: active });
   const [refreshing, setRefreshing] = useState(false);
   const offsetKey = `${identity}|${JSON.stringify(scope)}`;
 
   // Times are relative to when this feed was loaded (render stays pure; a refresh updates them).
   const items = useMemo(
-    () => cardsOf(query.data?.pages.flatMap((page) => page.items) ?? [], query.dataUpdatedAt, absoluteUrl(apiBase)),
-    [query.data, query.dataUpdatedAt, apiBase],
+    () => cardsOf(query.data?.pages.flatMap((page) => page.items) ?? [], query.dataUpdatedAt, absoluteUrl(apiBase), lang),
+    [query.data, query.dataUpdatedAt, apiBase, lang],
   );
 
   async function refresh() {
@@ -79,8 +83,8 @@ export function FeedPage({
       try {
         await setSaved(identity, item.id, !item.isSaved);
       } catch (error) {
-        if (error instanceof UnknownOutcome) onNotice('没收到服务器的确认，已重新加载收藏状态。');
-        else onNotice(item.isSaved ? `取消收藏没有成功：${errorMessage(error)}` : `收藏没有成功：${errorMessage(error)}`);
+        if (error instanceof UnknownOutcome) onNotice(t().common.bookmarkUnknown);
+        else onNotice(t().common.bookmarkFailed(item.isSaved, errorMessage(error)));
       }
     },
     [identity, onNotice],
@@ -95,10 +99,10 @@ export function FeedPage({
     state = {
       kind: 'ready',
       items,
-      refreshFailed: query.isRefetchError && !refreshing ? '刷新没有成功，显示的是之前的内容。' : null,
+      refreshFailed: query.isRefetchError && !refreshing ? t().common.refreshFailed : null,
       hasMore: query.hasNextPage,
       loadingMore: query.isFetchingNextPage,
-      moreFailed: query.isFetchNextPageError ? `更早的内容没加载出来：${errorMessage(query.error)}` : null,
+      moreFailed: query.isFetchNextPageError ? t().feed.moreFailed(errorMessage(query.error)) : null,
       busy: query.isFetching,
     };
   }
@@ -107,8 +111,8 @@ export function FeedPage({
     <FeedList
       empty={
         <EmptyState
-          description={scope.kind === 'home' ? '订阅有新内容时会出现在这里。' : '这里还没有内容。'}
-          title="还没有内容"
+          description={scope.kind === 'home' ? t().feed.emptyHome : t().feed.emptyOther}
+          title={t().feed.emptyTitle}
         />
       }
       position={positions.get(offsetKey)}

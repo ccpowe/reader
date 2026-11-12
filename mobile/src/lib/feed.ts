@@ -3,6 +3,7 @@
  * item becomes a card. Pure: runs under `node --test`.
  */
 import type { FeedItem, SubscriptionResponse } from './api/schema.gen.ts';
+import { t } from './i18n/index.ts';
 
 /** What one feed page shows. `group: ''` = subscriptions without a group (API contract). */
 export type FeedScope = { kind: 'home' } | { kind: 'group'; group: string } | { kind: 'subscription'; id: string };
@@ -16,7 +17,7 @@ export function folderList(subscriptions: readonly Pick<SubscriptionResponse, 'g
 }
 
 export function folderLabel(group: string): string {
-  return group === UNGROUPED ? '未分类' : group;
+  return group === UNGROUPED ? t().common.uncategorized : group;
 }
 
 export function scopeParams(scope: FeedScope): Record<string, string> {
@@ -36,11 +37,11 @@ export function relativeTime(iso: string, now: number): string {
   if (Number.isNaN(elapsed)) return '';
   const future = elapsed < 0;
   const minutes = Math.floor(Math.abs(elapsed) / 60_000);
-  const suffix = future ? '后' : '前';
-  if (minutes < 1) return '刚刚';
-  if (minutes < 60) return `${minutes} 分钟${suffix}`;
-  if (minutes < 1_440) return `${Math.floor(minutes / 60)} 小时${suffix}`;
-  return `${Math.floor(minutes / 1_440)} 天${suffix}`;
+  const time = t().time;
+  if (minutes < 1) return time.justNow;
+  if (minutes < 60) return time.minutes(minutes, future);
+  if (minutes < 1_440) return time.hours(Math.floor(minutes / 60), future);
+  return time.days(Math.floor(minutes / 1_440), future);
 }
 
 export type CardSourceKind = 'rss' | 'web' | 'youtube' | 'x' | 'reddit' | 'github';
@@ -77,7 +78,7 @@ export function toCard(item: FeedItem, now: number, absolute: (url: string | nul
               : { name: x.author.name ?? name, handle: x.author.handle ?? '', avatarUrl: absolute(x.author.avatar_url) },
           text:
             x.is_repost && x.repost
-              ? (x.repost.text ?? (x.repost.availability === 'available' ? '' : '原帖已不可见。'))
+              ? (x.repost.text ?? (x.repost.availability === 'available' ? '' : t().feed.repostGone))
               : (item.title_translation?.text ?? item.title),
           replyTo: x.reply_to?.handle ?? undefined,
           repostedBy: x.is_repost ? (x.author.name ?? name) : undefined,

@@ -11,7 +11,7 @@ import Animated from 'react-native-reanimated';
 import type { UpdatePreferenceRequest } from '@/lib/api/schema.gen';
 import { session, useIdentity, useSession } from '@/lib/app-session';
 import { absoluteUrl } from '@/lib/feed';
-import { interfaceLanguage, useInterfaceLanguage } from '@/lib/interface-language';
+import { interfaceLanguage, useInterfaceLanguage, useLanguage } from '@/lib/interface-language';
 import {
   engineLabel,
   INTERFACE_LANGUAGES,
@@ -27,6 +27,7 @@ import { errorMessage } from '@/lib/user-error';
 import { ChoiceList, ConfirmSheet, MeView, type TranslationSetting } from '@/screens/MeView';
 import { Sheet, Toast } from '@/ui';
 import { duration } from '@/ui/theme';
+import { t } from '@/lib/i18n';
 
 const toastLife = {
   animationName: { '0%': { opacity: 0 }, '4%': { opacity: 1 }, '94%': { opacity: 1 }, '100%': { opacity: 0 } },
@@ -41,6 +42,7 @@ function useOnline(): boolean {
 type SheetKind = 'interface' | 'language' | 'engine' | 'sign-out' | 'server' | null;
 
 export default function Me() {
+  useLanguage(); // texts follow the interface language
   const identity = useIdentity();
   const current = useSession();
   const visible = useRef(true);
@@ -78,7 +80,7 @@ export default function Me() {
     } catch (error) {
       if (error instanceof AccountChanged) return;
       showNotice(
-        error instanceof UnknownOutcome ? '没收到服务器的确认，已重新读取翻译设置。' : `翻译设置没有保存：${errorMessage(error)}`,
+        error instanceof UnknownOutcome ? t().me.translationUnknown : t().me.translationNotSaved(errorMessage(error)),
       );
     } finally {
       setSavingPreference(false);
@@ -99,23 +101,20 @@ export default function Me() {
 
   const sheets: Record<Exclude<SheetKind, null>, { title: string; body: ReactNode }> = {
     interface: {
-      title: '界面语言',
+      title: t().me.interfaceLanguage,
       body: (
         <ChoiceList<InterfaceLanguage>
           onSelect={(key) => {
             interfaceLanguage.set(key);
             setSheet(null);
           }}
-          options={INTERFACE_LANGUAGES.map((l) => ({
-            ...l,
-            detail: l.key === 'en' ? '英文界面即将支持；先记下这个选择' : undefined,
-          }))}
+          options={INTERFACE_LANGUAGES.map((l) => ({ key: l.key, label: l.label }))}
           selected={language}
         />
       ),
     },
     language: {
-      title: '翻译语言',
+      title: t().me.targetLanguage,
       body: (
         <ChoiceList
           onSelect={(key) => void change({ target_locale: key })}
@@ -125,14 +124,14 @@ export default function Me() {
       ),
     },
     engine: {
-      title: '翻译引擎',
+      title: t().me.engine,
       body: (
         <ChoiceList
           onSelect={(key) => void change({ engine_id: key })}
           options={(preference.data?.engines ?? []).map((e) => ({
             key: e.id,
             label: e.label,
-            detail: e.available ? undefined : '暂不可用',
+            detail: e.available ? undefined : t().me.engineUnavailable,
             disabled: !e.available,
           }))}
           selected={preference.data?.engine_id ?? null}
@@ -140,11 +139,11 @@ export default function Me() {
       ),
     },
     'sign-out': {
-      title: '退出登录',
+      title: t().me.signOut,
       body: (
         <ConfirmSheet
-          action="退出登录"
-          message={`将退出 ${email}。收藏和订阅都保存在服务器上，重新登录后还在。`}
+          action={t().me.signOut}
+          message={t().me.signOutMessage(email)}
           onCancel={() => setSheet(null)}
           onConfirm={() => {
             setSheet(null);
@@ -154,11 +153,11 @@ export default function Me() {
       ),
     },
     server: {
-      title: '更换服务器',
+      title: t().me.changeServer,
       body: (
         <ConfirmSheet
-          action="断开并更换"
-          message={`将断开 ${server} 并退出登录，然后填写新的服务器地址。`}
+          action={t().me.changeServerAction}
+          message={t().me.changeServerMessage(server)}
           onCancel={() => setSheet(null)}
           onConfirm={() => {
             setSheet(null);
@@ -173,7 +172,7 @@ export default function Me() {
   return (
     <>
       <MeView
-        banner={online ? null : '没有网络，设置暂时改不了。'}
+        banner={online ? null : t().me.offline}
         email={email}
         interfaceLanguage={interfaceLanguageLabel(language)}
         onAbout={() => router.push('/about')}

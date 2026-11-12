@@ -4,6 +4,7 @@
  */
 import type { SubscriptionResponse } from './api/schema.gen.ts';
 import { folderLabel, folderList, relativeTime, sourceKind, type CardSourceKind } from './feed.ts';
+import { t } from './i18n/index.ts';
 
 export type SubscriptionHealth =
   | { kind: 'ok' }
@@ -26,27 +27,28 @@ export type SubscriptionItem = {
 
 /** Why the last scan failed, from the server's `last_error_code` (`<provider>_http_429`, `unsafe_url` …). */
 export function scanErrorReason(code: string): string {
+  const r = t().subs.reasons;
   const status = /_http_(\d{3})$/.exec(code)?.[1];
-  if (status === '429' || code === 'rate_limited') return '被对方限流';
-  if (status === '404' || status === '410') return '地址已经不存在';
-  if (status === '401' || status === '403') return '对方拒绝访问';
-  if (status?.startsWith('5')) return '对方服务器出错';
-  if (status) return `对方返回错误 ${status}`;
-  if (code.endsWith('_challenge_required')) return '对方要求人机验证';
-  if (code.endsWith('_timeout') || code === 'scan_timeout') return '对方响应太慢';
-  if (code.endsWith('_network_error') || code === 'dns_error') return '连不上对方';
-  if (code.endsWith('_not_configured')) return '服务器没有配置这类来源';
-  if (code.endsWith('_invalid_response') || code === 'invalid_feed') return '内容无法识别';
-  if (code === 'unsafe_url') return '地址不安全';
-  if (code === 'response_too_large') return '内容太大';
-  if (code === 'protected_account') return '账号受保护';
-  if (code === 'access_blocked') return '对方屏蔽了服务器';
-  if (code === 'auth_failed') return '登录凭据失效';
-  if (code === 'user_not_found') return '账号不存在';
-  if (code === 'manifest_failed') return 'X 服务出错';
-  if (code === 'youtube_channel_invalid' || code === 'youtube_channel_unavailable') return '频道不存在或不可用';
-  if (code === 'youtube_quota_exceeded') return 'YouTube 配额用完了';
-  return '暂时读不到';
+  if (status === '429' || code === 'rate_limited') return r.rateLimited;
+  if (status === '404' || status === '410') return r.gone;
+  if (status === '401' || status === '403') return r.forbidden;
+  if (status?.startsWith('5')) return r.serverError;
+  if (status) return r.status(status);
+  if (code.endsWith('_challenge_required')) return r.challenge;
+  if (code.endsWith('_timeout') || code === 'scan_timeout') return r.slow;
+  if (code.endsWith('_network_error') || code === 'dns_error') return r.unreachable;
+  if (code.endsWith('_not_configured')) return r.notConfigured;
+  if (code.endsWith('_invalid_response') || code === 'invalid_feed') return r.unreadable;
+  if (code === 'unsafe_url') return r.unsafe;
+  if (code === 'response_too_large') return r.tooLarge;
+  if (code === 'protected_account') return r.protectedAccount;
+  if (code === 'access_blocked') return r.blocked;
+  if (code === 'auth_failed') return r.authFailed;
+  if (code === 'user_not_found') return r.noAccount;
+  if (code === 'manifest_failed') return r.xService;
+  if (code === 'youtube_channel_invalid' || code === 'youtube_channel_unavailable') return r.channel;
+  if (code === 'youtube_quota_exceeded') return r.quota;
+  return r.other;
 }
 
 export function healthOf(
@@ -58,10 +60,10 @@ export function healthOf(
     return {
       kind: 'failing',
       reason: scanErrorReason(s.last_error_code),
-      since: s.last_success_at ? `${relativeTime(s.last_success_at, now)}成功过` : '还没成功过',
+      since: s.last_success_at ? t().subs.health.succeededAgo(relativeTime(s.last_success_at, now)) : t().subs.health.neverSucceeded,
     };
   if (s.status === 'pending' && !s.last_success_at) return { kind: 'waiting' };
-  if (s.may_have_gap) return { kind: 'gap', detail: '上次扫描时新内容太多，更早的没取到' };
+  if (s.may_have_gap) return { kind: 'gap', detail: t().subs.health.gapDetail };
   return { kind: 'ok' };
 }
 
@@ -73,15 +75,15 @@ export function hasProblem(health: SubscriptionHealth): boolean {
 export function healthLine(health: SubscriptionHealth): string {
   switch (health.kind) {
     case 'failing':
-      return `扫描失败 · ${health.reason} · ${health.since}`;
+      return t().subs.health.failing(health.reason, health.since);
     case 'gap':
-      return `可能有遗漏 · ${health.detail}`;
+      return t().subs.health.gap(health.detail);
     case 'waiting':
-      return '等待首次扫描';
+      return t().subs.health.waiting;
     case 'paused':
-      return '已暂停';
+      return t().subs.health.paused;
     case 'ok':
-      return '同步正常';
+      return t().subs.health.ok;
   }
 }
 
@@ -129,14 +131,19 @@ export function searchFolders(folders: readonly Folder[], query: string): Subscr
   );
 }
 
-export const SUBSCRIPTION_TYPES = [
-  { key: 'rss', label: 'RSS', placeholder: 'https://example.com/feed.xml' },
-  { key: 'website', label: '网站', placeholder: 'https://example.com' },
-  { key: 'youtube', label: 'YouTube', placeholder: '频道链接或 @handle' },
-  { key: 'x', label: 'X', placeholder: '@handle 或 x.com 链接' },
-  { key: 'reddit', label: 'Reddit', placeholder: 'r/python' },
-] as const;
-export type SubscriptionType = (typeof SUBSCRIPTION_TYPES)[number]['key'];
+const TYPE_KEYS = ['rss', 'website', 'youtube', 'x', 'reddit'] as const;
+export type SubscriptionType = (typeof TYPE_KEYS)[number];
+
+/** The add form's types: label and address hint in the interface language. */
+export const SUBSCRIPTION_TYPES: readonly { key: SubscriptionType; label: string; placeholder: string }[] = TYPE_KEYS.map((key) => ({
+  key,
+  get label() {
+    return t().subs.types[key] ?? key;
+  },
+  get placeholder() {
+    return t().subs.placeholders[key] ?? '';
+  },
+}));
 
 /** A folder name as typed: trimmed, at most 120 characters (API), "未分类" means none. Null = none. */
 export function folderInput(text: string): string | null {

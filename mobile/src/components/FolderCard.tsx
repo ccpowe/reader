@@ -11,6 +11,7 @@ import { Icon, Text } from '@/ui';
 
 import { SourceMark } from './FeedCard';
 import { hasProblem, type SubscriptionItem } from '@/lib/subscriptions';
+import { t } from '@/lib/i18n';
 
 const spots = [
   { left: 0, top: 4 },
@@ -21,14 +22,14 @@ const spots = [
 
 export function FolderCard({ name, items, onPress }: { name: string; items: SubscriptionItem[]; onPress?: () => void }) {
   const problems = items.filter((item) => hasProblem(item.health)).length;
-  const sample = items.slice(0, 2).map((item) => item.name).join('、') + (items.length > 2 ? ' 等' : '');
+  const sample = items.slice(0, 2).map((item) => item.name).join(t().subs.sampleJoin) + (items.length > 2 ? t().subs.sampleMore : '');
   const shown = items.slice(0, spots.length);
   const rest = items.length - shown.length;
   return (
     <Pressable accessibilityRole="button" className="mx-4 flex-row items-center gap-3 rounded-3xl bg-panel px-6 py-4 active:bg-pressed" onPress={onPress}>
       <View className="min-w-0 flex-1 gap-1">
         <Text level="caption" tone="tertiary">
-          {items.length} 个订阅源
+          {t().subs.count(items.length)}
         </Text>
         <Text level="h2" numberOfLines={1}>
           {name}
@@ -40,7 +41,7 @@ export function FolderCard({ name, items, onPress }: { name: string; items: Subs
           <View className="mt-1 flex-row items-center gap-1">
             <Icon icon={IconAlertCircle} size="xs" tone="error" />
             <Text level="desc" tone="secondary">
-              {problems} 个订阅源有问题
+              {t().subs.problems(problems)}
             </Text>
           </View>
         ) : null}

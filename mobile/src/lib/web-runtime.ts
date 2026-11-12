@@ -8,6 +8,7 @@ import { createWebTranslationScript } from '../../domain/webTranslation';
 
 import type { CaptionBootstrapConfig } from './caption-host';
 import { jsValue, type BootstrapConfig } from './web-translation-host';
+import { t } from './i18n/index.ts';
 
 /** Drops the site's Cache API bodies now and then; logins (cookies, storage) stay. */
 export const WEB_STORAGE_SCRIPT = createWebStorageScript();
@@ -16,11 +17,17 @@ export function webTranslationScript(config: BootstrapConfig): string {
   return createWebTranslationScript(config);
 }
 
-/** The labels of the 双语 button the caption runtime adds to the player. */
+/** The labels of the 双语 button the caption runtime adds to the player (interface language, read when injected). */
 export const CAPTION_MESSAGES: CaptionBootstrapConfig['interfaceMessages'] = {
-  disableBilingualCaptions: '关闭双语字幕',
-  enableBilingualCaptions: '开启双语字幕',
-  bilingual: '双语',
+  get disableBilingualCaptions() {
+    return t().reader.web.disableBilingualCaptions;
+  },
+  get enableBilingualCaptions() {
+    return t().reader.web.enableBilingualCaptions;
+  },
+  get bilingual() {
+    return t().reader.web.bilingual;
+  },
 };
 
 export function captionScript(config: CaptionBootstrapConfig): string {

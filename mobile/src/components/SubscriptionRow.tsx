@@ -17,13 +17,14 @@ import { hasProblem, healthLine, type SubscriptionHealth, type SubscriptionItem 
 import { Callout, Icon, IconButton, Text } from '@/ui';
 
 import { SourceMark } from './FeedCard';
+import { t } from '@/lib/i18n';
 
 export type { SubscriptionHealth, SubscriptionItem };
 
 function explanation(health: SubscriptionHealth): string {
   return health.kind === 'failing'
-    ? 'Reader 会自动重试；一直失败时可以检查地址，或取消订阅。'
-    : '下次扫描不会补上更早的内容；需要的话去原网站看。';
+    ? t().subs.failingHelp
+    : t().subs.gapHelp;
 }
 
 export function SubscriptionRow({
@@ -63,7 +64,7 @@ export function SubscriptionRow({
           </Text>
           {problem ? (
             <Pressable
-              accessibilityHint={expanded ? '收起说明' : '展开说明'}
+              accessibilityHint={expanded ? t().subs.collapse : t().subs.expand}
               accessibilityRole="button"
               className="active:opacity-60"
               hitSlop={8}
@@ -76,7 +77,7 @@ export function SubscriptionRow({
           )}
         </View>
         <Icon icon={IconChevronRight} />
-        <IconButton icon={IconDotsVertical} label={`${item.name} 的更多操作`} onPress={onMenu} size="sm" />
+        <IconButton icon={IconDotsVertical} label={t().subs.more(item.name)} onPress={onMenu} size="sm" />
       </Pressable>
       {expanded && problem ? (
         <View className="pb-4">

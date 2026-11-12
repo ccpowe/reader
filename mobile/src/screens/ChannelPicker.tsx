@@ -9,6 +9,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 
 import { SourceMark, type SourceKind } from '@/components/FeedCard';
 import { Checkbox, EmptyState, Icon, SearchField, SectionHeading, SolidCount, Text } from '@/ui';
+import { t } from '@/lib/i18n';
 
 export type ChannelRow = {
   id: string;
@@ -49,7 +50,7 @@ export function ChannelPicker({
     .filter((group) => group.rows.length > 0);
   return (
     <View className="-mx-4" style={{ maxHeight: 560 }}>
-      <SearchField inset="sheet" onChangeText={onSearch} placeholder="搜索频道、网站或分类" value={query} />
+      <SearchField inset="sheet" onChangeText={onSearch} placeholder={t().today.searchChannels} value={query} />
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ selected: !channel }}
@@ -61,15 +62,15 @@ export function ChannelPicker({
           <Icon icon={IconLayoutGrid} size="toolbar" tone="strong" />
         </View>
         <View className="flex-1">
-          <Text level="body-strong">返回分类内容</Text>
+          <Text level="body-strong">{t().today.backToFolders}</Text>
           <Text level="desc" tone="secondary">
-            清除单频道筛选
+            {t().today.clearChannel}
           </Text>
         </View>
         {channel ? null : <Icon icon={IconCircleCheckFilled} size="toolbar" tone="strong" />}
       </Pressable>
       <ScrollView keyboardShouldPersistTaps="handled">
-        {visible.length === 0 ? <EmptyState title="没有匹配的频道" /> : null}
+        {visible.length === 0 ? <EmptyState title={t().today.noChannelMatch} /> : null}
         {visible.map((group) => (
           <View key={group.key}>
             <SectionHeading inset="sheet" title={group.label} />
@@ -91,7 +92,7 @@ export function ChannelPicker({
                   </Text>
                 </View>
                 {row.newCount > 0 ? <SolidCount value={row.newCount} /> : null}
-                <Checkbox checked={row.includeInHome} label={`在全部中显示 ${row.name}`} onChange={(next) => onToggleHome?.(row.id, next)} />
+                <Checkbox checked={row.includeInHome} label={t().today.showInAll(row.name)} onChange={(next) => onToggleHome?.(row.id, next)} />
               </Pressable>
             ))}
           </View>

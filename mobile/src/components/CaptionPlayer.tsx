@@ -14,6 +14,7 @@ import { useMountEffect } from '@/lib/use-mount-effect';
 import { CAPTION_MESSAGES, captionScript } from '@/lib/web-runtime';
 import type { TranslationMode } from '@/lib/web-translation-host';
 import { WebView, type WebViewHandle } from '@/lib/webview';
+import { interfaceLanguage } from '@/lib/interface-language';
 
 export function CaptionPlayer({
   mode,
@@ -53,7 +54,10 @@ export function CaptionPlayer({
   const [script] = useState(() => host.script(CAPTION_MESSAGES));
   useMountEffect(() => {
     onHost?.(host);
+    // The player's 双语 button follows the interface language: the script, injected again, relabels it.
+    const stopFollowing = interfaceLanguage.subscribe(() => web.current?.injectJavaScript(host.script(CAPTION_MESSAGES)));
     return () => {
+      stopFollowing();
       host.dispose();
       onHost?.(null);
     };

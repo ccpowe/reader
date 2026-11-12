@@ -40,6 +40,7 @@ import { translationProblem, type HostState, type TranslationMode, type WebTrans
 import { ArticleView, type ReaderTool } from '@/screens/ArticleView';
 import { Button, Text, Toast } from '@/ui';
 import { duration } from '@/ui/theme';
+import { t } from '@/lib/i18n';
 
 const toastLife = {
   animationName: {
@@ -142,8 +143,8 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
     const result = await host.extract();
     setExtracting(false);
     if (result.ok) dispatch({ type: 'show-extracted', article: result.article });
-    else if (result.reason === 'too_large') notify('这篇正文太长，阅读模式打不开。');
-    else if (result.reason !== 'changed') notify('没能从这个网页里找到正文。');
+    else if (result.reason === 'too_large') notify(t().reader.tooLong);
+    else if (result.reason !== 'changed') notify(t().reader.noArticle);
   }
 
   /**
@@ -162,12 +163,12 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
 
   const tools: ReaderTool[] = [];
   if (translatable) {
-    tools.push({ key: 'translate', icon: IconLanguage, label: '双语对照', on: mode === 'bilingual', onPress: toggleTranslation });
+    tools.push({ key: 'translate', icon: IconLanguage, label: t().reader.bilingual, on: mode === 'bilingual', onPress: toggleTranslation });
   } else {
     tools.push({
       key: 'translate',
       icon: IconLanguage,
-      label: '翻译字幕轴',
+      label: t().reader.translateCaptions,
       on: timelineMode === 'bilingual',
       onPress: () => toggleTimelineTranslation(),
     });
@@ -177,7 +178,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
     tools.push({
       key: 'reader',
       icon: IconArticle,
-      label: '阅读模式',
+      label: t().reader.readerMode,
       on: view === 'reader' || extracting,
       onPress: () => void toggleReader(),
     });
@@ -187,7 +188,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
     tools.push({
       key: 'discussion',
       icon: IconMessages,
-      label: onDiscussion ? '回到原文' : '讨论区',
+      label: onDiscussion ? t().reader.backToArticle : t().reader.discussion,
       on: onDiscussion,
       onPress: () => dispatch(onDiscussion ? { type: 'back' } : { type: 'open-page', url: discussion }),
     });
@@ -196,7 +197,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
     tools.push({
       key: 'player',
       icon: view === 'player' ? IconWorld : IconBrandYoutube,
-      label: view === 'player' ? '打开视频网页' : '回到播放器',
+      label: view === 'player' ? t().reader.openVideoPage : t().reader.backToPlayer,
       on: false,
       onPress: () => dispatch({ type: 'switch', view: view === 'player' ? 'page' : 'player' }),
     });
@@ -242,10 +243,10 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
     key: documentKey(state),
     mediaPlaybackRequiresUserAction: true,
     onError: (event: WebViewErrorEvent) =>
-      dispatch({ type: 'failed', message: `页面没打开：${event.nativeEvent.description || '网络问题'}` }),
+      dispatch({ type: 'failed', message: t().reader.pageFailed(event.nativeEvent.description || t().reader.networkProblem) }),
     onHttpError: (event: WebViewHttpErrorEvent) => {
       if (event.nativeEvent.statusCode >= 500)
-        dispatch({ type: 'failed', message: `网站出错了（${event.nativeEvent.statusCode}）。` });
+        dispatch({ type: 'failed', message: t().reader.siteError(event.nativeEvent.statusCode) });
     },
     onLoadEnd: () => dispatch({ type: 'load-end' }),
     onLoadProgress: (event: WebViewProgressEvent) => dispatch({ type: 'progress', progress: event.nativeEvent.progress }),
@@ -332,7 +333,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
                     dispatch({ type: 'retry' });
                     web.current?.reload();
                   }}
-                  title="重试"
+                  title={t().common.retry}
                   variant="ghost"
                 />
               ),
@@ -343,7 +344,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
                 action: translationIssue.retry ? (
                   <Button
                     onPress={() => (translatable ? host?.retry() : captionHost.current?.retry())}
-                    title="重试"
+                    title={t().common.retry}
                     variant="ghost"
                   />
                 ) : undefined,
@@ -352,7 +353,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
       }
       progress={state.load.status === 'loading' ? state.load.progress : 1}
       saved={doc.saved}
-      title={kind.kind === 'youtube' ? '视频' : kind.kind === 'social' ? '帖子' : '文章'}
+      title={kind.kind === 'youtube' ? t().reader.video : kind.kind === 'social' ? t().reader.post : t().reader.article}
       tools={tools}
     >
       {view === 'player' ? (
@@ -360,7 +361,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
         <View className="flex-1">
           <View className="aspect-video w-full bg-black">{page}</View>
           <CaptionList
-            empty={captions?.captions === 'unavailable' ? '没找到字幕，这个视频可能没有字幕。' : '字幕出现后会显示在这里。'}
+            empty={captions?.captions === 'unavailable' ? t().reader.noCaptions : t().reader.captionsLater}
             header={
               <View className="gap-1 px-3 pb-3 pt-5">
                 <Text level="card">{doc.displayTitle}</Text>
@@ -368,9 +369,9 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
                   {[doc.sourceName, doc.publishedAt ? articleDate(doc.publishedAt) : null].filter(Boolean).join(' · ')}
                 </Text>
                 <View className="mt-5 gap-0.5">
-                  <Text level="section">字幕轴</Text>
+                  <Text level="section">{t().reader.captions}</Text>
                   <Text level="caption" tone="tertiary">
-                    点击句子，跳转到这一刻
+                    {t().reader.captionsHint}
                   </Text>
                 </View>
               </View>

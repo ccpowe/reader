@@ -17,6 +17,7 @@
  */
 import type { TranslatedItem } from './api/schema.gen.ts';
 import { TranslationScheduler, type PlanBatch, type SchedulerStatus, type SegmentResult } from './translation-scheduler.ts';
+import { t } from './i18n/index.ts';
 
 export type TranslationMode = 'original' | 'bilingual';
 
@@ -490,12 +491,13 @@ export class WebTranslationHost {
 export function translationProblem(state: HostState, mode: TranslationMode): { message: string; retry: boolean } | null {
   if (mode === 'original') return null;
   const { blocked } = state.scheduler;
-  if (state.stalled) return { message: '这个网页的翻译没有启动。', retry: true };
-  if (blocked?.kind === 'unavailable') return { message: '服务器的翻译暂时不可用。', retry: true };
-  if (blocked?.kind === 'limit') return { message: '翻译请求太多，稍后会自动继续。', retry: false };
-  if (blocked?.kind === 'network') return { message: `有 ${state.failed || '一些'} 段没翻译成：连不上服务器。`, retry: true };
-  if (state.failed > 0) return { message: `有 ${state.failed} 段没翻译成。`, retry: true };
-  if (state.scheduler.held > 0) return { message: '翻译服务刚才出错，稍后自动重试。', retry: false };
-  if (state.budgetExhausted) return { message: '这个网页太长，只翻译了前面一部分。', retry: false };
+  const text = t().reader.translation;
+  if (state.stalled) return { message: text.notStarted, retry: true };
+  if (blocked?.kind === 'unavailable') return { message: text.unavailable, retry: true };
+  if (blocked?.kind === 'limit') return { message: text.limit, retry: false };
+  if (blocked?.kind === 'network') return { message: text.unreachable(state.failed), retry: true };
+  if (state.failed > 0) return { message: text.failed(state.failed), retry: true };
+  if (state.scheduler.held > 0) return { message: text.held, retry: false };
+  if (state.budgetExhausted) return { message: text.budget, retry: false };
   return null;
 }

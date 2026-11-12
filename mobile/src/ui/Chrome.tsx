@@ -7,6 +7,7 @@ import { Avatar } from './Avatar';
 import { Icon } from './Icon';
 import { Text } from './Text';
 import { useShadow } from './useShadow';
+import { t } from '@/lib/i18n';
 
 const logo = require('../../assets/reader-logo.png');
 
@@ -36,7 +37,7 @@ export function PageHeader({
           </Text>
         </View>
         {user ? (
-          <Pressable accessibilityLabel="我的" accessibilityRole="button" hitSlop={4} onPress={onPressUser}>
+          <Pressable accessibilityLabel={t().common.me} accessibilityRole="button" hitSlop={4} onPress={onPressUser}>
             <Avatar name={user.name} size={36} uri={user.avatarUrl} />
           </Pressable>
         ) : null}

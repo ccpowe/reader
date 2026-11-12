@@ -7,8 +7,11 @@ import { discover } from '@/lib/connection/discovery';
 import { newOp } from '@/lib/op';
 import { discoveryMessage } from '@/lib/user-error';
 import { ConnectView } from '@/screens/AuthViews';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 export default function Connect() {
+  useLanguage(); // texts follow the interface language
   const current = useSession();
   const [state, dispatch] = useReducer(connectReducer, undefined, () =>
     current.status === 'no-server' ? initialConnect(current.lastBase, current.tokenRejected) : initialConnect(),
@@ -34,7 +37,7 @@ export default function Connect() {
     <ConnectView
       address={state.address}
       addressError={field === 'address' && problem ? discoveryMessage(problem) : null}
-      notice={state.status === 'editing' && state.notice === 'token-rejected' ? '服务器口令已更换，请输入新的口令。' : null}
+      notice={state.status === 'editing' && state.notice === 'token-rejected' ? t().auth.tokenChanged : null}
       onBack={() => dispatch({ type: 'back' })}
       onChange={(name, value) => dispatch({ type: 'edit', field: name, value })}
       onConfirm={() => state.status === 'confirming' && confirm(state)}
@@ -42,7 +45,7 @@ export default function Connect() {
       server={state.status === 'confirming' ? state.server : null}
       status={state.status}
       token={state.token}
-      tokenError={field === 'token' && problem ? (state.token.trim() ? discoveryMessage(problem) : '请输入服务器口令。') : null}
+      tokenError={field === 'token' && problem ? (state.token.trim() ? discoveryMessage(problem) : t().auth.tokenRequired) : null}
     />
   );
 }

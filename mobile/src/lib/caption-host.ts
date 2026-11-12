@@ -17,6 +17,7 @@ import type { TranslatedItem } from './api/schema.gen.ts';
 import { TranslationScheduler, type PlanBatch, type SchedulerStatus } from './translation-scheduler.ts';
 import type { TranslationMode } from './web-translation-host.ts';
 import { jsValue } from './web-translation-host.ts';
+import { t } from './i18n/index.ts';
 
 export type Caption = { id: string; startMs: number; endMs: number; source: string; translated: string | null };
 
@@ -354,9 +355,10 @@ export class CaptionHost {
 export function captionProblem(state: CaptionState, translating: boolean): { message: string; retry: boolean } | null {
   if (!translating) return null;
   const { blocked } = state.scheduler;
-  if (blocked?.kind === 'unavailable') return { message: '服务器的翻译暂时不可用。', retry: true };
-  if (blocked?.kind === 'limit') return { message: '翻译请求太多，稍后会自动继续。', retry: false };
-  if (state.failed > 0) return { message: `有 ${state.failed} 句字幕没翻译成。`, retry: true };
-  if (state.scheduler.held > 0) return { message: '翻译服务刚才出错，稍后自动重试。', retry: false };
+  const text = t().reader.translation;
+  if (blocked?.kind === 'unavailable') return { message: text.unavailable, retry: true };
+  if (blocked?.kind === 'limit') return { message: text.limit, retry: false };
+  if (state.failed > 0) return { message: text.captionsFailed(state.failed), retry: true };
+  if (state.scheduler.held > 0) return { message: text.held, retry: false };
   return null;
 }

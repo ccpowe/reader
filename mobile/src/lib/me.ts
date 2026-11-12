@@ -4,6 +4,7 @@
  * Pure: runs under `node --test`.
  */
 import type { PreferenceResponse } from './api/schema.gen.ts';
+import { t } from './i18n/index.ts';
 
 /** Content languages offered (the server takes any BCP 47 tag; these are the common ones). */
 export const TARGET_LOCALES = [
@@ -24,13 +25,18 @@ export function localeLabel(tag: string): string {
 
 export function engineLabel(preference: Pick<PreferenceResponse, 'engine_id' | 'engines'>): string {
   const engine = preference.engines.find((e) => e.id === preference.engine_id);
-  if (!engine) return preference.engine_id || '未选择';
-  return engine.available ? engine.label : `${engine.label}（暂不可用）`;
+  if (!engine) return preference.engine_id || t().me.noEngine;
+  return engine.available ? engine.label : t().me.engineLabelUnavailable(engine.label);
 }
 
 export type InterfaceLanguage = 'system' | 'zh' | 'en';
 export const INTERFACE_LANGUAGES: { key: InterfaceLanguage; label: string }[] = [
-  { key: 'system', label: '跟随系统' },
+  {
+    key: 'system',
+    get label() {
+      return t().me.followSystem;
+    },
+  },
   { key: 'zh', label: '简体中文' },
   { key: 'en', label: 'English' },
 ];
@@ -49,9 +55,10 @@ export type PasswordProblem = { field: 'current' | 'next' | 'confirm'; message: 
 
 /** What stops a password change before it is sent. */
 export function passwordProblem(current: string, next: string, confirm: string): PasswordProblem {
-  if (!current) return { field: 'current', message: '请输入当前密码。' };
-  if (next.length < 8 || next.length > 128) return { field: 'next', message: '新密码需要 8 到 128 个字符。' };
-  if (next === current) return { field: 'next', message: '新密码和当前密码一样。' };
-  if (confirm !== next) return { field: 'confirm', message: '两次输入的新密码不一样。' };
+  const me = t().me;
+  if (!current) return { field: 'current', message: me.passwordRequired };
+  if (next.length < 8 || next.length > 128) return { field: 'next', message: me.passwordLength };
+  if (next === current) return { field: 'next', message: me.passwordSame };
+  if (confirm !== next) return { field: 'confirm', message: me.passwordMismatch };
   return null;
 }

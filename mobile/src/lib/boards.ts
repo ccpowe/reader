@@ -4,6 +4,7 @@
  */
 import type { BoardEntry, BoardResponse } from './api/schema.gen.ts';
 import { relativeTime } from './feed.ts';
+import { t } from './i18n/index.ts';
 
 export type BoardKey = 'hn' | 'reddit' | 'github' | 'techtwitter' | 'product_hunt';
 
@@ -12,30 +13,45 @@ export const BOARDS: { key: BoardKey; label: string }[] = [
   { key: 'hn', label: 'Hacker News' },
   { key: 'reddit', label: 'Reddit' },
   { key: 'github', label: 'GitHub' },
-  { key: 'techtwitter', label: 'X 技术热门' },
+  {
+    key: 'techtwitter',
+    get label() {
+      return t().boards.techtwitter;
+    },
+  },
   { key: 'product_hunt', label: 'Product Hunt' },
 ];
+
+/** A board version, its label in the interface language. */
+function variant(key: string): { key: string; label: string } {
+  return {
+    key,
+    get label() {
+      return (t().boards.variant as Record<string, string>)[key] ?? key;
+    },
+  };
+}
 
 /** The versions a board offers (the 调整 sheet); the first is the server's default. */
 export const VARIANTS: Record<BoardKey, { key: string; label: string }[]> = {
   hn: [],
   techtwitter: [],
   github: [
-    { key: 'daily', label: '日榜' },
-    { key: 'weekly', label: '周榜' },
-    { key: 'monthly', label: '月榜' },
+    variant('daily'),
+    variant('weekly'),
+    variant('monthly'),
   ],
   product_hunt: [
-    { key: 'today', label: '今天' },
-    { key: 'yesterday', label: '昨天' },
+    variant('today'),
+    variant('yesterday'),
   ],
   reddit: [
-    { key: 'hot', label: '热门' },
-    { key: 'rising', label: '上升' },
-    { key: 'top-day', label: 'Top · 日' },
-    { key: 'top-week', label: 'Top · 周' },
-    { key: 'top-month', label: 'Top · 月' },
-    { key: 'top-year', label: 'Top · 年' },
+    variant('hot'),
+    variant('rising'),
+    variant('top-day'),
+    variant('top-week'),
+    variant('top-month'),
+    variant('top-year'),
   ],
 };
 
@@ -85,16 +101,16 @@ export type Freshness =
   { kind: 'fresh'; age: string } | { kind: 'stale'; age: string } | { kind: 'paused'; reason: string; resumesIn: string };
 
 function pauseReason(code: string | null): string {
-  if (code?.endsWith('_http_429')) return '被对方限流';
-  if (code?.endsWith('_challenge_required')) return '对方要求人机验证';
-  return '对方暂时不可用';
+  if (code?.endsWith('_http_429')) return t().boards.pauseRateLimited;
+  if (code?.endsWith('_challenge_required')) return t().boards.pauseChallenge;
+  return t().boards.pauseOther;
 }
 
 /** "约 8 分钟", "约 2 小时" */
 export function duration(ms: number): string {
   const minutes = Math.max(1, Math.round(ms / 60_000));
-  if (minutes < 60) return `约 ${minutes} 分钟`;
-  return `约 ${Math.round(minutes / 60)} 小时`;
+  if (minutes < 60) return t().time.aboutMinutes(minutes);
+  return t().time.aboutHours(Math.round(minutes / 60));
 }
 
 export function freshness(
@@ -111,10 +127,10 @@ export function freshness(
 /** Why a board has nothing to show, from the `board_unavailable` message's code in brackets. */
 export function unavailableReason(message: string): string {
   const code = /\(([a-z0-9_]+)\)/.exec(message)?.[1] ?? '';
-  if (code.endsWith('_not_configured')) return '服务器没有配置这个榜单';
-  if (code.endsWith('_challenge_required')) return '对方开启了人机验证，服务器暂时抓不到';
-  if (code.endsWith('_http_429')) return '被对方限流，稍后再试';
-  return '服务器暂时抓不到这个榜单';
+  if (code.endsWith('_not_configured')) return t().boards.unavailableNotConfigured;
+  if (code.endsWith('_challenge_required')) return t().boards.unavailableChallenge;
+  if (code.endsWith('_http_429')) return t().boards.unavailableRateLimited;
+  return t().boards.unavailableOther;
 }
 
 /** 1234 → "1.2k", 12_345 → "12k", 193_000 → "193k", 1_250_000 → "1.3m" */
@@ -153,7 +169,7 @@ export function toRow(entry: BoardEntry, board: BoardKey, now: number) {
     tags: board === 'techtwitter' ? (entry.tags ?? []).slice(0, 4) : [],
     quality:
       board === 'techtwitter' && entry.quality_score !== null && entry.quality_score !== undefined
-        ? `质量 ${entry.quality_score}`
+        ? t().boards.quality(entry.quality_score)
         : null,
     imageUrl: board === 'github' ? null : (images[0] ?? (entry.video_thumbnail_url || null)),
     age: board === 'techtwitter' && entry.published_at ? relativeTime(entry.published_at, now) : null,

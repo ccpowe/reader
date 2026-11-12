@@ -36,13 +36,14 @@ import {
   Tabs,
   Text,
 } from '@/ui';
+import { t } from '@/lib/i18n';
 
 function FolderBar({ name, count, onBack }: { name: string; count: number; onBack?: () => void }) {
   return (
     <View className="h-14 flex-row items-center px-6">
       <Pressable accessibilityRole="button" className="h-11 flex-row items-center gap-1 active:opacity-60" onPress={onBack}>
         <Icon icon={IconChevronLeft} />
-        <Text level="ui-strong">全部分类</Text>
+        <Text level="ui-strong">{t().subs.allFolders}</Text>
       </Pressable>
       <View className="flex-1" />
       <Text level="caption" numberOfLines={1} tone="tertiary">
@@ -116,13 +117,13 @@ export function SubscriptionsView({
       </View>
     );
   } else if (state.kind === 'failed') {
-    body = <EmptyState action={<Button onPress={onRetry} title="重试" />} description={state.message} title="没能加载订阅" />;
+    body = <EmptyState action={<Button onPress={onRetry} title={t().common.retry} />} description={state.message} title={t().subs.loadFailed} />;
   } else if (total === 0) {
     body = (
       <EmptyState
-        action={<Button large onPress={onAdd} title="添加订阅" variant="primary" />}
-        description="可以添加 RSS、网站（自动找 RSS）、YouTube 频道、X 账号或 Reddit 社区。"
-        title="还没有订阅"
+        action={<Button large onPress={onAdd} title={t().subs.add} variant="primary" />}
+        description={t().subs.empty}
+        title={t().subs.emptyTitle}
       />
     );
   } else {
@@ -142,12 +143,12 @@ export function SubscriptionsView({
         }
       >
         <View className="pb-2 pt-2">
-          <SearchField autoCapitalize="none" autoCorrect={false} onChangeText={onSearch} placeholder="搜索订阅源" value={query} />
+          <SearchField autoCapitalize="none" autoCorrect={false} onChangeText={onSearch} placeholder={t().subs.search} value={query} />
         </View>
         {query.trim() ? (
           <>
-            <SectionHeading aside={`${matches.length} 个`} title="搜索结果" />
-            {matches.length === 0 ? <EmptyState title="没有匹配的订阅源" /> : rows(matches)}
+            <SectionHeading aside={t().subs.matches(matches.length)} title={t().common.searchResults} />
+            {matches.length === 0 ? <EmptyState title={t().subs.noMatch} /> : rows(matches)}
           </>
         ) : current ? (
           <>
@@ -156,7 +157,7 @@ export function SubscriptionsView({
           </>
         ) : (
           <>
-            <SectionHeading aside={`${total} 个订阅源`} title="我的分类" />
+            <SectionHeading aside={t().subs.count(total)} title={t().subs.myFolders} />
             <View className="gap-3">
               {folders.map((folder) => (
                 <FolderCard items={folder.items} key={folder.key} name={folder.name} onPress={() => onOpenFolder?.(folder.key)} />
@@ -175,9 +176,9 @@ export function SubscriptionsView({
           {banner}
         </Message>
       ) : null}
-      <PageHeader title="订阅" user={user} />
+      <PageHeader title={t().subs.title} user={user} />
       {body}
-      {state.kind === 'ready' && total > 0 ? <Fab icon={IconPlus} label="添加订阅" onPress={onAdd} /> : null}
+      {state.kind === 'ready' && total > 0 ? <Fab icon={IconPlus} label={t().subs.add} onPress={onAdd} /> : null}
     </View>
   );
 }
@@ -201,20 +202,20 @@ function FolderChoice({
   return (
     <>
       <View className="-mx-4">
-        <SectionHeading inset="sheet" title="分类" />
+        <SectionHeading inset="sheet" title={t().subs.folder} />
         <Tabs
           inset="sheet"
           onSelect={onChoice}
           options={[
             { key: null, label: folderLabel('') },
             ...folders.map((name) => ({ key: name, label: name })),
-            { key: NEW_FOLDER, label: '+ 新分类' },
+            { key: NEW_FOLDER, label: t().subs.newFolder },
           ]}
           selected={choice}
         />
       </View>
       {choice === NEW_FOLDER ? (
-        <Input autoFocus label="新分类的名字" maxLength={120} onChangeText={onTyped} placeholder="比如：AI" value={typed} />
+        <Input autoFocus label={t().subs.newFolderName} maxLength={120} onChangeText={onTyped} placeholder={t().subs.newFolderPlaceholder} value={typed} />
       ) : null}
     </>
   );
@@ -269,9 +270,9 @@ export function AddSubscriptionForm({
         autoCorrect={false}
         editable={!submitting}
         error={error}
-        hint={type === 'website' ? 'Reader 会在网站上找它的 RSS / Atom。' : undefined}
+        hint={type === 'website' ? t().subs.websiteHint : undefined}
         keyboardType="url"
-        label="地址"
+        label={t().subs.address}
         onChangeText={edit(setValue)}
         onSubmitEditing={() => ready && onSubmit?.({ type, value: value.trim(), group: chosenFolder(choice, typed) })}
         placeholder={current.placeholder}
@@ -279,13 +280,13 @@ export function AddSubscriptionForm({
         value={value}
       />
       <FolderChoice choice={choice} folders={folders} onChoice={setChoice} onTyped={setTyped} typed={typed} />
-      {submitting ? <Message>正在查找并添加……</Message> : null}
+      {submitting ? <Message>{t().subs.adding}</Message> : null}
       <Button
         disabled={!ready || submitting}
         large
         loading={submitting}
         onPress={() => onSubmit?.({ type, value: value.trim(), group: chosenFolder(choice, typed) })}
-        title="添加"
+        title={t().subs.addButton}
         variant="primary"
       />
     </View>
@@ -324,14 +325,14 @@ export function SubscriptionMenu({
       <View className="gap-3">
         <Input
           autoFocus
-          label="名字"
+          label={t().subs.name}
           maxLength={300}
           onChangeText={setTypedName}
           onSubmitEditing={() => next && onRename?.(next)}
           value={typedName}
         />
-        <Button disabled={!next} large onPress={() => onRename?.(next)} title="保存" variant="primary" />
-        <Button onPress={() => onRename?.(null)} title="恢复来源自己的名字" variant="ghost" />
+        <Button disabled={!next} large onPress={() => onRename?.(next)} title={t().common.save} variant="primary" />
+        <Button onPress={() => onRename?.(null)} title={t().subs.restoreName} variant="ghost" />
       </View>
     );
   }
@@ -345,7 +346,7 @@ export function SubscriptionMenu({
           disabled={!valid || (target ?? '') === folder}
           large
           onPress={() => onMove?.(target)}
-          title="移动"
+          title={t().subs.moveButton}
           variant="primary"
         />
       </View>
@@ -353,23 +354,23 @@ export function SubscriptionMenu({
   }
   return (
     <View className="-mx-4">
-      <Row inset="sheet" detail={name} label="改名" leading={<Icon icon={IconPencil} />} onPress={() => setMode('rename')} />
+      <Row inset="sheet" detail={name} label={t().subs.rename} leading={<Icon icon={IconPencil} />} onPress={() => setMode('rename')} />
       <Row
         inset="sheet"
         detail={folderLabel(folder)}
-        label="移到分类"
+        label={t().subs.move}
         leading={<Icon icon={IconFolder} />}
         onPress={() => setMode('move')}
       />
       <Row
-        detail="关掉后只在它的分类和单独查看时出现"
+        detail={t().subs.showInAllHint}
         inset="sheet"
-        label="在「全部」中显示"
+        label={t().subs.showInAll}
         leading={<Icon icon={IconLayoutGrid} />}
         onPress={() => onToggleHome?.(!includeInHome)}
-        trailing={<Switch label="在「全部」中显示" onChange={onToggleHome} value={includeInHome} />}
+        trailing={<Switch label={t().subs.showInAll} onChange={onToggleHome} value={includeInHome} />}
       />
-      <Row inset="sheet" label="取消订阅" leading={<Icon icon={IconTrash} tone="error" />} onPress={onUnsubscribe} />
+      <Row inset="sheet" label={t().subs.unsubscribe} leading={<Icon icon={IconTrash} tone="error" />} onPress={onUnsubscribe} />
     </View>
   );
 }

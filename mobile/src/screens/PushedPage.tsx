@@ -8,6 +8,7 @@ import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton, Message, TopBar } from '@/ui';
+import { t } from '@/lib/i18n';
 
 export function PushedPage({
   title,
@@ -23,7 +24,7 @@ export function PushedPage({
   const insets = useSafeAreaInsets();
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
-      <TopBar leading={<IconButton icon={IconArrowLeft} label="返回" onPress={onBack} />} title={title} />
+      <TopBar leading={<IconButton icon={IconArrowLeft} label={t().common.back} onPress={onBack} />} title={title} />
       {banner ? (
         <Message bar kind="warning">
           {banner}

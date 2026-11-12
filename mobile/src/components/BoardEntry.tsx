@@ -10,6 +10,7 @@ import { Image, Pressable, View } from 'react-native';
 
 import type { BoardRow } from '@/lib/boards';
 import { Avatar, Icon, Text } from '@/ui';
+import { t } from '@/lib/i18n';
 
 export type BoardEntryItem = Pick<BoardRow, 'rank' | 'title'> &
   Partial<
@@ -36,7 +37,7 @@ function Stats({ entry }: { entry: BoardEntryItem }) {
   const contributors = entry.contributors ?? [];
   const parts = [
     entry.score ? <Stat icon={IconTriangle} key="score" value={entry.score} /> : null,
-    entry.comments ? <Stat key="comments" value={`${entry.comments} 评论`} /> : null,
+    entry.comments ? <Stat key="comments" value={t().boards.comments(entry.comments)} /> : null,
     entry.language ? <Stat key="language" value={entry.language} /> : null,
     entry.stars ? <Stat icon={IconStar} key="stars" value={entry.stars} /> : null,
     entry.forks ? <Stat icon={IconGitFork} key="forks" value={entry.forks} /> : null,

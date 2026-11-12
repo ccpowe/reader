@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { Message, PageHeader, SearchField, Tabs } from '@/ui';
+import { t } from '@/lib/i18n';
 
 export function SavedView({
   user,
@@ -36,13 +37,13 @@ export function SavedView({
           {banner}
         </Message>
       ) : null}
-      <PageHeader title="收藏" user={user} />
+      <PageHeader title={t().saved.title} user={user} />
       <View className="pb-1 pt-2">
         <SearchField
           autoCapitalize="none"
           autoCorrect={false}
           onChangeText={onSearch}
-          placeholder="搜索收藏内容"
+          placeholder={t().saved.search}
           returnKeyType="search"
           value={query}
         />
@@ -51,7 +52,7 @@ export function SavedView({
         <Tabs<string | null>
           bordered
           onSelect={(key) => onSelectFolder?.(key)}
-          options={[{ key: null, label: '全部' }, ...folders]}
+          options={[{ key: null, label: t().common.all }, ...folders]}
           selected={folder}
         />
       ) : null}

@@ -22,6 +22,8 @@ import { errorMessage } from '@/lib/user-error';
 import { SavedView } from '@/screens/SavedView';
 import { Button, EmptyState, Toast } from '@/ui';
 import { duration } from '@/ui/theme';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 const toastLife = {
   animationName: { '0%': { opacity: 0 }, '4%': { opacity: 1 }, '94%': { opacity: 1 }, '100%': { opacity: 0 } },
@@ -57,6 +59,7 @@ function SavedList({
   // Follows the server only while 收藏 is on screen; coming back re-reads a list gone stale.
   const focused = useIsFocused();
   const query = useInfiniteQuery({ ...savedQuery(identity, scope), subscribed: focused });
+  const lang = useLanguage(); // card texts are in the interface language
   useSyncExternalStore(hiddenSaved.subscribe, hiddenSaved.getSnapshot);
   const [refreshing, setRefreshing] = useState(false);
   const offsetKey = `${identity}|${JSON.stringify(scope)}`;
@@ -67,7 +70,8 @@ function SavedList({
       (query.data?.pages.flatMap((page) => page.items) ?? []).map((item) =>
         savedCard(item, query.dataUpdatedAt, absoluteUrl(apiBase)),
       ),
-    [query.data, query.dataUpdatedAt, apiBase],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lang: the texts savedCard builds
+    [query.data, query.dataUpdatedAt, apiBase, lang],
   );
   const items = cards.filter((card) => !hiddenSaved.has(identity, card.id));
 
@@ -90,10 +94,10 @@ function SavedList({
     state = {
       kind: 'ready',
       items,
-      refreshFailed: query.isRefetchError && !refreshing ? '刷新没有成功，显示的是之前的内容。' : null,
+      refreshFailed: query.isRefetchError && !refreshing ? t().common.refreshFailed : null,
       hasMore: query.hasNextPage,
       loadingMore: query.isFetchingNextPage,
-      moreFailed: query.isFetchNextPageError ? `更早的收藏没加载出来：${errorMessage(query.error)}` : null,
+      moreFailed: query.isFetchNextPageError ? t().saved.moreFailed(errorMessage(query.error)) : null,
       busy: query.isFetching,
     };
   }
@@ -102,14 +106,14 @@ function SavedList({
     <FeedList
       empty={
         searching ? (
-          <EmptyState title="没有匹配的收藏" />
+          <EmptyState title={t().saved.noMatch} />
         ) : scope.group !== null ? (
-          <EmptyState title="这个分类里还没有收藏" />
+          <EmptyState title={t().saved.emptyFolder} />
         ) : (
-          <EmptyState description="点卡片右下角的书签即可收藏。" title="还没有收藏" />
+          <EmptyState description={t().saved.empty} title={t().saved.emptyTitle} />
         )
       }
-      heading={searching ? '搜索结果' : '最近收藏'}
+      heading={searching ? t().common.searchResults : t().saved.recent}
       onEndReached={() => void query.fetchNextPage({ cancelRefetch: false })}
       onOpen={open}
       onPosition={(position) => positions.remember(offsetKey, position)}
@@ -124,6 +128,7 @@ function SavedList({
 }
 
 export default function Saved() {
+  useLanguage(); // texts follow the interface language
   const identity = useIdentity();
   const visible = useRef(true);
   useFocusEffect(
@@ -166,10 +171,10 @@ export default function Saved() {
     (item: FeedCardItem) => {
       const undo = unsaveLater(identity, item.id, duration.toast, (error) =>
         showNotice(
-          error instanceof UnknownOutcome ? '没收到服务器的确认，已重新加载收藏。' : `取消收藏没有成功：${errorMessage(error)}`,
+          error instanceof UnknownOutcome ? t().saved.unsaveUnknown : t().saved.unsaveFailed(errorMessage(error)),
         ),
       );
-      showNotice('已取消收藏', undo);
+      showNotice(t().saved.unsaved, undo);
     },
     [identity, showNotice],
   );
@@ -179,7 +184,7 @@ export default function Saved() {
   return (
     <>
       <SavedView
-        banner={online ? null : '没有网络，显示的是之前的内容。'}
+        banner={online ? null : t().common.offline}
         folder={group}
         folders={folders}
         onSearch={search}
@@ -200,7 +205,7 @@ export default function Saved() {
                     notice.undo?.();
                     setNotice(null);
                   }}
-                  title="撤销"
+                  title={t().common.undo}
                   variant="ghost"
                 />
               ) : undefined

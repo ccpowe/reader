@@ -8,6 +8,7 @@
  * Pure: runs under `node --test`.
  */
 import type { ApiProblem } from './api/errors.ts';
+import { t } from './i18n/index.ts';
 
 export type AuthMode = 'sign-in' | 'register';
 
@@ -75,12 +76,23 @@ export function authReducer(state: AuthState, event: AuthEvent): AuthState {
   }
 }
 
+/** Texts of the form's own problems, in the interface language (read when shown). */
 export const localMessages: Record<LocalProblem, string> = {
-  'email-empty': '请输入邮箱。',
-  'email-invalid': '邮箱格式不对。',
-  'password-empty': '请输入密码。',
-  'password-short': `密码至少 ${MIN_PASSWORD} 个字符。`,
-  'register-unknown': '没收到服务器的回应，账号可能已经创建。请直接登录试试；登录不上再重新注册。',
+  get 'email-empty'() {
+    return t().auth.emailEmpty;
+  },
+  get 'email-invalid'() {
+    return t().auth.emailInvalid;
+  },
+  get 'password-empty'() {
+    return t().auth.passwordEmpty;
+  },
+  get 'password-short'() {
+    return t().auth.passwordShort(MIN_PASSWORD);
+  },
+  get 'register-unknown'() {
+    return t().auth.registerUnknown;
+  },
 };
 
 /** Which input a problem belongs to; the rest show above the button. */

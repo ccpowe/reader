@@ -14,6 +14,7 @@ import { Button, EmptyState, Message, SectionHeading, Skeleton, Text } from '@/u
 import { delayLoading, duration } from '@/ui/theme';
 
 import { FeedCard, type FeedCardItem } from './FeedCard';
+import { t } from '@/lib/i18n';
 
 export type FeedListState =
   | { kind: 'loading' }
@@ -105,7 +106,7 @@ export function FeedList({
     );
   }
   if (state.kind === 'failed') {
-    return <EmptyState action={<Button onPress={onRetry} title="重试" />} description={state.message} title="没能加载" />;
+    return <EmptyState action={<Button onPress={onRetry} title={t().common.retry} />} description={state.message} title={t().common.loadFailed} />;
   }
   return (
     <FlatList
@@ -116,7 +117,7 @@ export function FeedList({
             <Text level="desc" tone="secondary">
               {state.moreFailed}
             </Text>
-            <Button onPress={onEndReached} title="重试" variant="ghost" />
+            <Button onPress={onEndReached} title={t().common.retry} variant="ghost" />
           </View>
         ) : state.loadingMore ? (
           <View className="items-center py-6">
@@ -129,7 +130,7 @@ export function FeedList({
           <>
             {state.refreshFailed ? (
               <View className="px-6 pt-4">
-                <Message action={<Button onPress={onRetry} title="重试" variant="ghost" />} kind="danger">
+                <Message action={<Button onPress={onRetry} title={t().common.retry} variant="ghost" />} kind="danger">
                   {state.refreshFailed}
                 </Message>
               </View>

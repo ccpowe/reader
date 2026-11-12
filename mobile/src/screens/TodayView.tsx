@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { IconButton, Message, PageHeader, SolidCount, Tabs, Text } from '@/ui';
+import { t } from '@/lib/i18n';
 
 export function TodayView({
   date,
@@ -45,7 +46,7 @@ export function TodayView({
     <IconButton
       badge={newCount ? <SolidCount value={newCount} /> : null}
       icon={IconAdjustmentsHorizontal}
-      label="选择频道"
+      label={t().today.pickChannel}
       onPress={onOpenChannels}
     />
   );
@@ -56,19 +57,19 @@ export function TodayView({
           {banner}
         </Message>
       ) : null}
-      <PageHeader aside={date} title="今日" user={user} />
+      <PageHeader aside={date} title={t().today.title} user={user} />
       {channel ? (
         <View className="h-11 flex-row items-center gap-2 border-b border-subtle px-6">
           <Text className="flex-1" numberOfLines={1} tone="secondary">
-            只看「{channel}」
+            {t().today.onlyChannel(channel)}
           </Text>
-          <IconButton icon={IconX} label="返回分类内容" onPress={onClearChannel} size="sm" />
+          <IconButton icon={IconX} label={t().today.backToFolders} onPress={onClearChannel} size="sm" />
         </View>
       ) : (
         <Tabs
           bordered
           onSelect={(key) => onSelectFolder?.(key)}
-          options={[{ key: null, label: '全部' }, ...folders]}
+          options={[{ key: null, label: t().common.all }, ...folders]}
           selected={folder}
           trailing={filter}
         />
@@ -78,8 +79,7 @@ export function TodayView({
   );
 }
 
-/** The date line in the header: "11 月 11 日 · 星期三". */
+/** The date line in the header: "11 月 11 日 · 星期三" / "Wed, Nov 11". */
 export function todayLabel(now: Date): string {
-  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-  return `${now.getMonth() + 1} 月 ${now.getDate()} 日 · 星期${weekdays[now.getDay()]}`;
+  return t().time.todayLine(now);
 }

@@ -22,6 +22,8 @@ import { ChannelPicker, type ChannelRow } from '@/screens/ChannelPicker';
 import { TodayView, todayLabel } from '@/screens/TodayView';
 import { Button, EmptyState, Sheet, Toast } from '@/ui';
 import { duration } from '@/ui/theme';
+import { t } from '@/lib/i18n';
+import { useLanguage } from '@/lib/interface-language';
 
 function useApiBase(): string {
   const state = useSession();
@@ -52,6 +54,7 @@ function rowOf(subscription: SubscriptionResponse, absolute: (url: string | null
 }
 
 export default function Today() {
+  useLanguage(); // texts follow the interface language
   const identity = useIdentity();
   const focused = useIsFocused();
   // A result that arrives after the user left Today is not shown (visit-scoped, react-guidelines §1).
@@ -108,7 +111,7 @@ export default function Today() {
     try {
       await setIncludeInHome(identity, subscription, include);
     } catch (error) {
-      showNotice(error instanceof UnknownOutcome ? '没收到服务器的确认，已重新加载频道设置。' : `没能更改：${errorMessage(error)}`);
+      showNotice(error instanceof UnknownOutcome ? t().today.channelUnknown : t().common.changeFailed(errorMessage(error)));
     }
   }
 
@@ -121,16 +124,16 @@ export default function Today() {
   let body;
   if (subscriptions.data === undefined) {
     body = subscriptions.isError ? (
-      <EmptyState action={<Button onPress={() => void subscriptions.refetch()} title="重试" />} description={errorMessage(subscriptions.error)} title="没能加载" />
+      <EmptyState action={<Button onPress={() => void subscriptions.refetch()} title={t().common.retry} />} description={errorMessage(subscriptions.error)} title={t().common.loadFailed} />
     ) : (
       <FeedList empty={<View />} state={{ kind: 'loading' }} />
     );
   } else if (list.length === 0) {
     body = (
       <EmptyState
-        action={<Button large onPress={() => router.navigate('/subscriptions')} title="添加订阅" variant="primary" />}
-        description="添加 RSS、网站、YouTube、X 或 Reddit，新内容会出现在这里。"
-        title="还没有订阅"
+        action={<Button large onPress={() => router.navigate('/subscriptions')} title={t().today.addSubscription} variant="primary" />}
+        description={t().today.noSubscriptionsHint}
+        title={t().today.noSubscriptions}
       />
     );
   } else if (shownChannel) {
@@ -165,7 +168,7 @@ export default function Today() {
   return (
     <>
       <TodayView
-        banner={online ? null : '没有网络，显示的是之前的内容。'}
+        banner={online ? null : t().common.offline}
         channel={channelSubscription ? (channelSubscription.name ?? channelSubscription.url) : null}
         date={todayLabel(opened)}
         folder={pages[current] ?? null}
@@ -186,7 +189,7 @@ export default function Today() {
           <Toast message={notice.message} />
         </Animated.View>
       ) : null}
-      <Sheet onClose={() => setPickerOpen(false)} subtitle="勾选的频道显示在全部中" title="选择频道" visible={pickerOpen}>
+      <Sheet onClose={() => setPickerOpen(false)} subtitle={t().today.pickChannelHint} title={t().today.pickChannel} visible={pickerOpen}>
         <ChannelPicker
           channel={shownChannel}
           groups={groups}
