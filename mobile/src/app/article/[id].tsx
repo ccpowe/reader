@@ -1,9 +1,11 @@
 /**
  * Reader page — assembly (react-guidelines §6): reads the article, chooses the view by kind
  * (src/lib/reader.ts), and drives one WebView: the original page, reader mode, or the YouTube
- * player. Translation joins in block 3b / 3c.
+ * player. Web pages and reader mode carry the translation runtime (TranslatedWebView): 原文 ↔ 双语
+ * (P24), and reader mode for articles without a full body extracts the article from the page.
+ * Caption translation joins in block 3c.
  */
-import { IconArticle, IconBrandYoutube, IconWorld } from '@tabler/icons-react-native';
+import { IconArticle, IconBrandYoutube, IconLanguage, IconWorld } from '@tabler/icons-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useReducer, useRef, useState } from 'react';
@@ -17,6 +19,7 @@ import type {
   WebViewProgressEvent,
 } from 'react-native-webview/lib/WebViewTypes';
 
+import { TranslatedWebView } from '@/components/TranslatedWebView';
 import type { ArticleDetail } from '@/lib/api/schema.gen';
 import { WebView, type WebViewHandle } from '@/lib/webview';
 import { useIdentity } from '@/lib/app-session';
@@ -34,6 +37,7 @@ import {
   youtubeWatchUrl,
 } from '@/lib/reader';
 import { errorMessage } from '@/lib/user-error';
+import { translationProblem, type HostState, type TranslationMode, type WebTranslationHost } from '@/lib/web-translation-host';
 import { ArticleView, type ReaderTool } from '@/screens/ArticleView';
 import { Button, EmptyState, Skeleton, Text, Toast } from '@/ui';
 import { duration } from '@/ui/theme';
@@ -56,8 +60,17 @@ function Reader({ identity, article, url }: { identity: string; article: Article
     initialReaderPage(kind.kind === 'youtube' ? 'player' : 'page', url),
   );
   const [notice, setNotice] = useState<{ id: number; message: string } | null>(null);
-  const web = useRef<WebViewHandle>(null);
+  const web = useRef<WebViewHandle | null>(null);
+  const [host, setHost] = useState<WebTranslationHost | null>(null);
+  const [mode, setMode] = useState<TranslationMode>('original');
+  const [translation, setTranslation] = useState<HostState | null>(null);
+  const [extracting, setExtracting] = useState(false);
   const { view } = state;
+  const translatable = kind.kind !== 'youtube';
+
+  function notify(message: string) {
+    setNotice((current) => ({ id: (current?.id ?? 0) + 1, message }));
+  }
 
   // Android back: inside the page first (its history, or from a link back to reader mode), then leave.
   const inside = backStaysInside(state);
@@ -80,8 +93,27 @@ function Reader({ identity, article, url }: { identity: string; article: Article
         error instanceof UnknownOutcome
           ? '没收到服务器的确认，已重新加载收藏状态。'
           : `${article.is_saved ? '取消收藏' : '收藏'}没有成功：${errorMessage(error)}`;
-      setNotice((current) => ({ id: (current?.id ?? 0) + 1, message }));
+      notify(message);
     }
+  }
+
+  function toggleTranslation() {
+    const next = mode === 'original' ? 'bilingual' : 'original';
+    setMode(next);
+    host?.setMode(next);
+  }
+
+  /** Reader mode: the server's full body, or else the article the open page gives (old app). */
+  async function toggleReader() {
+    if (view === 'reader') return dispatch({ type: 'switch', view: 'page' });
+    if (readable) return dispatch({ type: 'switch', view: 'reader' });
+    if (!host || extracting) return;
+    setExtracting(true);
+    const result = await host.extract();
+    setExtracting(false);
+    if (result.ok) dispatch({ type: 'show-extracted', article: result.article });
+    else if (result.reason === 'too_large') notify('这篇正文太长，阅读模式打不开。');
+    else if (result.reason !== 'changed') notify('没能从这个网页里找到正文。');
   }
 
   /**
@@ -99,13 +131,17 @@ function Reader({ identity, article, url }: { identity: string; article: Article
   }
 
   const tools: ReaderTool[] = [];
-  if (readable) {
+  if (translatable) {
+    tools.push({ key: 'translate', icon: IconLanguage, label: '双语对照', on: mode === 'bilingual', onPress: toggleTranslation });
+  }
+  // Reader mode needs a body: the server's, or the page's once its runtime answers.
+  if (kind.kind === 'web' && (readable || view === 'reader' || translation?.verified)) {
     tools.push({
       key: 'reader',
       icon: IconArticle,
       label: '阅读模式',
-      on: view === 'reader',
-      onPress: () => dispatch({ type: 'switch', view: view === 'reader' ? 'page' : 'reader' }),
+      on: view === 'reader' || extracting,
+      onPress: () => void toggleReader(),
     });
   }
   if (kind.kind === 'youtube') {
@@ -118,52 +154,79 @@ function Reader({ identity, article, url }: { identity: string; article: Article
     });
   }
 
+  const extracted = view === 'reader' ? state.extracted : null;
   const source =
-    view === 'reader'
+    view === 'reader' && extracted
       ? {
           html: readerDocument({
-            url,
-            title: article.title_translation?.text ?? article.title,
-            author: article.author,
+            url: extracted.url,
+            title: extracted.title || article.title,
+            author: extracted.byline,
             sourceName: article.source?.name,
             publishedAt: article.published_at ?? article.first_seen_at,
-            imageUrl: safeHttpUrl(article.image_url),
-            bodyHtml: article.body_html ?? '',
+            bodyHtml: '',
+            lang: extracted.lang,
           }),
-          baseUrl: url,
+          baseUrl: extracted.url,
         }
-      : view === 'player' && kind.kind === 'youtube'
-        ? { uri: youtubeEmbedUrl(kind.videoId), headers: { Referer: YOUTUBE_APP_REFERER } }
-        : { uri: kind.kind === 'youtube' && state.pageUrl === url ? youtubeWatchUrl(kind.videoId) : state.pageUrl };
+      : view === 'reader'
+        ? {
+            html: readerDocument({
+              url,
+              title: article.title_translation?.text ?? article.title,
+              author: article.author,
+              sourceName: article.source?.name,
+              publishedAt: article.published_at ?? article.first_seen_at,
+              imageUrl: safeHttpUrl(article.image_url),
+              bodyHtml: article.body_html ?? '',
+            }),
+            baseUrl: url,
+          }
+        : view === 'player' && kind.kind === 'youtube'
+          ? { uri: youtubeEmbedUrl(kind.videoId), headers: { Referer: YOUTUBE_APP_REFERER } }
+          : { uri: kind.kind === 'youtube' && state.pageUrl === url ? youtubeWatchUrl(kind.videoId) : state.pageUrl };
 
-  const page = (
-    <WebView
-      allowsFullscreenVideo
-      allowsInlineMediaPlayback
-      domStorageEnabled
-      javaScriptEnabled={view !== 'reader'}
-      // A new view or address is a new document: remount rather than navigate (react-guidelines §2).
-      key={documentKey(state)}
-      mediaPlaybackRequiresUserAction
-      onError={(event: WebViewErrorEvent) =>
-        dispatch({ type: 'failed', message: `页面没打开：${event.nativeEvent.description || '网络问题'}` })
-      }
-      onHttpError={(event: WebViewHttpErrorEvent) => {
-        if (event.nativeEvent.statusCode >= 500)
-          dispatch({ type: 'failed', message: `网站出错了（${event.nativeEvent.statusCode}）。` });
+  const webProps = {
+    allowsFullscreenVideo: true,
+    allowsInlineMediaPlayback: true,
+    domStorageEnabled: true,
+    // A new view or address is a new document: remount rather than navigate (react-guidelines §2).
+    key: documentKey(state),
+    mediaPlaybackRequiresUserAction: true,
+    onError: (event: WebViewErrorEvent) =>
+      dispatch({ type: 'failed', message: `页面没打开：${event.nativeEvent.description || '网络问题'}` }),
+    onHttpError: (event: WebViewHttpErrorEvent) => {
+      if (event.nativeEvent.statusCode >= 500)
+        dispatch({ type: 'failed', message: `网站出错了（${event.nativeEvent.statusCode}）。` });
+    },
+    onLoadEnd: () => dispatch({ type: 'load-end' }),
+    onLoadProgress: (event: WebViewProgressEvent) => dispatch({ type: 'progress', progress: event.nativeEvent.progress }),
+    onLoadStart: () => dispatch({ type: 'load-start' }),
+    onNavigationStateChange: (navigation: WebViewNavigation) => dispatch({ type: 'history', canGoBack: navigation.canGoBack }),
+    onShouldStartLoadWithRequest: allowNavigation,
+    originWhitelist: ['*'],
+    setSupportMultipleWindows: false,
+    source,
+    style: { flex: 1, backgroundColor: 'transparent' },
+  };
+  const { key: documentId, ...shared } = webProps;
+  const page = translatable ? (
+    <TranslatedWebView
+      {...shared}
+      key={documentId}
+      mode={mode}
+      onHost={setHost}
+      onTranslationState={setTranslation}
+      profile={view === 'reader' ? 'reader' : undefined}
+      readerContent={extracted ? { html: extracted.html, url: extracted.url } : undefined}
+      webRef={(handle) => {
+        web.current = handle;
       }}
-      onLoadEnd={() => dispatch({ type: 'load-end' })}
-      onLoadProgress={(event: WebViewProgressEvent) => dispatch({ type: 'progress', progress: event.nativeEvent.progress })}
-      onLoadStart={() => dispatch({ type: 'load-start' })}
-      onNavigationStateChange={(navigation: WebViewNavigation) => dispatch({ type: 'history', canGoBack: navigation.canGoBack })}
-      onShouldStartLoadWithRequest={allowNavigation}
-      originWhitelist={['*']}
-      ref={web}
-      setSupportMultipleWindows={false}
-      source={source}
-      style={{ flex: 1, backgroundColor: 'transparent' }}
     />
+  ) : (
+    <WebView {...shared} javaScriptEnabled key={documentId} ref={web} />
   );
+  const translationIssue = translation && translatable ? translationProblem(translation, mode) : null;
 
   return (
     <ArticleView
@@ -186,7 +249,14 @@ function Reader({ identity, article, url }: { identity: string; article: Article
                 />
               ),
             }
-          : null
+          : translationIssue
+            ? {
+                message: translationIssue.message,
+                action: translationIssue.retry ? (
+                  <Button onPress={() => host?.retry()} title="重试" variant="ghost" />
+                ) : undefined,
+              }
+            : null
       }
       progress={state.load.status === 'loading' ? state.load.progress : 1}
       saved={article.is_saved}

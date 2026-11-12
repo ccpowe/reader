@@ -20,7 +20,14 @@ test('a later successful load clears an earlier failure', () => {
 test('switching views starts a fresh document; the same view is not a switch', () => {
   const loaded = r(r(start, { type: 'load-end' }), { type: 'history', canGoBack: true });
   const reader = r(loaded, { type: 'switch', view: 'reader' });
-  assert.deepEqual(reader, { view: 'reader', articleUrl: 'https://e.com/a', pageUrl: 'https://e.com/a', load: { status: 'loading', progress: 0 }, canGoBack: false });
+  assert.deepEqual(reader, {
+    view: 'reader',
+    articleUrl: 'https://e.com/a',
+    pageUrl: 'https://e.com/a',
+    load: { status: 'loading', progress: 0 },
+    canGoBack: false,
+    extracted: null,
+  });
   assert.equal(r(reader, { type: 'switch', view: 'reader' }), reader);
   assert.notEqual(documentKey(reader), documentKey(loaded));
 });
@@ -47,4 +54,17 @@ test('back from a link returns to reader mode; the page tool shows the article i
   assert.equal(back.pageUrl, 'https://e.com/a');
   assert.equal(r(link, { type: 'switch', view: 'reader' }).pageUrl, 'https://e.com/a');
   assert.equal(backStaysInside(start), null);
+});
+
+test('reader mode from the page keeps its article across a link and back', () => {
+  const article = { url: 'https://e.com/a', title: 'T', byline: null, lang: 'en', html: '<p>x</p>', text: 'x' };
+  const reader = r(start, { type: 'show-extracted', article });
+  assert.equal(reader.view, 'reader');
+  assert.equal(documentKey(reader), 'reader:https://e.com/a');
+  const link = r(reader, { type: 'open-page', url: 'https://e.com/b' });
+  const back = r(link, { type: 'back' });
+  assert.equal(back.view, 'reader');
+  assert.equal(back.extracted, article);
+  // the page view and back to reader mode reuse it
+  assert.equal(r(r(reader, { type: 'switch', view: 'page' }), { type: 'switch', view: 'reader' }).extracted, article);
 });

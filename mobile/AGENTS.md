@@ -18,7 +18,7 @@
 | `lib/connection/`、`lib/readerAuth.ts` | 服务发现、连接切换、凭据与账户会话；连接入口为 `lib/connection/runtime.ts` |
 | `state/` | 查询客户端、缓存更新与失效处理；入口为 `queryClient.ts`、`cacheUpdates.ts`、`invalidation.ts` |
 | `i18n/` | 界面语言、消息与语言包；修改文案时核对 `messages/`、`packs/` |
-| `src/` | 新版（重新设计，DECISIONS P28 分块实现）：`app/` 路由、`screens/` 视图、`components/` 与 `ui/` 组件、`lib/` 纯逻辑与 API／会话／查询；编写规则见 [React 开发规范](../docs/engineering/react-guidelines.md)。旧版顶层目录迁移完成后删除 |
+| `src/` | 新版（重新设计，DECISIONS P28 分块实现）：`app/` 路由、`screens/` 视图、`components/` 与 `ui/` 组件、`lib/` 纯逻辑与 API／会话／查询；编写规则见 [React 开发规范](../docs/engineering/react-guidelines.md)。网页翻译与正文提取的宿主为 `src/components/TranslatedWebView.tsx`、`src/lib/web-translation-host.ts`、`src/lib/translation-scheduler.ts`，注入脚本仍来自 `domain/`。旧版顶层目录迁移完成后删除 |
 | `src/lib/api/schema.gen.ts`、`domain/translationRuntimeSources.generated.ts` | 生成的 API 类型与注入脚本资源，不手改；`lib/generated/api.ts` 是旧后端的类型，不再生成 |
 | `scripts/` | 代码生成和行为检查；浏览器场景位于 `scripts/browser/`，测试命令以 `package.json` 为准 |
 | `app.json`、`eas.json`、`assets/` | 原生应用配置、构建 profile 与应用资源 |

@@ -3,6 +3,7 @@
  * page it shows, and its load state. Pure: runs under `node --test`.
  *
  *   switch(view)    → that view, fresh load (the WebView remounts: `key` = view + url)
+ *   show-extracted  → reader mode with the article the page itself gave (no full body on the server)
  *   open-page(url)  → the original-page view at another address (a link tapped in reader mode)
  *   back            → from such a link, back to reader mode (Android back at the link's first page)
  *   load-start      → loading; an earlier error is cleared (a later navigation may succeed)
@@ -12,6 +13,8 @@
  *   history(back)   → whether the page can go back (Android back goes back inside it first)
  *   retry           → a reload of the same document (the route calls WebView.reload())
  */
+import type { ExtractedArticle } from './web-translation-host.ts';
+
 export type ReaderView = 'page' | 'reader' | 'player';
 
 export type ReaderPageState = {
@@ -21,10 +24,13 @@ export type ReaderPageState = {
   pageUrl: string;
   load: { status: 'loading'; progress: number } | { status: 'loaded' } | { status: 'failed'; message: string };
   canGoBack: boolean;
+  /** reader mode's article when it came from the page (kept while switching views) */
+  extracted: ExtractedArticle | null;
 };
 
 export type ReaderPageEvent =
   | { type: 'switch'; view: ReaderView }
+  | { type: 'show-extracted'; article: ExtractedArticle }
   | { type: 'open-page'; url: string }
   | { type: 'back' }
   | { type: 'load-start' }
@@ -35,7 +41,7 @@ export type ReaderPageEvent =
   | { type: 'retry' };
 
 export function initialReaderPage(view: ReaderView, articleUrl: string): ReaderPageState {
-  return { view, articleUrl, pageUrl: articleUrl, load: { status: 'loading', progress: 0 }, canGoBack: false };
+  return { view, articleUrl, pageUrl: articleUrl, load: { status: 'loading', progress: 0 }, canGoBack: false, extracted: null };
 }
 
 export function readerPageReducer(state: ReaderPageState, event: ReaderPageEvent): ReaderPageState {
@@ -45,6 +51,15 @@ export function readerPageReducer(state: ReaderPageState, event: ReaderPageEvent
       return event.view === state.view
         ? state
         : { ...state, view: event.view, pageUrl: state.articleUrl, load: { status: 'loading', progress: 0 }, canGoBack: false };
+    case 'show-extracted':
+      return {
+        ...state,
+        view: 'reader',
+        pageUrl: state.articleUrl,
+        load: { status: 'loading', progress: 0 },
+        canGoBack: false,
+        extracted: event.article,
+      };
     case 'open-page':
       return { ...state, view: 'page', pageUrl: event.url, load: { status: 'loading', progress: 0 }, canGoBack: false };
     case 'back':
@@ -77,5 +92,6 @@ export function backStaysInside(state: ReaderPageState): 'history' | 'reader' | 
 
 /** The WebView remounts when this changes: a different document, not a navigation. */
 export function documentKey(state: ReaderPageState): string {
-  return state.view === 'page' ? `page:${state.pageUrl}` : state.view;
+  if (state.view === 'page') return `page:${state.pageUrl}`;
+  return state.view === 'reader' && state.extracted ? `reader:${state.extracted.url}` : state.view;
 }

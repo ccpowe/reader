@@ -144,12 +144,14 @@ export function readerDocument(article: {
   sourceName?: string | null;
   publishedAt?: string | null;
   imageUrl?: string | null;
+  /** empty for an article extracted from the page: the runtime mounts it after purifying (web-translation-host) */
   bodyHtml: string;
+  lang?: string | null;
 }): string {
   const byline = [article.author ?? article.sourceName, article.publishedAt ? articleDate(article.publishedAt) : null].filter(Boolean).join(' · ');
   const hero = article.imageUrl && !article.bodyHtml.includes(article.imageUrl) ? `<figure><img alt="" src="${escapeHtml(article.imageUrl)}"></figure>` : '';
   return (
-    '<!doctype html><html><head><meta charset="utf-8">' +
+    `<!doctype html><html${article.lang && /^[a-zA-Z0-9-]{1,50}$/.test(article.lang) ? ` lang="${article.lang}"` : ''}><head><meta charset="utf-8">` +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; img-src http: https: data:; media-src http: https:; style-src 'unsafe-inline'; form-action 'none'; frame-src 'none'">` +
     `<base href="${escapeHtml(article.url)}"><style>${css}</style></head><body><article>` +
