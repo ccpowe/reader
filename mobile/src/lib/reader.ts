@@ -20,7 +20,7 @@ export function youtubeVideoId(url: string): string | null {
 export function youtubeEmbedUrl(videoId: string): string {
   const id = videoId.replace(/[^A-Za-z0-9_-]/g, '');
   const parameters = new URLSearchParams({ cc_load_policy: '1', iv_load_policy: '3', origin: YOUTUBE_APP_REFERER, playsinline: '1', rel: '0' });
-  return `https://www.youtube-nocookie.com/embed/${id}?${parameters.toString()}`;
+  return `https://www.youtube.com/embed/${id}?${parameters.toString()}`;
 }
 
 export function youtubeWatchUrl(videoId: string): string {
