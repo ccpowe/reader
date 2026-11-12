@@ -71,15 +71,14 @@ cp .env.docker.example .env.docker
 | `APP_OPENROUTER_MODEL` | `minimax/minimax-m3` | OpenRouter 实际模型名 |
 | `APP_CODEX_SUBSCRIPTION_MODEL` | `gpt-6-luna` | Codex 订阅实际模型名，推理固定 `low` |
 | `APP_CODEX_SUBSCRIPTION_REQUEST_TIMEOUT_SECONDS` | `60` | 订阅请求总超时（秒） |
-| `APP_YOUTUBE_DAILY_QUOTA_SOFT_LIMIT` | `8000` | YouTube Data API 每日软限额 |
+| `APP_YOUTUBE_DAILY_QUOTA` | `8000` | YouTube Data API 每日配额上限 |
 
 翻译限额使用 `.env.docker.example` 中的默认值：
 
 | 配置 | 默认值 | 作用 |
 | --- | ---: | --- |
-| `APP_TRANSLATION_QUOTA_REQUESTS_PER_MINUTE` | `30` | 翻译请求分钟限额 |
-| `APP_TRANSLATION_QUOTA_USER_MISS_CHARS_PER_MINUTE` | `120000` | 单用户未命中缓存字符分钟限额 |
-| `APP_TRANSLATION_QUOTA_GLOBAL_MISS_CHARS_PER_MINUTE` | `500000` | 全局未命中缓存字符分钟限额 |
+| `APP_TRANSLATION_CHARS_PER_MINUTE` | `500000` | 整个部署每分钟送去模型翻译的字符上限（命中缓存不计） |
+| `APP_TRANSLATION_CHARS_PER_DAY` | `2000000` | 整个部署每天送去模型翻译的字符上限 |
 
 不要把 API key、Cookie、数据库密码、连接 token 或 JWT 密钥写入 `.env.docker`。
 
