@@ -98,12 +98,12 @@ API 默认只监听 `127.0.0.1:8000`。`token` 输出供客户端连接的 token
   <img src="docs/assets/readme/rankings-editorial.png" width="960" alt="热门榜单展示：Hacker News、Reddit、GitHub 三个入口，以及 Hacker News 热门文章和讨论的局部放大。">
 </p>
 
-打开「榜单」，在 **Hacker News、Reddit、GitHub、X 技术热门、Product Hunt** 之间左右滑动切换，从热门讨论、文章、开源项目和新产品中发现订阅之外的内容。榜单标题和描述按个人设置自动翻译，尚无译文时先显示原文。
+打开「榜单」，在 **Hacker News、Reddit、GitHub、Product Hunt** 之间左右滑动切换，从热门讨论、文章、开源项目和新产品中发现订阅之外的内容。榜单标题和描述按个人设置自动翻译，尚无译文时先显示原文。
 
 - **Hacker News：** 技术文章与讨论，附分数、评论数和域名。
 - **Reddit：** 已订阅的社区作为快捷列表，也可输入任意社区；排序可选热门、上升和日／周／月／年最高。
 - **GitHub：** Trending 日榜、周榜或月榜，附简介、语言、星标和本期新增星标。
-- **X 技术热门：** 来自 TechTwitter，显示新闻标题、解读和话题标签；无需 X 账号订阅、Cookie 或 Scweet。
+- **X 技术热门（暂时隐藏）：** TechTwitter 自 2026-11-09 起对服务器请求要求浏览器验证，Reader 抓不到，这个榜单先不显示；以后由独立的网页抓取服务接回。
 - **Product Hunt：** 今天和昨天的精选发布，日期以洛杉矶时间为准；需管理员配置官方 API 令牌（见[部署说明](docs/deployment.md)）。
 
 榜单只在有人打开时向上游抓取：页面会显示数据是多久前的；刷新失败时继续显示旧数据并标明；上游限流时暂停抓取并说明原因。手动刷新每个榜单每分钟一次。

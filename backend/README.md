@@ -77,7 +77,8 @@ target language and engine fingerprint.
   scan reads one page as a baseline; later scans stop at the first known item.
   The daily clean-up keeps the newest `APP_ARTICLES_KEPT_PER_SOURCE` articles
   per source (saved ones count too) and every older article someone has saved.
-- Boards (Hacker News, GitHub Trending, TechTwitter, Product Hunt, Reddit) are
+- Boards (Hacker News, GitHub Trending, Product Hunt, Reddit; TechTwitter's fetcher is kept
+  but the board is hidden in the app and MCP, since its API now blocks servers) are
   fetched by the API when someone opens an expired one; there is no background
   refresh. Product Hunt needs `APP_PRODUCT_HUNT_TOKEN`.
 - Requests to user-supplied public sources go through

@@ -11,7 +11,7 @@ import { Reader, type ReaderDoc } from '@/components/Reader';
 import type { BoardEntry } from '@/lib/api/schema.gen';
 import { errorCode } from '@/lib/api/errors';
 import { useIdentity } from '@/lib/app-session';
-import { BOARDS, type BoardKey, type BoardView } from '@/lib/boards';
+import { boardLabel, type BoardKey, type BoardView } from '@/lib/boards';
 import { boardQuery, boardTranslationsQuery, setBoardSaved, translationPreferenceQuery } from '@/lib/queries/boards';
 import { UnknownOutcome } from '@/lib/queries/today';
 import { safeHttpUrl } from '@/lib/reader';
@@ -29,7 +29,7 @@ function docOf(view: BoardView, url: string, entry: BoardEntry | undefined, tran
     displayTitle: entry?.title_translation?.text ?? translatedTitle ?? title,
     // Reddit posts open as their page (P16); other boards by address (YouTube links get the player).
     sourceType: view.board === 'reddit' ? 'reddit' : null,
-    sourceName: BOARDS.find((b) => b.key === view.board)?.label,
+    sourceName: boardLabel(view.board),
     author: entry?.author,
     publishedAt: entry?.published_at,
     imageUrl: entry?.image_urls?.[0],

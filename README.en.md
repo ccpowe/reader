@@ -98,12 +98,12 @@ Subtitle features depend on captions provided by the video. Reader does not curr
   <img src="docs/assets/readme/rankings-editorial-en.png" width="960" alt="Trending rankings: an English editorial layout with entry points for Hacker News, Reddit, and GitHub, plus popular Hacker News stories and discussions.">
 </p>
 
-Open Rankings and swipe between **Hacker News, Reddit, GitHub, X Tech Trends, and Product Hunt** to discover discussions, articles, open-source projects and new products beyond your subscriptions. Titles and descriptions are translated automatically according to your settings; until a translation arrives, the original is shown.
+Open Rankings and swipe between **Hacker News, Reddit, GitHub and Product Hunt** to discover discussions, articles, open-source projects and new products beyond your subscriptions. Titles and descriptions are translated automatically according to your settings; until a translation arrives, the original is shown.
 
 - **Hacker News:** technology articles and discussions, with score, comment count and domain.
 - **Reddit:** your subscribed communities as shortcuts, or any community you type; sort by hot, rising, or top of the day/week/month/year.
 - **GitHub:** daily, weekly or monthly Trending, with description, language, stars and stars gained in the period.
-- **X Tech Trends:** from TechTwitter — news headlines, a short take and topic tags. No X account subscription, cookie or Scweet service is needed.
+- **X Tech Trends (hidden for now):** since 2026-11-09 TechTwitter answers server requests with a browser check, so Reader cannot read it; the board comes back with the separate web-crawling service.
 - **Product Hunt:** today's and yesterday's featured launches, by Los Angeles date. Requires an official API token on the server (see the [deployment guide](docs/deployment.md)).
 
 Rankings are fetched from upstream only when someone opens them: each shows how old its data is; if a refresh fails the previous data stays, marked as out of date; when an upstream rate-limits Reader, fetching pauses and the reason is shown. Manual refresh is allowed once a minute per ranking.

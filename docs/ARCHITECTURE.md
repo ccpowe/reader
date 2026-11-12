@@ -18,7 +18,7 @@ Reader 采用前后端分离结构。后端是一个 Python 包 `reader`，以 A
 | Codex 凭据文件 | 可选翻译引擎的专用登录；API 与 Worker 在跨进程文件锁内刷新并原子写回，Docker 使用独立数据卷 | [codex_auth.py](../backend/src/reader/translation/codex_auth.py) |
 | 管理命令 `reader-admin` | 在服务器上运行：重置密码、签发 MCP 令牌、导入 Codex 登录、查看翻译用量 | [cli.py](../backend/src/reader/cli.py) |
 
-外部依赖：RSS／Atom 站点、YouTube（Data API 与公开 Atom、字幕）、Scweet、Reddit、各榜单上游（Hacker News、GitHub Trending、TechTwitter、Product Hunt），以及翻译模型（DeepSeek、OpenRouter、Codex 订阅）。启用条件由 [settings.py](../backend/src/reader/core/settings.py) 决定。网页爬取和规则编写不在 Reader 内，计划作为独立服务另行实现。
+外部依赖：RSS／Atom 站点、YouTube（Data API 与公开 Atom、字幕）、Scweet、Reddit、各榜单上游（Hacker News、GitHub Trending、TechTwitter（自 2026-11-09 起拦截服务器请求，App 和 MCP 暂时隐藏该榜单）、Product Hunt），以及翻译模型（DeepSeek、OpenRouter、Codex 订阅）。启用条件由 [settings.py](../backend/src/reader/core/settings.py) 决定。网页爬取和规则编写不在 Reader 内，计划作为独立服务另行实现。
 
 ## 模块职责与依赖
 

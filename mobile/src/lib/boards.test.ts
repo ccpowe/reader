@@ -3,6 +3,8 @@ import { test } from 'node:test';
 
 import type { BoardEntry, BoardResponse } from './api/schema.gen.ts';
 import {
+  BOARDS,
+  boardLabel,
   communityName,
   compact,
   defaultView,
@@ -157,4 +159,14 @@ test('missing translations are collected once and patched in', () => {
   assert.equal(after.items[1].title_translation?.text, '甲');
   assert.equal(after.items[2], before.items[2], 'untouched entries keep their identity');
   assert.equal(withTranslations(before, new Map(), new Map(), 'fp'), before);
+});
+
+test('TechTwitter is hidden from the tabs but keeps its name for saved items (P32)', () => {
+  assert.deepEqual(
+    BOARDS.map((board) => board.key),
+    ['hn', 'reddit', 'github', 'product_hunt'],
+  );
+  assert.equal(boardLabel('techtwitter'), 'X 技术热门');
+  assert.equal(boardLabel('hn'), 'Hacker News');
+  assert.equal(boardLabel('unknown'), 'unknown');
 });

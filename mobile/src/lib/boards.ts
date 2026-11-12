@@ -8,8 +8,8 @@ import { t } from './i18n/index.ts';
 
 export type BoardKey = 'hn' | 'reddit' | 'github' | 'techtwitter' | 'product_hunt';
 
-/** Tab order of the old app. */
-export const BOARDS: { key: BoardKey; label: string }[] = [
+/** Every board, in the old app's tab order, with its label in the interface language. */
+const ALL_BOARDS: { key: BoardKey; label: string }[] = [
   { key: 'hn', label: 'Hacker News' },
   { key: 'reddit', label: 'Reddit' },
   { key: 'github', label: 'GitHub' },
@@ -21,6 +21,18 @@ export const BOARDS: { key: BoardKey; label: string }[] = [
   },
   { key: 'product_hunt', label: 'Product Hunt' },
 ];
+
+/**
+ * The boards shown (tabs). TechTwitter is hidden: since 2026-11-09 its API answers server requests
+ * with a Vercel browser check (P32); it comes back with the separate web-crawling service.
+ */
+const HIDDEN: readonly BoardKey[] = ['techtwitter'];
+export const BOARDS = ALL_BOARDS.filter((board) => !HIDDEN.includes(board.key));
+
+/** A board's name, hidden ones included (items saved from them keep naming it). */
+export function boardLabel(key: string): string {
+  return ALL_BOARDS.find((board) => board.key === key)?.label ?? key;
+}
 
 /** A board version, its label in the interface language. */
 function variant(key: string): { key: string; label: string } {

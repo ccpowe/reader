@@ -4,7 +4,7 @@
  * Pure: runs under `node --test`.
  */
 import type { SavedItem } from './api/schema.gen.ts';
-import { BOARDS } from './boards.ts';
+import { boardLabel } from './boards.ts';
 import { toCard, type CardSourceKind } from './feed.ts';
 
 /** Which saved items a list shows: a search (title and summary) and a folder (null = 全部, '' = 未分类). */
@@ -23,6 +23,6 @@ const boardKinds: Record<string, CardSourceKind> = { github: 'github', reddit: '
 export function savedCard(item: SavedItem, now: number, absolute: (url: string | null | undefined) => string | null) {
   const card = toCard(item, now, absolute);
   if (item.source || !item.board) return card;
-  const label = BOARDS.find((b) => b.key === item.board)?.label ?? item.board;
+  const label = boardLabel(item.board);
   return { ...card, source: { ...card.source, name: label, kind: boardKinds[item.board] ?? 'web', avatarUrl: null } };
 }

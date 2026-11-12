@@ -197,7 +197,9 @@ def create_server() -> MCPServer:
     @server.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
     async def get_board(
         board: Annotated[
-            Literal["hn", "github", "techtwitter", "product_hunt", "reddit"],
+            # TechTwitter is hidden for now: its API answers server requests with a browser
+            # check (2026-11-09). The fetcher stays for when a crawling service can read it.
+            Literal["hn", "github", "product_hunt", "reddit"],
             Field(description="Which board."),
         ],
         variant: Annotated[

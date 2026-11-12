@@ -15,6 +15,7 @@ import { errorCode, isApiError } from '@/lib/api/errors';
 import { useIdentity, useSession } from '@/lib/app-session';
 import {
   BOARDS,
+  boardLabel,
   VARIANTS,
   defaultView,
   freshness,
@@ -214,7 +215,7 @@ export default function Boards() {
       ) : null}
       <Sheet
         onClose={() => setOptions(null)}
-        title={optionsView ? t().boards.adjust(BOARDS.find((b) => b.key === optionsView.board)?.label ?? '') : ''}
+        title={optionsView ? t().boards.adjust(boardLabel(optionsView.board)) : ''}
         visible={optionsView !== null}
       >
         {optionsView ? (
