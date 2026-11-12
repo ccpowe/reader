@@ -110,15 +110,26 @@ export function TabBar<K extends string>({
 }
 
 /** Floating add button (subscriptions): the one primary action of the page. */
-export function Fab({ icon, label, onPress }: { icon: TablerIcon; label: string; onPress?: () => void }) {
+export function Fab({
+  icon,
+  label,
+  onPress,
+  bottom = 24,
+}: {
+  icon: TablerIcon;
+  label: string;
+  onPress?: () => void;
+  /** distance from the bottom of the page (above a tab bar that lies over it) */
+  bottom?: number;
+}) {
   const shadow = useShadow('lg');
   return (
     <Pressable
       accessibilityLabel={label}
       accessibilityRole="button"
-      className="absolute bottom-6 right-6 h-14 w-14 items-center justify-center rounded-full bg-accent active:bg-accent-pressed"
+      className="absolute right-6 h-14 w-14 items-center justify-center rounded-full bg-accent active:bg-accent-pressed"
       onPress={onPress}
-      style={shadow}
+      style={[shadow, { bottom }]}
       testID="align-ignore"
     >
       <Icon icon={icon} size="toolbar" tone="on-accent" />

@@ -3,6 +3,7 @@
  * PRODUCT §3.5), the interface language (this device), and the sheets that choose or confirm.
  * Profile, password and about are pages of their own.
  */
+import { useTabBarInset } from '@/components/CollapsingChrome';
 import { onlineManager, useQuery } from '@tanstack/react-query';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
@@ -44,6 +45,7 @@ type SheetKind = 'interface' | 'language' | 'engine' | 'sign-out' | 'server' | n
 export default function Me() {
   useLanguage(); // texts follow the interface language
   const identity = useIdentity();
+  const tabBar = useTabBarInset();
   const current = useSession();
   const visible = useRef(true);
   useFocusEffect(
@@ -190,7 +192,7 @@ export default function Me() {
         user={{ name, avatarUrl: absolute(me.data?.avatar_url) }}
       />
       {notice ? (
-        <Animated.View className="absolute bottom-6 left-0 right-0" key={notice.id} pointerEvents="none" style={toastLife}>
+        <Animated.View className="absolute left-0 right-0" key={notice.id} pointerEvents="none" style={[toastLife, { bottom: tabBar + 24 }]}>
           <Toast message={notice.message} />
         </Animated.View>
       ) : null}

@@ -3,6 +3,7 @@
  * channel is shown, and hands data and callbacks to TodayView / FeedList / ChannelPicker.
  * Folders are swipeable pages (P8, old app); only the shown page and its neighbours hold a list.
  */
+import { ChromePadded, useTabBarInset } from '@/components/CollapsingChrome';
 import { onlineManager, useQuery } from '@tanstack/react-query';
 import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
@@ -56,6 +57,7 @@ function rowOf(subscription: SubscriptionResponse, absolute: (url: string | null
 export default function Today() {
   useLanguage(); // texts follow the interface language
   const identity = useIdentity();
+  const tabBar = useTabBarInset();
   const focused = useIsFocused();
   // A result that arrives after the user left Today is not shown (visit-scoped, react-guidelines §1).
   const visible = useRef(true);
@@ -124,17 +126,21 @@ export default function Today() {
   let body;
   if (subscriptions.data === undefined) {
     body = subscriptions.isError ? (
-      <EmptyState action={<Button onPress={() => void subscriptions.refetch()} title={t().common.retry} />} description={errorMessage(subscriptions.error)} title={t().common.loadFailed} />
+      <ChromePadded>
+        <EmptyState action={<Button onPress={() => void subscriptions.refetch()} title={t().common.retry} />} description={errorMessage(subscriptions.error)} title={t().common.loadFailed} />
+      </ChromePadded>
     ) : (
       <FeedList empty={<View />} state={{ kind: 'loading' }} />
     );
   } else if (list.length === 0) {
     body = (
-      <EmptyState
-        action={<Button large onPress={() => router.navigate('/subscriptions')} title={t().today.addSubscription} variant="primary" />}
-        description={t().today.noSubscriptionsHint}
-        title={t().today.noSubscriptions}
-      />
+      <ChromePadded>
+        <EmptyState
+          action={<Button large onPress={() => router.navigate('/subscriptions')} title={t().today.addSubscription} variant="primary" />}
+          description={t().today.noSubscriptionsHint}
+          title={t().today.noSubscriptions}
+        />
+      </ChromePadded>
     );
   } else if (shownChannel) {
     body = <FeedPage active={focused} identity={identity} key={shownChannel} onNotice={showNotice} scope={{ kind: 'subscription', id: shownChannel }} />;
@@ -185,7 +191,7 @@ export default function Today() {
         {body}
       </TodayView>
       {notice ? (
-        <Animated.View className="absolute bottom-6 left-0 right-0" key={notice.id} pointerEvents="none" style={toastLife}>
+        <Animated.View className="absolute left-0 right-0" key={notice.id} pointerEvents="none" style={[toastLife, { bottom: tabBar + 24 }]}>
           <Toast message={notice.message} />
         </Animated.View>
       ) : null}

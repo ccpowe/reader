@@ -21,6 +21,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { Avatar, Button, Divider, Icon, Input, Message, PageHeader, SectionHeading, Spinner, Switch, Text } from '@/ui';
+import { ChromeScrollView, CollapsingScreen } from '@/components/CollapsingChrome';
 import { t } from '@/lib/i18n';
 
 function SettingRow({
@@ -109,14 +110,20 @@ export function MeView({
   const ready = translation.kind === 'ready' && !translation.saving ? translation : null;
   const saving = translation.kind === 'ready' && translation.saving;
   const pending = translation.kind === 'loading' ? t().common.loading : undefined;
+  // The header scrolls with the page; the tab bar slides away while it scrolls (old app, PRODUCT §2).
   return (
-    <View className="flex-1 bg-canvas">
-      {banner ? (
-        <Message bar kind="warning">
-          {banner}
-        </Message>
-      ) : null}
-      <ScrollView className="flex-1" contentContainerClassName="pb-8">
+    <CollapsingScreen
+      header={
+        banner ? (
+          <Message bar kind="warning">
+            {banner}
+          </Message>
+        ) : undefined
+      }
+      revealKey={banner ? 'banner' : ''}
+      tab="me"
+    >
+      <ChromeScrollView contentContainerClassName="pb-8">
         <PageHeader title={t().me.title} user={user} />
         <Pressable
           accessibilityRole="button"
@@ -185,8 +192,8 @@ export function MeView({
         <Text className="mt-4 text-center tracking-widest" level="caption" tone="tertiary">
           {`READER · ${t().me.tagline}`}
         </Text>
-      </ScrollView>
-    </View>
+      </ChromeScrollView>
+    </CollapsingScreen>
   );
 }
 

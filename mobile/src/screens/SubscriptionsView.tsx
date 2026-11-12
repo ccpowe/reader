@@ -6,9 +6,10 @@
  */
 import { IconChevronLeft, IconFolder, IconLayoutGrid, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react-native';
 import { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useCSSVariable } from 'uniwind';
 
+import { ChromePadded, ChromeScrollView, CollapsingScreen, useTabBarInset } from '@/components/CollapsingChrome';
 import { FolderCard } from '@/components/FolderCard';
 import { SubscriptionRow } from '@/components/SubscriptionRow';
 import { folderLabel } from '@/lib/feed';
@@ -92,6 +93,7 @@ export function SubscriptionsView({
   onMenu?: (id: string) => void;
 }) {
   const spinner = useCSSVariable('--color-icon-neutral') as string | undefined;
+  const tabBar = useTabBarInset();
   const folders = state.kind === 'ready' ? state.folders : [];
   const total = folders.reduce((sum, folder) => sum + folder.items.length, 0);
   const matches = searchFolders(folders, query);
@@ -112,35 +114,37 @@ export function SubscriptionsView({
   let body;
   if (state.kind === 'loading') {
     body = (
-      <View className="items-center py-12">
-        <Spinner />
-      </View>
+      <ChromePadded>
+        <View className="items-center py-12">
+          <Spinner />
+        </View>
+      </ChromePadded>
     );
   } else if (state.kind === 'failed') {
-    body = <EmptyState action={<Button onPress={onRetry} title={t().common.retry} />} description={state.message} title={t().subs.loadFailed} />;
+    body = (
+      <ChromePadded>
+        <EmptyState action={<Button onPress={onRetry} title={t().common.retry} />} description={state.message} title={t().subs.loadFailed} />
+      </ChromePadded>
+    );
   } else if (total === 0) {
     body = (
-      <EmptyState
-        action={<Button large onPress={onAdd} title={t().subs.add} variant="primary" />}
-        description={t().subs.empty}
-        title={t().subs.emptyTitle}
-      />
+      <ChromePadded>
+        <EmptyState
+          action={<Button large onPress={onAdd} title={t().subs.add} variant="primary" />}
+          description={t().subs.empty}
+          title={t().subs.emptyTitle}
+        />
+      </ChromePadded>
     );
   } else {
+    // The header and tab bar slide away while the list scrolls (old app, PRODUCT §2).
     body = (
-      <ScrollView
-        contentContainerClassName="pb-24"
+      <ChromeScrollView
+        extraBottom={72}
         keyboardShouldPersistTaps="handled"
-        refreshControl={
-          onRefresh ? (
-            <RefreshControl
-              colors={spinner ? [spinner] : undefined}
-              onRefresh={onRefresh}
-              refreshing={refreshing}
-              tintColor={spinner}
-            />
-          ) : undefined
-        }
+        onRefresh={onRefresh}
+        refreshColor={spinner}
+        refreshing={refreshing}
       >
         <View className="pb-2 pt-2">
           <SearchField autoCapitalize="none" autoCorrect={false} onChangeText={onSearch} placeholder={t().subs.search} value={query} />
@@ -165,21 +169,27 @@ export function SubscriptionsView({
             </View>
           </>
         )}
-      </ScrollView>
+      </ChromeScrollView>
     );
   }
 
   return (
-    <View className="flex-1 bg-canvas">
-      {banner ? (
-        <Message bar kind="warning">
-          {banner}
-        </Message>
-      ) : null}
-      <PageHeader title={t().subs.title} user={user} />
+    <CollapsingScreen
+      header={
+        <>
+          {banner ? (
+            <Message bar kind="warning">
+              {banner}
+            </Message>
+          ) : null}
+          <PageHeader title={t().subs.title} user={user} />
+        </>
+      }
+      tab="subscriptions"
+    >
       {body}
-      {state.kind === 'ready' && total > 0 ? <Fab icon={IconPlus} label={t().subs.add} onPress={onAdd} /> : null}
-    </View>
+      {state.kind === 'ready' && total > 0 ? <Fab bottom={tabBar + 24} icon={IconPlus} label={t().subs.add} onPress={onAdd} /> : null}
+    </CollapsingScreen>
   );
 }
 

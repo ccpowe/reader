@@ -3,6 +3,7 @@
  * for them, and unsaving with Undo (the item leaves the list at once, PRODUCT §3.4).
  * Items saved from a board name the board and are only under 全部.
  */
+import { useTabBarInset } from '@/components/CollapsingChrome';
 import { onlineManager, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -139,6 +140,7 @@ function SavedList({
 export default function Saved() {
   useLanguage(); // texts follow the interface language
   const identity = useIdentity();
+  const tabBar = useTabBarInset();
   const visible = useRef(true);
   useFocusEffect(
     useCallback(() => {
@@ -205,7 +207,7 @@ export default function Saved() {
         <SavedList identity={identity} key={JSON.stringify(scope)} onUnsave={unsave} scope={scope} />
       </SavedView>
       {notice ? (
-        <Animated.View className="absolute bottom-6 left-0 right-0" key={notice.id} pointerEvents="box-none" style={toastLife}>
+        <Animated.View className="absolute left-0 right-0" key={notice.id} pointerEvents="box-none" style={[toastLife, { bottom: tabBar + 24 }]}>
           <Toast
             action={
               notice.undo ? (

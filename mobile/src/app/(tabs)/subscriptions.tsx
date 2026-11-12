@@ -3,6 +3,7 @@
  * and sheet are shown, and calls the subscription commands. Opening a subscription shows its own
  * page (P30; back returns here). Unsubscribing hides it at once with Undo (P27).
  */
+import { useTabBarInset } from '@/components/CollapsingChrome';
 import { onlineManager, useQuery } from '@tanstack/react-query';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -47,6 +48,7 @@ function useOnline(): boolean {
 export default function Subscriptions() {
   useLanguage(); // texts follow the interface language
   const identity = useIdentity();
+  const tabBar = useTabBarInset();
   const visible = useRef(true);
   useFocusEffect(
     useCallback(() => {
@@ -170,7 +172,7 @@ export default function Subscriptions() {
         user={name ? { name, avatarUrl: absolute(me.data?.avatar_url) } : undefined}
       />
       {notice ? (
-        <Animated.View className="absolute bottom-24 left-0 right-0" key={notice.id} pointerEvents="box-none" style={toastLife}>
+        <Animated.View className="absolute left-0 right-0" key={notice.id} pointerEvents="box-none" style={[toastLife, { bottom: tabBar + 96 }]}>
           <Toast
             action={
               notice.undo ? (

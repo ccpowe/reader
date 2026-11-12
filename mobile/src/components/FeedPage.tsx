@@ -118,6 +118,7 @@ export function FeedPage({
 
   return (
     <FeedList
+      active={active}
       empty={
         <EmptyState
           description={scope.kind === 'home' ? t().feed.emptyHome : t().feed.emptyOther}

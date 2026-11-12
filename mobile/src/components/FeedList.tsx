@@ -13,6 +13,7 @@ import { anchorStep, type ListPosition } from '@/lib/list-memory';
 import { Button, EmptyState, Message, SectionHeading, Skeleton, Text } from '@/ui';
 import { delayLoading, duration } from '@/ui/theme';
 
+import { useChromeInsets, useChromeScroll } from './CollapsingChrome';
 import { FeedCard, type FeedCardItem } from './FeedCard';
 import { t } from '@/lib/i18n';
 
@@ -52,7 +53,10 @@ export function FeedList({
   position,
   onPosition,
   heading,
+  active = true,
 }: {
+  /** the list on screen (a pager shows one of several): only it moves the collapsing chrome */
+  active?: boolean;
   state: FeedListState;
   /** a section heading above the items, when there are any (收藏: 最近收藏 / 搜索结果) */
   heading?: string;
@@ -76,13 +80,18 @@ export function FeedList({
   const anchor = useRef<string | null>(position?.anchorId ?? null);
   const restoring = useRef<'offset' | 'anchor' | 'done'>(position && position.offset > 0 ? 'offset' : 'done');
   const ids = useRef<string[]>([]);
+  // In a tab page the header and tab bar slide away as the list scrolls (CollapsingChrome); the
+  // content leaves room for them. The top area is measured before the list mounts.
+  const insets = useChromeInsets();
+  const topInset = insets.top;
   // FlatList needs one stable function for the life of the list.
   const [onViewable] = useState(() => ({ viewableItems }: ViewableInfo) => {
     const visible = viewableItems.filter((t) => t.isViewable && t.item).map((t) => t.item.id);
     if (restoring.current === 'anchor') {
       const step = anchorStep(anchor.current, visible, ids.current);
       if (step.kind === 'scroll') {
-        list.current?.scrollToIndex({ index: step.index, animated: false, viewPosition: 0 });
+        // Below the page's top area, which lies over the list.
+        list.current?.scrollToIndex({ index: step.index, animated: false, viewPosition: 0, viewOffset: topInset });
         return;
       }
       restoring.current = 'done';
@@ -95,10 +104,17 @@ export function FeedList({
     offset.current = y;
     onPosition?.({ offset: y, anchorId: anchor.current });
   }
+  const onScroll = useChromeScroll({
+    active,
+    onOffset: remember,
+    onDragStart: () => {
+      restoring.current = 'done'; // the reader took over
+    },
+  });
 
   if (state.kind === 'loading') {
     return (
-      <Animated.View className="gap-8 px-6 py-6" style={appearLate}>
+      <Animated.View className="gap-8 px-6 py-6" style={[appearLate, { marginTop: insets.top }]}>
         {[0, 1, 2, 3].map((index) => (
           <Skeleton key={index} lines={3} />
         ))}
@@ -106,10 +122,14 @@ export function FeedList({
     );
   }
   if (state.kind === 'failed') {
-    return <EmptyState action={<Button onPress={onRetry} title={t().common.retry} />} description={state.message} title={t().common.loadFailed} />;
+    return (
+      <View className="flex-1" style={{ paddingTop: insets.top }}>
+        <EmptyState action={<Button onPress={onRetry} title={t().common.retry} />} description={state.message} title={t().common.loadFailed} />
+      </View>
+    );
   }
   return (
-    <FlatList
+    <Animated.FlatList
       ListEmptyComponent={empty}
       ListFooterComponent={
         state.moreFailed ? (
@@ -139,6 +159,7 @@ export function FeedList({
           </>
         ) : undefined
       }
+      contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       data={state.items}
       keyExtractor={(item) => item.id}
       // Restore once the list can scroll that far (content ≥ offset + its own height); then check
@@ -148,9 +169,6 @@ export function FeedList({
         if (restoring.current !== 'offset' || viewport.current === 0 || height < offset.current + viewport.current) return;
         restoring.current = 'anchor';
         list.current?.scrollToOffset({ offset: offset.current, animated: false });
-      }}
-      onScrollBeginDrag={() => {
-        restoring.current = 'done'; // the reader took over
       }}
       onScrollToIndexFailed={(info) => {
         list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
@@ -162,13 +180,13 @@ export function FeedList({
       }}
       onEndReached={state.hasMore && !state.loadingMore && !state.moreFailed && !state.busy ? onEndReached : undefined}
       onEndReachedThreshold={0.6}
-      // Throttled while scrolling, and exact when a drag or fling ends.
-      onMomentumScrollEnd={(event) => remember(event.nativeEvent.contentOffset.y)}
-      onScroll={(event) => remember(event.nativeEvent.contentOffset.y)}
-      onScrollEndDrag={(event) => remember(event.nativeEvent.contentOffset.y)}
+      // Every frame for the chrome; the position is remembered now and then and when a drag or fling ends.
+      onScroll={onScroll}
       ref={list}
-      scrollEventThrottle={200}
-      refreshControl={<RefreshControl colors={spinner ? [spinner] : undefined} onRefresh={onRefresh} refreshing={refreshing} />}
+      scrollEventThrottle={16}
+      refreshControl={
+        <RefreshControl colors={spinner ? [spinner] : undefined} onRefresh={onRefresh} progressViewOffset={insets.top} refreshing={refreshing} />
+      }
       renderItem={({ item }) => <FeedCard item={item} onOpen={onOpen} onToggleSave={onToggleSave} />}
     />
   );

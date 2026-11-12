@@ -3,6 +3,7 @@
  * and its missing translations, and the 调整 sheet. Boards are swipeable pages (old app); only the
  * shown page and its neighbours hold a list. Opening an entry goes to the reader page (P29).
  */
+import { useTabBarInset } from '@/components/CollapsingChrome';
 import { onlineManager, useQuery } from '@tanstack/react-query';
 import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
@@ -99,6 +100,7 @@ function BoardPage({
 
   return (
     <BoardList
+      active={active}
       initialOffset={offsets.get(offsetKey) ?? 0}
       label={viewLabel(view)}
       onOffset={(offset) => offsets.set(offsetKey, offset)}
@@ -120,6 +122,7 @@ function BoardPage({
 export default function Boards() {
   useLanguage(); // texts follow the interface language
   const identity = useIdentity();
+  const tabBar = useTabBarInset();
   const focused = useIsFocused();
   const visible = useRef(true);
   useFocusEffect(
@@ -205,7 +208,7 @@ export default function Boards() {
         </PagerView>
       </BoardsView>
       {notice ? (
-        <Animated.View className="absolute bottom-6 left-0 right-0" key={notice.id} pointerEvents="none" style={toastLife}>
+        <Animated.View className="absolute left-0 right-0" key={notice.id} pointerEvents="none" style={[toastLife, { bottom: tabBar + 24 }]}>
           <Toast message={notice.message} />
         </Animated.View>
       ) : null}

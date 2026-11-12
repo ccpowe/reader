@@ -7,11 +7,12 @@
  */
 import { IconAdjustmentsHorizontal, IconRefresh } from '@tabler/icons-react-native';
 import { useState, type ReactNode } from 'react';
-import { FlatList, RefreshControl, View } from 'react-native';
+import { RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useCSSVariable } from 'uniwind';
 
 import { BoardEntry, type BoardEntryItem } from '@/components/BoardEntry';
+import { CollapsingScreen, useChromeInsets, useChromeScroll } from '@/components/CollapsingChrome';
 import { BOARDS, VARIANTS, communityName, type BoardKey, type BoardView, type Freshness } from '@/lib/boards';
 import { Button, EmptyState, IconButton, Input, Message, PageHeader, SectionHeading, Skeleton, Tabs, Text } from '@/ui';
 import { delayLoading, duration } from '@/ui/theme';
@@ -87,21 +88,29 @@ export function BoardsView({
   onSelectBoard?: (board: BoardKey) => void;
   onRefresh?: () => void;
 }) {
+  // The header and board tabs slide away while a board scrolls (old app, PRODUCT §2).
   return (
-    <View className="flex-1 bg-canvas">
-      {banner ? (
-        <Message bar kind="warning">
-          {banner}
-        </Message>
-      ) : null}
-      <PageHeader
-        aside={<IconButton disabled={refreshing} icon={IconRefresh} label={t().boards.refresh} onPress={onRefresh} />}
-        title={t().boards.title}
-        user={user}
-      />
-      <Tabs bordered onSelect={(key) => onSelectBoard?.(key)} options={BOARDS} selected={board} />
-      <View className="flex-1">{children}</View>
-    </View>
+    <CollapsingScreen
+      header={
+        <>
+          {banner ? (
+            <Message bar kind="warning">
+              {banner}
+            </Message>
+          ) : null}
+          <PageHeader
+            aside={<IconButton disabled={refreshing} icon={IconRefresh} label={t().boards.refresh} onPress={onRefresh} />}
+            title={t().boards.title}
+            user={user}
+          />
+          <Tabs bordered onSelect={(key) => onSelectBoard?.(key)} options={BOARDS} selected={board} />
+        </>
+      }
+      revealKey={board}
+      tab="boards"
+    >
+      {children}
+    </CollapsingScreen>
   );
 }
 
@@ -116,8 +125,11 @@ export function BoardList({
   onRefresh,
   onRetry,
   onOffset,
+  active = true,
 }: {
   state: BoardState;
+  /** the board on screen: only it moves the collapsing chrome */
+  active?: boolean;
   /** e.g. "r/codex · 热门", "周榜" */
   label?: string;
   refreshing?: boolean;
@@ -130,9 +142,11 @@ export function BoardList({
   onOffset?: (offset: number) => void;
 }) {
   const spinner = useCSSVariable('--color-icon-neutral') as string | undefined;
+  const insets = useChromeInsets();
+  const onScroll = useChromeScroll({ onOffset, active });
   if (state.kind === 'loading') {
     return (
-      <View>
+      <View style={{ paddingTop: insets.top }}>
         <ContextLine label={label} onOpenOptions={onOpenOptions} />
         <Animated.View className="gap-8 px-6 py-4" style={appearLate}>
           {[0, 1, 2, 3].map((index) => (
@@ -144,7 +158,7 @@ export function BoardList({
   }
   if (state.kind === 'unavailable') {
     return (
-      <View className="flex-1">
+      <View className="flex-1" style={{ paddingTop: insets.top }}>
         <ContextLine label={label} onOpenOptions={onOpenOptions} />
         <EmptyState
           action={<Button onPress={onRetry} title={t().common.retry} />}
@@ -156,7 +170,7 @@ export function BoardList({
   }
   if (state.kind === 'failed') {
     return (
-      <View className="flex-1">
+      <View className="flex-1" style={{ paddingTop: insets.top }}>
         <ContextLine label={label} onOpenOptions={onOpenOptions} />
         <EmptyState action={<Button onPress={onRetry} title={t().common.retry} />} description={state.message} title={t().common.loadFailed} />
       </View>
@@ -164,15 +178,17 @@ export function BoardList({
   }
   if (state.kind === 'no-community') {
     return (
-      <EmptyState
-        action={<Button large onPress={onOpenOptions} title={t().boards.pickCommunity} variant="primary" />}
-        description={t().boards.noCommunity}
-        title={t().boards.noCommunityTitle}
-      />
+      <View className="flex-1" style={{ paddingTop: insets.top }}>
+        <EmptyState
+          action={<Button large onPress={onOpenOptions} title={t().boards.pickCommunity} variant="primary" />}
+          description={t().boards.noCommunity}
+          title={t().boards.noCommunityTitle}
+        />
+      </View>
     );
   }
   return (
-    <FlatList
+    <Animated.FlatList
       ListEmptyComponent={<EmptyState title={t().boards.empty} />}
       ListHeaderComponent={
         <>
@@ -184,22 +200,24 @@ export function BoardList({
           ) : null}
         </>
       }
+      contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       contentOffset={{ x: 0, y: initialOffset }}
       data={state.rows}
       keyExtractor={(row) => `${row.rank}:${row.url}`}
-      onScroll={(event) => onOffset?.(event.nativeEvent.contentOffset.y)}
+      onScroll={onScroll}
       refreshControl={
         onRefresh ? (
           <RefreshControl
             colors={spinner ? [spinner] : undefined}
             onRefresh={onRefresh}
+            progressViewOffset={insets.top}
             refreshing={refreshing}
             tintColor={spinner}
           />
         ) : undefined
       }
       renderItem={({ item }) => <BoardEntry entry={item} onOpen={() => onOpen?.(item)} />}
-      scrollEventThrottle={64}
+      scrollEventThrottle={16}
     />
   );
 }

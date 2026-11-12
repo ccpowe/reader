@@ -3,9 +3,10 @@
  * tabs, then the list (the route passes a FeedList: "最近收藏" / "搜索结果", newest saved first).
  * Presentational frame.
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { CollapsingScreen } from '@/components/CollapsingChrome';
 import { Message, PageHeader, SearchField, Tabs } from '@/ui';
 import { t } from '@/lib/i18n';
 
@@ -30,33 +31,46 @@ export function SavedView({
   onSelectFolder?: (folder: string | null) => void;
   children: ReactNode;
 }) {
+  const [searching, setSearching] = useState(false);
+  // The header, search and folder tabs slide away while the list scrolls (old app, PRODUCT §2),
+  // except while the search field has the keyboard.
   return (
-    <View className="flex-1 bg-canvas">
-      {banner ? (
-        <Message bar kind="warning">
-          {banner}
-        </Message>
-      ) : null}
-      <PageHeader title={t().saved.title} user={user} />
-      <View className="pb-1 pt-2">
-        <SearchField
-          autoCapitalize="none"
-          autoCorrect={false}
-          onChangeText={onSearch}
-          placeholder={t().saved.search}
-          returnKeyType="search"
-          value={query}
-        />
-      </View>
-      {folders.length > 0 ? (
-        <Tabs<string | null>
-          bordered
-          onSelect={(key) => onSelectFolder?.(key)}
-          options={[{ key: null, label: t().common.all }, ...folders]}
-          selected={folder}
-        />
-      ) : null}
-      <View className="flex-1">{children}</View>
-    </View>
+    <CollapsingScreen
+      locked={searching}
+      header={
+        <>
+          {banner ? (
+            <Message bar kind="warning">
+              {banner}
+            </Message>
+          ) : null}
+          <PageHeader title={t().saved.title} user={user} />
+          <View className="pb-1 pt-2">
+            <SearchField
+              autoCapitalize="none"
+              autoCorrect={false}
+              onBlur={() => setSearching(false)}
+              onChangeText={onSearch}
+              onFocus={() => setSearching(true)}
+              placeholder={t().saved.search}
+              returnKeyType="search"
+              value={query}
+            />
+          </View>
+          {folders.length > 0 ? (
+            <Tabs<string | null>
+              bordered
+              onSelect={(key) => onSelectFolder?.(key)}
+              options={[{ key: null, label: t().common.all }, ...folders]}
+              selected={folder}
+            />
+          ) : null}
+        </>
+      }
+      revealKey={folder ?? ''}
+      tab="saved"
+    >
+      {children}
+    </CollapsingScreen>
   );
 }

@@ -8,6 +8,7 @@ import { IconAdjustmentsHorizontal, IconX } from '@tabler/icons-react-native';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { CollapsingScreen } from '@/components/CollapsingChrome';
 import { IconButton, Message, PageHeader, SolidCount, Tabs, Text } from '@/ui';
 import { t } from '@/lib/i18n';
 
@@ -50,8 +51,8 @@ export function TodayView({
       onPress={onOpenChannels}
     />
   );
-  return (
-    <View className="flex-1 bg-canvas">
+  const header = (
+    <>
       {banner ? (
         <Message bar kind="warning">
           {banner}
@@ -74,8 +75,13 @@ export function TodayView({
           trailing={filter}
         />
       )}
-      <View className="flex-1">{children}</View>
-    </View>
+    </>
+  );
+  // The header and folder tabs slide away while the feed scrolls (old app, PRODUCT §2).
+  return (
+    <CollapsingScreen header={header} revealKey={`${channel ?? ''}|${folder ?? ''}`} tab="index">
+      {children}
+    </CollapsingScreen>
   );
 }
 
