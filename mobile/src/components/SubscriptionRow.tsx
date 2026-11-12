@@ -1,7 +1,7 @@
 /**
  * A subscription inside a folder, old app frame (checked on the device, P26): its icon, name,
  * address, and a status line — "同步正常", or the problem in its place (P23 R4-B) with the status
- * color on a small icon only (DESIGN 4). The row opens the subscription (Today, it alone); ⋮ holds
+ * color on a small icon only (DESIGN 4). The row opens the subscription's own page (P30); ⋮ holds
  * rename / move / 全部 / unsubscribe. Tapping the line of a row with a problem expands the explanation.
  */
 import {

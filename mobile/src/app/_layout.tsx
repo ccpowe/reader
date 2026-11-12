@@ -29,6 +29,7 @@ function Routes() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="article/[id]" />
         <Stack.Screen name="board-item" />
+        <Stack.Screen name="subscription/[id]" />
       </Stack.Protected>
     </Stack>
   );

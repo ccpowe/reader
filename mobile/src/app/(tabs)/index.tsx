@@ -3,22 +3,20 @@
  * channel is shown, and hands data and callbacks to TodayView / FeedList / ChannelPicker.
  * Folders are swipeable pages (P8, old app); only the shown page and its neighbours hold a list.
  */
-import { onlineManager, useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { router, useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { onlineManager, useQuery } from '@tanstack/react-query';
+import { router, useFocusEffect, useIsFocused } from 'expo-router';
+import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import Animated from 'react-native-reanimated';
 
-import { FeedList, type FeedListState } from '@/components/FeedList';
-import type { FeedCardItem } from '@/components/FeedCard';
-import type { FeedItem, SubscriptionResponse } from '@/lib/api/schema.gen';
-import { queryClient, useIdentity, useSession } from '@/lib/app-session';
-import { absoluteUrl, folderLabel, folderList, homeNewCount, sourceKind, toCard, type FeedScope } from '@/lib/feed';
+import { FeedList } from '@/components/FeedList';
+import { FeedPage } from '@/components/FeedPage';
+import type { SubscriptionResponse } from '@/lib/api/schema.gen';
+import { useIdentity, useSession } from '@/lib/app-session';
+import { absoluteUrl, folderLabel, folderList, homeNewCount, sourceKind } from '@/lib/feed';
 import { markViewed, setIncludeInHome, subscriptionsQuery } from '@/lib/queries/subscriptions';
-import { feedQuery, meQuery, setSaved, UnknownOutcome } from '@/lib/queries/today';
-import { createListMemory } from '@/lib/list-memory';
-import { isAborted } from '@/lib/query';
+import { meQuery, UnknownOutcome } from '@/lib/queries/today';
 import { errorMessage } from '@/lib/user-error';
 import { ChannelPicker, type ChannelRow } from '@/screens/ChannelPicker';
 import { TodayView, todayLabel } from '@/screens/TodayView';
@@ -40,106 +38,6 @@ const toastLife = {
   animationDuration: `${duration.toast}ms`,
   animationFillMode: 'both',
 } as const;
-
-/** Where each feed was left, per identity and scope, for this app run (old app: no jump back to top). */
-const positions = createListMemory();
-
-/** Cards are rebuilt only for changed items: same API object and same minute → same card object. */
-const cardCache = new WeakMap<FeedItem, { minute: number; card: FeedCardItem }>();
-function cardsOf(items: FeedItem[], now: number, absolute: (url: string | null | undefined) => string | null): FeedCardItem[] {
-  const minute = Math.floor(now / 60_000);
-  return items.map((item) => {
-    const hit = cardCache.get(item);
-    if (hit && hit.minute === minute) return hit.card;
-    const card = toCard(item, now, absolute);
-    cardCache.set(item, { minute, card });
-    return card;
-  });
-}
-
-function FeedPage({
-  identity,
-  scope,
-  active,
-  onNotice,
-}: {
-  identity: string;
-  scope: FeedScope;
-  /** the page on screen, on a focused tab: only then does it follow the server */
-  active: boolean;
-  onNotice: (message: string) => void;
-}) {
-  const apiBase = useApiBase();
-  const query = useInfiniteQuery({ ...feedQuery(identity, scope), subscribed: active });
-  const [refreshing, setRefreshing] = useState(false);
-  const offsetKey = `${identity}|${JSON.stringify(scope)}`;
-
-  // Times are relative to when this feed was loaded (render stays pure; a refresh updates them).
-  const items = useMemo(
-    () => cardsOf(query.data?.pages.flatMap((page) => page.items) ?? [], query.dataUpdatedAt, absoluteUrl(apiBase)),
-    [query.data, query.dataUpdatedAt, apiBase],
-  );
-
-  async function refresh() {
-    setRefreshing(true);
-    try {
-      // The new-content counts (filter badge, picker) come with the subscriptions.
-      await Promise.all([query.refetch(), queryClient.invalidateQueries({ queryKey: subscriptionsQuery(identity).queryKey })]);
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
-  // Stable references for the memoized cards (react-guidelines §6).
-  const open = useCallback((id: string) => router.push({ pathname: '/article/[id]', params: { id } }), []);
-  const toggleSave = useCallback(
-    async (item: FeedCardItem) => {
-      try {
-        await setSaved(identity, item.id, !item.isSaved);
-      } catch (error) {
-        if (error instanceof UnknownOutcome) onNotice('没收到服务器的确认，已重新加载收藏状态。');
-        else onNotice(item.isSaved ? `取消收藏没有成功：${errorMessage(error)}` : `收藏没有成功：${errorMessage(error)}`);
-      }
-    },
-    [identity, onNotice],
-  );
-  const onToggleSave = useCallback((item: FeedCardItem) => void toggleSave(item), [toggleSave]);
-
-  let state: FeedListState;
-  if (query.data === undefined) {
-    state = query.isError && !isAborted(query.error) ? { kind: 'failed', message: errorMessage(query.error) } : { kind: 'loading' };
-  } else {
-    state = {
-      kind: 'ready',
-      items,
-      refreshFailed: query.isRefetchError && !refreshing ? '刷新没有成功，显示的是之前的内容。' : null,
-      hasMore: query.hasNextPage,
-      loadingMore: query.isFetchingNextPage,
-      moreFailed: query.isFetchNextPageError ? `更早的内容没加载出来：${errorMessage(query.error)}` : null,
-      busy: query.isFetching,
-    };
-  }
-
-  return (
-    <FeedList
-      empty={
-        <EmptyState
-          description={scope.kind === 'home' ? '订阅有新内容时会出现在这里。' : '这里还没有内容。'}
-          title="还没有内容"
-        />
-      }
-      position={positions.get(offsetKey)}
-      onEndReached={() => void query.fetchNextPage({ cancelRefetch: false })}
-      onPosition={(position) => positions.remember(offsetKey, position)}
-      onOpen={open}
-      onRefresh={() => void refresh()}
-      onRetry={() => void query.refetch()}
-      onToggleSave={onToggleSave}
-      refreshing={refreshing}
-      state={state}
-    />
-  );
-}
 
 function rowOf(subscription: SubscriptionResponse, absolute: (url: string | null | undefined) => string | null): ChannelRow {
   return {
@@ -202,16 +100,6 @@ export default function Today() {
     setPickerOpen(false);
     const subscription = list.find((s) => s.id === id);
     if (subscription) void markViewed(identity, subscription).catch(() => undefined); // the count is a hint; a failure costs nothing
-  }
-
-  // 订阅 opens one subscription here (`/?channel=<id>&at=<time>`; it has marked it viewed). Each
-  // request has its own `at`, so opening the same one again after leaving it works too.
-  const { channel: requested, at } = useLocalSearchParams<{ channel?: string; at?: string }>();
-  const [handled, setHandled] = useState<string | undefined>(undefined);
-  if (requested && at && at !== handled) {
-    setHandled(at);
-    setChannel(requested);
-    setPickerOpen(false);
   }
 
   async function toggleHome(id: string, include: boolean) {

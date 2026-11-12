@@ -1,7 +1,7 @@
 /**
  * 订阅 — assembly only (react-guidelines §6): reads the subscriptions, keeps which folder, search
- * and sheet are shown, and calls the subscription commands. Opening a subscription shows it alone
- * on Today (PRODUCT §3.3, old app). Unsubscribing hides it at once with Undo (P27).
+ * and sheet are shown, and calls the subscription commands. Opening a subscription shows its own
+ * page (P30; back returns here). Unsubscribing hides it at once with Undo (P27).
  */
 import { onlineManager, useQuery } from '@tanstack/react-query';
 import { router, useFocusEffect } from 'expo-router';
@@ -152,7 +152,7 @@ export default function Subscriptions() {
         onOpen={(id) => {
           const subscription = list.find((s) => s.id === id);
           if (subscription) void markViewed(identity, subscription).catch(() => undefined); // the count is a hint
-          router.navigate({ pathname: '/', params: { channel: id, at: String(Date.now()) } });
+          router.push({ pathname: '/subscription/[id]', params: { id } });
         }}
         onOpenFolder={setOpenFolder}
         onRefresh={() => void refresh()}
