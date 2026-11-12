@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Modal, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconX } from '@tabler/icons-react-native';
@@ -28,10 +29,13 @@ export function Sheet({
   const insets = useSafeAreaInsets();
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
-      <Pressable accessibilityLabel="关闭" className="flex-1 bg-overlay" onPress={onClose} />
-      <SheetBody bottomInset={insets.bottom} onClose={onClose} subtitle={subtitle} title={title}>
-        {children}
-      </SheetBody>
+      {/* A field in the sheet stays above the keyboard: the sheet rises with it. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+        <Pressable accessibilityLabel="关闭" className="flex-1 bg-overlay" onPress={onClose} />
+        <SheetBody bottomInset={insets.bottom} onClose={onClose} subtitle={subtitle} title={title}>
+          {children}
+        </SheetBody>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

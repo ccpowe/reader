@@ -4,7 +4,7 @@
  * Folders are swipeable pages (P8, old app); only the shown page and its neighbours hold a list.
  */
 import { onlineManager, useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { router, useFocusEffect, useIsFocused } from 'expo-router';
+import { router, useFocusEffect, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { View } from 'react-native';
 import PagerView from 'react-native-pager-view';
@@ -15,7 +15,8 @@ import type { FeedCardItem } from '@/components/FeedCard';
 import type { FeedItem, SubscriptionResponse } from '@/lib/api/schema.gen';
 import { queryClient, useIdentity, useSession } from '@/lib/app-session';
 import { absoluteUrl, folderLabel, folderList, homeNewCount, sourceKind, toCard, type FeedScope } from '@/lib/feed';
-import { feedQuery, markViewed, meQuery, setIncludeInHome, setSaved, subscriptionsQuery, UnknownOutcome } from '@/lib/queries/today';
+import { markViewed, setIncludeInHome, subscriptionsQuery } from '@/lib/queries/subscriptions';
+import { feedQuery, meQuery, setSaved, UnknownOutcome } from '@/lib/queries/today';
 import { createListMemory } from '@/lib/list-memory';
 import { isAborted } from '@/lib/query';
 import { errorMessage } from '@/lib/user-error';
@@ -186,6 +187,8 @@ export default function Today() {
   }, []);
   const current = Math.min(page, pages.length - 1);
   const channelSubscription = channel ? list.find((s) => s.id === channel) : undefined;
+  // A subscription gone since (unsubscribed elsewhere) is shown no longer.
+  const shownChannel = channel && (subscriptions.data === undefined || channelSubscription) ? channel : null;
 
   function selectFolder(folder: string | null) {
     const index = pages.indexOf(folder);
@@ -199,6 +202,16 @@ export default function Today() {
     setPickerOpen(false);
     const subscription = list.find((s) => s.id === id);
     if (subscription) void markViewed(identity, subscription).catch(() => undefined); // the count is a hint; a failure costs nothing
+  }
+
+  // 订阅 opens one subscription here (`/?channel=<id>&at=<time>`; it has marked it viewed). Each
+  // request has its own `at`, so opening the same one again after leaving it works too.
+  const { channel: requested, at } = useLocalSearchParams<{ channel?: string; at?: string }>();
+  const [handled, setHandled] = useState<string | undefined>(undefined);
+  if (requested && at && at !== handled) {
+    setHandled(at);
+    setChannel(requested);
+    setPickerOpen(false);
   }
 
   async function toggleHome(id: string, include: boolean) {
@@ -232,8 +245,8 @@ export default function Today() {
         title="还没有订阅"
       />
     );
-  } else if (channel) {
-    body = <FeedPage active={focused} identity={identity} key={channel} onNotice={showNotice} scope={{ kind: 'subscription', id: channel }} />;
+  } else if (shownChannel) {
+    body = <FeedPage active={focused} identity={identity} key={shownChannel} onNotice={showNotice} scope={{ kind: 'subscription', id: shownChannel }} />;
   } else {
     body = (
       <PagerView
@@ -287,7 +300,7 @@ export default function Today() {
       ) : null}
       <Sheet onClose={() => setPickerOpen(false)} subtitle="勾选的频道显示在全部中" title="选择频道" visible={pickerOpen}>
         <ChannelPicker
-          channel={channel}
+          channel={shownChannel}
           groups={groups}
           onClear={() => {
             setChannel(null);

@@ -27,7 +27,8 @@ import {
 } from '@/lib/boards';
 import { absoluteUrl } from '@/lib/feed';
 import { boardQuery, boardTranslationsQuery, refreshBoard, translationPreferenceQuery } from '@/lib/queries/boards';
-import { meQuery, subscriptionsQuery } from '@/lib/queries/today';
+import { subscriptionsQuery } from '@/lib/queries/subscriptions';
+import { meQuery } from '@/lib/queries/today';
 import { isAborted } from '@/lib/query';
 import { errorMessage } from '@/lib/user-error';
 import { BoardList, BoardOptions, BoardsView, type BoardState } from '@/screens/BoardsView';

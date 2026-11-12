@@ -96,31 +96,31 @@ export const subscriptions: { name: string; items: SubscriptionItem[] }[] = [
   {
     name: 'AI',
     items: [
-      { id: 's1', name: 'Simon Willison', kind: 'rss', address: 'simonwillison.net/atom/everything', newCount: 3, health: { kind: 'ok' } },
-      { id: 's2', name: 'Andrej Karpathy', kind: 'x', address: '@karpathy', newCount: 1, health: { kind: 'failing', reason: 'X 服务没有配置', since: '3 小时前' } },
-      { id: 's3', name: 'Two Minute Papers', kind: 'youtube', address: 'youtube.com/@TwoMinutePapers', newCount: 0, health: { kind: 'ok' } },
-      { id: 's4', name: 'swyx', kind: 'x', address: '@swyx', newCount: 12, health: { kind: 'gap', detail: '两次扫描之间更新超过 120 条' } },
-      { id: 's11', name: 'OpenAI News', kind: 'rss', address: 'openai.com/news/rss.xml', newCount: 2, health: { kind: 'ok' } },
-      { id: 's12', name: 'r/MachineLearning', kind: 'reddit', address: 'reddit.com/r/MachineLearning', newCount: 1520, health: { kind: 'ok' } },
+      { id: 's1', name: 'Simon Willison', kind: 'rss', address: 'simonwillison.net/atom/everything', newCount: 3, health: { kind: 'ok' }, includeInHome: true },
+      { id: 's2', name: 'Andrej Karpathy', kind: 'x', address: '@karpathy', newCount: 1, health: { kind: 'failing', reason: 'X 服务没有配置', since: '3 小时前' }, includeInHome: true },
+      { id: 's3', name: 'Two Minute Papers', kind: 'youtube', address: 'youtube.com/@TwoMinutePapers', newCount: 0, health: { kind: 'ok' }, includeInHome: true },
+      { id: 's4', name: 'swyx', kind: 'x', address: '@swyx', newCount: 12, health: { kind: 'gap', detail: '两次扫描之间更新超过 120 条' }, includeInHome: true },
+      { id: 's11', name: 'OpenAI News', kind: 'rss', address: 'openai.com/news/rss.xml', newCount: 2, health: { kind: 'ok' }, includeInHome: true },
+      { id: 's12', name: 'r/MachineLearning', kind: 'reddit', address: 'reddit.com/r/MachineLearning', newCount: 1520, health: { kind: 'ok' }, includeInHome: true },
     ],
   },
   {
     name: '新闻',
     items: [
-      { id: 's5', name: 'The Verge', kind: 'rss', address: 'theverge.com/rss/index.xml', newCount: 8, health: { kind: 'ok' } },
-      { id: 's6', name: '一个名字特别长的独立开发者技术博客（每周更新）', kind: 'web', address: 'example.com/blog/feed.xml', newCount: 0, health: { kind: 'failing', reason: '网站连不上', since: '昨天' } },
-      { id: 's7', name: 'Hacker News Daily', kind: 'rss', address: 'hn.algolia.com/daily.rss', newCount: 2, health: { kind: 'ok' } },
+      { id: 's5', name: 'The Verge', kind: 'rss', address: 'theverge.com/rss/index.xml', newCount: 8, health: { kind: 'ok' }, includeInHome: true },
+      { id: 's6', name: '一个名字特别长的独立开发者技术博客（每周更新）', kind: 'web', address: 'example.com/blog/feed.xml', newCount: 0, health: { kind: 'failing', reason: '网站连不上', since: '昨天' }, includeInHome: true },
+      { id: 's7', name: 'Hacker News Daily', kind: 'rss', address: 'hn.algolia.com/daily.rss', newCount: 2, health: { kind: 'ok' }, includeInHome: true },
     ],
   },
   {
     name: '项目动态',
-    items: [{ id: 's9', name: 'Release notes from claude-code', kind: 'github', address: 'github.com/anthropics/claude-code/releases.atom', newCount: 10, health: { kind: 'ok' } }],
+    items: [{ id: 's9', name: 'Release notes from claude-code', kind: 'github', address: 'github.com/anthropics/claude-code/releases.atom', newCount: 10, health: { kind: 'ok' }, includeInHome: true }],
   },
   {
     name: '编程',
     items: [
-      { id: 's8', name: 'r/python', kind: 'reddit', address: 'reddit.com/r/python', newCount: 5, health: { kind: 'ok' } },
-      { id: 's10', name: 'Fireship', kind: 'youtube', address: 'youtube.com/@Fireship', newCount: 1, health: { kind: 'ok' } },
+      { id: 's8', name: 'r/python', kind: 'reddit', address: 'reddit.com/r/python', newCount: 5, health: { kind: 'ok' }, includeInHome: true },
+      { id: 's10', name: 'Fireship', kind: 'youtube', address: 'youtube.com/@Fireship', newCount: 1, health: { kind: 'ok' }, includeInHome: true },
     ],
   },
 ];

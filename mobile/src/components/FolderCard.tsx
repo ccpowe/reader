@@ -10,7 +10,7 @@ import { Pressable, View } from 'react-native';
 import { Icon, Text } from '@/ui';
 
 import { SourceMark } from './FeedCard';
-import type { SubscriptionItem } from './SubscriptionRow';
+import { hasProblem, type SubscriptionItem } from '@/lib/subscriptions';
 
 const spots = [
   { left: 0, top: 4 },
@@ -20,7 +20,7 @@ const spots = [
 ];
 
 export function FolderCard({ name, items, onPress }: { name: string; items: SubscriptionItem[]; onPress?: () => void }) {
-  const problems = items.filter((item) => item.health.kind !== 'ok').length;
+  const problems = items.filter((item) => hasProblem(item.health)).length;
   const sample = items.slice(0, 2).map((item) => item.name).join('、') + (items.length > 2 ? ' 等' : '');
   const shown = items.slice(0, spots.length);
   const rest = items.length - shown.length;

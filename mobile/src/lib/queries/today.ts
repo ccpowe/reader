@@ -5,7 +5,7 @@
 import { infiniteQueryOptions, queryOptions, type InfiniteData } from '@tanstack/react-query';
 
 import { isApiError } from '../api/errors';
-import type { ArticleDetail, MeResponse, PageFeedItem, SubscriptionResponse } from '../api/schema.gen';
+import type { ArticleDetail, MeResponse, PageFeedItem } from '../api/schema.gen';
 import { queryClient, session } from '../app-session';
 import { patchItems, scopeParams, type FeedScope } from '../feed';
 import { key } from '../query';
@@ -17,13 +17,6 @@ export function meQuery(identity: string) {
     queryKey: key(identity, 'me'),
     queryFn: ({ signal }) => session.api().request<MeResponse>('/me', { signal }),
     staleTime: 5 * 60_000,
-  });
-}
-
-export function subscriptionsQuery(identity: string) {
-  return queryOptions({
-    queryKey: key(identity, 'subscriptions'),
-    queryFn: ({ signal }) => session.api().request<SubscriptionResponse[]>('/subscriptions', { signal }),
   });
 }
 
@@ -97,62 +90,4 @@ export async function setSaved(identity: string, articleId: string, saved: boole
   } finally {
     saving.delete(articleId);
   }
-}
-
-type SubscriptionPatch = Partial<Pick<SubscriptionResponse, 'include_in_home' | 'new_count'>>;
-
-/** Change only the given fields, so concurrent commands on one subscription do not undo each other. */
-function patchSubscription(identity: string, id: string, patch: SubscriptionPatch) {
-  queryClient.setQueryData<SubscriptionResponse[]>(key(identity, 'subscriptions'), (list) =>
-    list?.map((s) => (s.id === id ? { ...s, ...patch } : s)),
-  );
-}
-
-/** One change per subscription at a time; later ones wait (no overlapping PATCH, no lost update). */
-const queues = new Map<string, Promise<unknown>>();
-function serially<T>(id: string, task: () => Promise<T>): Promise<T> {
-  const run = (queues.get(id) ?? Promise.resolve()).catch(() => undefined).then(task);
-  queues.set(id, run);
-  void run.finally(() => queues.get(id) === run && queues.delete(id)).catch(() => undefined);
-  return run;
-}
-
-/** Show a subscription in 全部 or not (the picker's checkbox); 全部 reloads after. */
-const wanted = new Map<string, boolean>();
-
-export function setIncludeInHome(identity: string, subscription: SubscriptionResponse, include: boolean): Promise<void> {
-  const list = { queryKey: key(identity, 'subscriptions') };
-  // The cache shows what the user last asked for; requests run in order and never write it back,
-  // so an earlier request finishing late cannot undo a later tap.
-  wanted.set(subscription.id, include);
-  patchSubscription(identity, subscription.id, { include_in_home: include });
-  return serially(subscription.id, async () => {
-    await queryClient.cancelQueries(list);
-    try {
-      await session.api().request<SubscriptionResponse>(`/subscriptions/${subscription.id}`, {
-        method: 'PATCH',
-        body: { include_in_home: include },
-      });
-      void queryClient.invalidateQueries({ queryKey: key(identity, 'feed', { kind: 'home' }) });
-    } catch (error) {
-      if (definite(error)) {
-        if (wanted.get(subscription.id) === include) patchSubscription(identity, subscription.id, { include_in_home: !include });
-        throw error;
-      }
-      void queryClient.invalidateQueries(list);
-      throw new UnknownOutcome();
-    }
-  });
-}
-
-/** Opening one subscription clears its new-content count up to what it has now (old app). */
-export function markViewed(identity: string, subscription: SubscriptionResponse): Promise<void> {
-  if (subscription.new_count <= 0 || subscription.latest_sequence <= 0) return Promise.resolve();
-  return serially(subscription.id, async () => {
-    const updated = await session.api().request<SubscriptionResponse>(`/subscriptions/${subscription.id}/viewed`, {
-      method: 'POST',
-      body: { sequence: subscription.latest_sequence },
-    });
-    patchSubscription(identity, subscription.id, { new_count: updated.new_count });
-  });
 }

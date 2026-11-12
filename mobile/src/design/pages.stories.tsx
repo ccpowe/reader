@@ -16,7 +16,7 @@ import { ChannelPicker } from '@/screens/ChannelPicker';
 import { Button, EmptyState, Text } from '@/ui';
 import { MeView } from '@/screens/MeView';
 import { SavedView } from '@/screens/SavedView';
-import { AddSubscriptionForm, SubscriptionsView } from '@/screens/SubscriptionsView';
+import { AddSubscriptionForm, SubscriptionMenu, SubscriptionsView } from '@/screens/SubscriptionsView';
 import { TodayView } from '@/screens/TodayView';
 
 import { article, boardEntries, feed, folders, subscriptions, user } from './fixtures';
@@ -114,49 +114,36 @@ export const BoardsOptionsReddit = story('榜单 · 调整弹层（Reddit）', (
 
 // --- 订阅 -----------------------------------------------------------------------
 
-export const Subscriptions = story('订阅 · 正常（含有问题的订阅）', () => (
+const subFolders = subscriptions.map((folder) => ({ key: folder.name, ...folder }));
+const subs = (props: Partial<Parameters<typeof SubscriptionsView>[0]> = {}) => (
   <TabFrame tab="subscriptions">
-    <SubscriptionsView user={user} folders={subscriptions} />
+    <SubscriptionsView state={{ kind: 'ready', folders: subFolders }} user={user} {...props} />
   </TabFrame>
-));
-export const SubscriptionsFolder = story('订阅 · 打开分类', () => (
-  <TabFrame tab="subscriptions">
-    <SubscriptionsView user={user} folders={subscriptions} openFolder="AI" />
-  </TabFrame>
-));
-export const SubscriptionsExpanded = story('订阅 · 展开问题说明', () => (
-  <TabFrame tab="subscriptions">
-    <SubscriptionsView user={user} expandedId="s2" folders={subscriptions} openFolder="AI" />
-  </TabFrame>
-));
-export const SubscriptionsSearch = story('订阅 · 搜索', () => (
-  <TabFrame tab="subscriptions">
-    <SubscriptionsView user={user} folders={subscriptions} query="reddit" />
-  </TabFrame>
-));
-export const SubscriptionsNoMatch = story('订阅 · 搜索无结果', () => (
-  <TabFrame tab="subscriptions">
-    <SubscriptionsView user={user} folders={subscriptions} query="zzz" />
-  </TabFrame>
-));
-export const SubscriptionsEmpty = story('订阅 · 还没有订阅', () => (
-  <TabFrame tab="subscriptions">
-    <SubscriptionsView user={user} folders={[]} />
-  </TabFrame>
-));
+);
+export const Subscriptions = story('订阅 · 正常（含有问题的订阅）', () => subs());
+export const SubscriptionsFolder = story('订阅 · 打开分类', () => subs({ openFolder: 'AI' }));
+export const SubscriptionsExpanded = story('订阅 · 展开问题说明', () => subs({ expandedId: 's2', openFolder: 'AI' }));
+export const SubscriptionsSearch = story('订阅 · 搜索', () => subs({ query: 'reddit' }));
+export const SubscriptionsNoMatch = story('订阅 · 搜索无结果', () => subs({ query: 'zzz' }));
+export const SubscriptionsEmpty = story('订阅 · 还没有订阅', () => subs({ state: { kind: 'ready', folders: [] } }));
 export const SubscriptionsAdd = story('订阅 · 添加弹层（网站）', () => (
-  <WithSheet page={<TabFrame tab="subscriptions"><SubscriptionsView user={user} folders={subscriptions} /></TabFrame>} title="添加订阅">
-    <AddSubscriptionForm folder="AI" folders={folders} type="website" value="https://simonwillison.net" />
+  <WithSheet page={subs()} title="添加订阅">
+    <AddSubscriptionForm folders={folders} initial={{ folder: 'AI', type: 'website', value: 'https://simonwillison.net' }} />
   </WithSheet>
 ));
 export const SubscriptionsAddError = story('订阅 · 添加失败', () => (
-  <WithSheet page={<TabFrame tab="subscriptions"><SubscriptionsView user={user} folders={subscriptions} /></TabFrame>} title="添加订阅">
-    <AddSubscriptionForm error="这个网站没有找到 RSS / Atom。可以试试直接填它的 RSS 地址。" folder={null} folders={folders} type="website" value="https://example.com" />
+  <WithSheet page={subs()} title="添加订阅">
+    <AddSubscriptionForm error="这个网站没有找到 RSS / Atom。可以试试直接填它的 RSS 地址。" folders={folders} initial={{ type: 'website', value: 'https://example.com' }} />
   </WithSheet>
 ));
 export const SubscriptionsAdding = story('订阅 · 添加中', () => (
-  <WithSheet page={<TabFrame tab="subscriptions"><SubscriptionsView user={user} folders={subscriptions} /></TabFrame>} title="添加订阅">
-    <AddSubscriptionForm folder={null} folders={folders} submitting type="youtube" value="@TwoMinutePapers" />
+  <WithSheet page={subs()} title="添加订阅">
+    <AddSubscriptionForm folders={folders} initial={{ type: 'youtube', value: '@TwoMinutePapers' }} submitting />
+  </WithSheet>
+));
+export const SubscriptionsMenu = story('订阅 · 更多操作', () => (
+  <WithSheet page={subs({ openFolder: 'AI' })} title="Simon Willison">
+    <SubscriptionMenu folder="AI" folders={folders} includeInHome name="Simon Willison" />
   </WithSheet>
 ));
 

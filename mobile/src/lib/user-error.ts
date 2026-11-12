@@ -56,6 +56,15 @@ const codes: Record<string, string> = {
   not_authenticated: '登录已失效，请重新登录。',
   server_not_configured: '服务器还没配置好，请检查它的设置。',
   database_unavailable: '服务器暂时无法访问数据库，请稍后再试。',
+  invalid_rss: '这不是一个有效的 RSS / Atom 地址。',
+  invalid_website: '这不是一个有效的网址。',
+  invalid_youtube: '认不出这个频道。可以填频道链接、@handle 或频道 ID。',
+  invalid_x: '认不出这个账号。可以填 @handle 或 x.com 链接。',
+  invalid_reddit: '认不出这个社区。可以填 r/python 或社区链接。',
+  unsafe_url: '这个地址指向内网或本机，为了安全不能订阅。',
+  feed_not_found: '这个网站没有找到 RSS / Atom。可以试试直接填它的 RSS 地址。',
+  source_unreachable: '连不上这个地址。检查地址是否正确，稍后再试。',
+  subscription_not_found: '这个订阅已经不存在了。',
 };
 
 const fields: Record<string, string> = {
