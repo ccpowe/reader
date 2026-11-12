@@ -133,6 +133,8 @@ export function editSubscription(identity: string, subscription: SubscriptionRes
       patchSubscription(identity, id, pick(updated));
       // Folders and 全部 change the Today feeds.
       if ('group' in change || 'include_in_home' in change) void queryClient.invalidateQueries({ queryKey: [identity, 'feed'] });
+      // 收藏's folder lists follow the folder of the source.
+      if ('group' in change) void queryClient.invalidateQueries({ queryKey: [identity, 'saved'] });
     } catch (error) {
       if (!definite(error)) {
         void queryClient.invalidateQueries({ queryKey: listKey(identity) });
@@ -220,6 +222,7 @@ export function unsubscribeLater(
       await queryClient.cancelQueries(list);
       void queryClient.invalidateQueries(list);
       void queryClient.invalidateQueries({ queryKey: [identity, 'feed'] });
+      void queryClient.invalidateQueries({ queryKey: [identity, 'saved'] }); // its saved items leave the folder lists
     });
   }
 

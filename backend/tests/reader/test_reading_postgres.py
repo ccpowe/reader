@@ -260,12 +260,14 @@ async def test_a_saved_thread_root_shows_only_saved_posts_once_unfollowed(monkey
 async def test_saving(monkeypatch) -> None:
     async with api_client(postgres_dsn(), monkeypatch) as client:
         auth, me = await _sign_up(client)
-        sub = await _follow(client, me)
+        sub = await _follow(client, me, group_name="Dev")
+        loose = await _follow(client, me)
         ids = await _add(
             client,
             _article(sub.source_id, 1, title="Rust 100%"),
             _article(sub.source_id, 2, title="Python", summary="about rust"),
             _article(sub.source_id, 3, title="Go"),
+            _article(loose.source_id, 4, title="Loose"),
         )
         for article_id in ids:
             assert (await client.put(f"/saved/{article_id}", headers=auth)).status_code == 204
@@ -276,6 +278,9 @@ async def test_saving(monkeypatch) -> None:
         )
         search = await client.get("/saved", params={"q": "rust"}, headers=auth)
         literal = await client.get("/saved", params={"q": "0%"}, headers=auth)
+        in_dev = await client.get("/saved", params={"group": "Dev"}, headers=auth)
+        no_folder = await client.get("/saved", params={"group": ""}, headers=auth)
+        dev_rust = await client.get("/saved", params={"group": "Dev", "q": "rust"}, headers=auth)
         feed = (await client.get("/feed", headers=auth)).json()["items"]
         removed = await client.delete(f"/saved/{ids[2]}", headers=auth)
         removed_again = await client.delete(f"/saved/{ids[2]}", headers=auth)
@@ -286,10 +291,14 @@ async def test_saving(monkeypatch) -> None:
             rows = await db.scalar(select(func.count()).select_from(SavedArticle))
 
     assert again.status_code == 204
-    assert len(first.json()["items"]) == 2 and len(rest.json()["items"]) == 1
+    assert len(first.json()["items"]) == 2 and len(rest.json()["items"]) == 2
+    assert _titles(in_dev) == ["Go", "Python", "Rust 100%"]
+    assert _titles(no_folder) == ["Loose"]
+    assert set(_titles(dev_rust)) == {"Rust 100%", "Python"}
+    assert all(item["board"] is None for item in first.json()["items"])
     assert {item["title"] for item in search.json()["items"]} == {"Rust 100%", "Python"}
     assert _titles(literal) == ["Rust 100%"]
     assert all(item["is_saved"] for item in feed)
     assert removed.status_code == removed_again.status_code == 204
     assert _code(not_followed) == (404, "article_not_found")
-    assert rows == 2
+    assert rows == 3

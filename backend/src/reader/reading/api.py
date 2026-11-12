@@ -84,6 +84,15 @@ class FeedItem(BaseModel):
 
 class SavedItem(FeedItem):
     saved_at: datetime
+    # For an item saved from a board (no source): which board — hn, reddit, github,
+    # techtwitter or product_hunt.
+    board: str | None = None
+
+
+def _board_of(article) -> str | None:
+    board = (article.extra or {}).get("board") if article.source_id is None else None
+    name = board.get("name") if isinstance(board, dict) else None
+    return name if isinstance(name, str) else None
 
 
 class ArticleDetail(FeedItem):
@@ -320,6 +329,11 @@ async def get_article(
 async def list_saved(
     request: Request,
     q: str | None = Query(default=None, max_length=200, description="Search title and summary."),
+    group: str | None = Query(
+        default=None,
+        max_length=120,
+        description='Only articles of followed sources in this folder; "" = no folder.',
+    ),
     cursor: str | None = Query(default=None, max_length=1024),
     limit: int = Query(default=30, ge=1, le=100),
     user: CurrentUser = Depends(current_user),
@@ -328,7 +342,7 @@ async def list_saved(
 ):
     """Saved articles, most recently saved first."""
     rows, has_more = await service.saved_page(
-        db, user.id, q=(q or "").strip() or None, after=_after(cursor), limit=limit
+        db, user.id, q=(q or "").strip() or None, after=_after(cursor), limit=limit, group=group
     )
     translations = await title_translations(
         db, user.id, settings, [row.article.title for row in rows]
@@ -346,6 +360,7 @@ async def list_saved(
                 translations=translations,
             ),
             saved_at=row.saved_at,
+            board=_board_of(row.article),
         )
         for row in rows
     ]

@@ -622,6 +622,10 @@ export type SavedItem = {
      */
     author: string | null;
     /**
+     * Board
+     */
+    board?: string | null;
+    /**
      * First Seen At
      */
     first_seen_at: string;
@@ -1985,6 +1989,12 @@ export type ListSavedSavedGetData = {
          * Search title and summary.
          */
         q?: string | null;
+        /**
+         * Group
+         *
+         * Only articles of followed sources in this folder; "" = no folder.
+         */
+        group?: string | null;
         /**
          * Cursor
          */

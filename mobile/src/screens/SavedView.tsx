@@ -1,62 +1,61 @@
 /**
  * 收藏 (PRODUCT §3.4), old app layout (device screenshot) at P25 values: search (P17), folder
- * tabs, "最近收藏", then the saved items as feed cards, newest saved first.
+ * tabs, then the list (the route passes a FeedList: "最近收藏" / "搜索结果", newest saved first).
+ * Presentational frame.
  */
-import { FlatList, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { View } from 'react-native';
 
-import { FeedCard, type FeedCardItem } from '@/components/FeedCard';
-import { EmptyState, PageHeader, SearchField, SectionHeading, Skeleton, Tabs } from '@/ui';
+import { Message, PageHeader, SearchField, Tabs } from '@/ui';
 
 export function SavedView({
   user,
+  banner,
   folders,
   folder,
   query = '',
-  items,
-  loading = false,
+  onSearch,
   onSelectFolder,
+  children,
 }: {
-  user: { name: string; avatarUrl?: string | null };
-  folders: string[];
+  user?: { name: string; avatarUrl?: string | null };
+  banner?: string | null;
+  /** folder tabs after 全部: key ('' = 未分类) and label */
+  folders: { key: string; label: string }[];
+  /** null = 全部 */
   folder: string | null;
   query?: string;
-  items: FeedCardItem[];
-  loading?: boolean;
+  onSearch?: (query: string) => void;
   onSelectFolder?: (folder: string | null) => void;
+  children: ReactNode;
 }) {
   return (
     <View className="flex-1 bg-canvas">
+      {banner ? (
+        <Message bar kind="warning">
+          {banner}
+        </Message>
+      ) : null}
       <PageHeader title="收藏" user={user} />
       <View className="pb-1 pt-2">
-        <SearchField defaultValue={query} placeholder="搜索收藏内容" />
-      </View>
-      <Tabs
-        bordered
-        onSelect={(key) => onSelectFolder?.(key)}
-        options={[{ key: null, label: '全部' }, ...folders.map((name) => ({ key: name, label: name }))]}
-        selected={folder}
-      />
-      {loading ? (
-        <View className="gap-8 px-6 py-6">
-          {[0, 1, 2].map((index) => (
-            <Skeleton key={index} lines={3} />
-          ))}
-        </View>
-      ) : (
-        <FlatList
-          ListEmptyComponent={
-            query ? (
-              <EmptyState title="没有匹配的收藏" />
-            ) : (
-              <EmptyState description="点卡片右下角的书签即可收藏。" title="还没有收藏" />
-            )
-          }
-          ListHeaderComponent={items.length > 0 ? <SectionHeading className="-mb-3 pt-4" title={query ? '搜索结果' : '最近收藏'} /> : undefined}
-          data={items}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <FeedCard item={item} />}
+        <SearchField
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={onSearch}
+          placeholder="搜索收藏内容"
+          returnKeyType="search"
+          value={query}
         />
-      )}
+      </View>
+      {folders.length > 0 ? (
+        <Tabs<string | null>
+          bordered
+          onSelect={(key) => onSelectFolder?.(key)}
+          options={[{ key: null, label: '全部' }, ...folders]}
+          selected={folder}
+        />
+      ) : null}
+      <View className="flex-1">{children}</View>
     </View>
   );
 }

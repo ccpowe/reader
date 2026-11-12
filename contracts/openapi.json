@@ -1245,6 +1245,17 @@
             ],
             "title": "Author"
           },
+          "board": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Board"
+          },
           "first_seen_at": {
             "format": "date-time",
             "title": "First Seen At",
@@ -4068,6 +4079,25 @@
               ],
               "description": "Search title and summary.",
               "title": "Q"
+            }
+          },
+          {
+            "description": "Only articles of followed sources in this folder; \"\" = no folder.",
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only articles of followed sources in this folder; \"\" = no folder.",
+              "title": "Group"
             }
           },
           {

@@ -296,6 +296,7 @@ async def test_board_route_saving_and_translations(monkeypatch) -> None:
         after = await client.get("/boards/github", params={"variant": "weekly"}, headers=auth)
         opened = await client.get(f"/articles/{saved.json()['article_id']}", headers=auth)
         listed = (await client.get("/saved", headers=auth)).json()["items"]
+        in_folder = (await client.get("/saved", params={"group": ""}, headers=auth)).json()["items"]
         bad_variant = await client.get("/boards/github", params={"variant": "x"}, headers=auth)
         no_subreddit = await client.get("/boards/reddit", headers=auth)
         unknown = await client.get("/boards/myspace", headers=auth)
@@ -314,6 +315,8 @@ async def test_board_route_saving_and_translations(monkeypatch) -> None:
     assert [entry["is_saved"] for entry in after.json()["items"]] == [True, False]
     assert opened.json()["title"] == "Tool" and opened.json()["source"] is None
     assert listed[0]["title"] == "Tool" and listed[0]["summary"] == "Does things"
+    assert listed[0]["source"] is None and listed[0]["board"] == "github"
+    assert in_folder == []  # board items have no folder
     assert bad_variant.json()["error"]["code"] == "invalid_variant"
     assert no_subreddit.json()["error"]["code"] == "invalid_subreddit"
     assert unknown.status_code == 422  # not one of the boards

@@ -9,6 +9,7 @@ import type { ArticleDetail, MeResponse, PageFeedItem } from '../api/schema.gen'
 import { queryClient, session } from '../app-session';
 import { patchItems, scopeParams, type FeedScope } from '../feed';
 import { key } from '../query';
+import { pendingUnsaves } from './pending-unsave';
 
 const PAGE_SIZE = 30;
 
@@ -63,6 +64,8 @@ const saving = new Set<string>();
  * - A second tap on the same item while one is in flight is ignored.
  */
 export async function setSaved(identity: string, articleId: string, saved: boolean): Promise<void> {
+  // A newer choice than an unsave still waiting in 收藏's undo window.
+  pendingUnsaves.supersede(identity, articleId);
   if (saving.has(articleId)) return;
   saving.add(articleId);
   const feeds = { queryKey: [identity, 'feed'] };

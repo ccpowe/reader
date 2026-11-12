@@ -149,24 +149,36 @@ export const SubscriptionsMenu = story('订阅 · 更多操作', () => (
 
 // --- 收藏 -----------------------------------------------------------------------
 
+const savedFolders = folders.map((name) => ({ key: name, label: name }));
+const savedList = (items: typeof feed, heading = '最近收藏', empty = <EmptyState description="点卡片右下角的书签即可收藏。" title="还没有收藏" />) => (
+  <FeedList empty={empty} heading={heading} state={{ kind: 'ready', items, hasMore: false, loadingMore: false }} />
+);
 export const Saved = story('收藏 · 正常', () => (
   <TabFrame tab="saved">
-    <SavedView user={user} folder={null} folders={folders} items={feed.filter((item) => item.isSaved).concat(feed.slice(0, 2).map((item) => ({ ...item, id: `${item.id}-s`, isSaved: true })))} />
+    <SavedView user={user} folder={null} folders={savedFolders}>
+      {savedList(feed.filter((item) => item.isSaved).concat(feed.slice(0, 2).map((item) => ({ ...item, id: `${item.id}-s`, isSaved: true }))))}
+    </SavedView>
   </TabFrame>
 ));
 export const SavedFolder = story('收藏 · 选了分类', () => (
   <TabFrame tab="saved">
-    <SavedView user={user} folder="AI" folders={folders} items={feed.filter((item) => item.isSaved)} />
+    <SavedView user={user} folder="AI" folders={savedFolders}>
+      {savedList(feed.filter((item) => item.isSaved))}
+    </SavedView>
   </TabFrame>
 ));
 export const SavedEmpty = story('收藏 · 还没有收藏', () => (
   <TabFrame tab="saved">
-    <SavedView user={user} folder={null} folders={folders} items={[]} />
+    <SavedView user={user} folder={null} folders={savedFolders}>
+      {savedList([])}
+    </SavedView>
   </TabFrame>
 ));
 export const SavedNoMatch = story('收藏 · 搜索无结果', () => (
   <TabFrame tab="saved">
-    <SavedView user={user} folder={null} folders={folders} items={[]} query="量子" />
+    <SavedView user={user} folder={null} folders={savedFolders} query="量子">
+      {savedList([], '搜索结果', <EmptyState title="没有匹配的收藏" />)}
+    </SavedView>
   </TabFrame>
 ));
 

@@ -271,8 +271,13 @@ async def saved_page(
     q: str | None,
     after: tuple[datetime, UUID] | None,
     limit: int,
+    group: str | None = None,
 ) -> tuple[list[SavedRow], bool]:
-    """Most recently saved first; `q` matches title or summary."""
+    """Most recently saved first; `q` matches title or summary.
+
+    `group` keeps articles of followed sources in that folder ("" = no folder), so items
+    saved from a board or from a source no longer followed are only in the unfiltered list.
+    """
     query = (
         select(Article, Subscription, Source, SavedArticle.saved_at)
         .join(SavedArticle, SavedArticle.article_id == Article.id)
@@ -288,6 +293,10 @@ async def saved_page(
     if q:
         pattern = _like(q)
         query = query.where(or_(Article.title.ilike(pattern), Article.summary.ilike(pattern)))
+    if group == "":
+        query = query.where(Subscription.id.is_not(None), Subscription.group_name.is_(None))
+    elif group is not None:
+        query = query.where(Subscription.group_name == group)
     if after is not None:
         at, article_id = after
         query = query.where(

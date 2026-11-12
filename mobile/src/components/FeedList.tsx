@@ -10,7 +10,7 @@ import Animated from 'react-native-reanimated';
 import { useCSSVariable } from 'uniwind';
 
 import { anchorStep, type ListPosition } from '@/lib/list-memory';
-import { Button, EmptyState, Message, Skeleton, Text } from '@/ui';
+import { Button, EmptyState, Message, SectionHeading, Skeleton, Text } from '@/ui';
 import { delayLoading, duration } from '@/ui/theme';
 
 import { FeedCard, type FeedCardItem } from './FeedCard';
@@ -50,8 +50,11 @@ export function FeedList({
   onToggleSave,
   position,
   onPosition,
+  heading,
 }: {
   state: FeedListState;
+  /** a section heading above the items, when there are any (收藏: 最近收藏 / 搜索结果) */
+  heading?: string;
   /** where the reader left this list last time; restored once, by offset and then by item */
   position?: ListPosition | null;
   onPosition?: (position: ListPosition) => void;
@@ -122,12 +125,17 @@ export function FeedList({
         ) : undefined
       }
       ListHeaderComponent={
-        state.refreshFailed ? (
-          <View className="px-6 pt-4">
-            <Message action={<Button onPress={onRetry} title="重试" variant="ghost" />} kind="danger">
-              {state.refreshFailed}
-            </Message>
-          </View>
+        state.refreshFailed || (heading && state.items.length > 0) ? (
+          <>
+            {state.refreshFailed ? (
+              <View className="px-6 pt-4">
+                <Message action={<Button onPress={onRetry} title="重试" variant="ghost" />} kind="danger">
+                  {state.refreshFailed}
+                </Message>
+              </View>
+            ) : null}
+            {heading && state.items.length > 0 ? <SectionHeading className="-mb-3 pt-4" title={heading} /> : null}
+          </>
         ) : undefined
       }
       data={state.items}
