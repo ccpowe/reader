@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { FeedItem } from './api/schema.gen.ts';
-import { absoluteUrl, folderLabel, folderList, homeNewCount, patchItems, relativeTime, scopeParams, toCard } from './feed.ts';
+import { absoluteUrl, folderLabel, folderList, homeNewCount, missingTitles, patchItems, relativeTime, scopeParams, toCard, withTitleTranslations } from './feed.ts';
 
 const NOW = Date.parse('2026-11-12T12:00:00Z');
 
@@ -127,4 +127,21 @@ test('an X repost shows the original author and text, the reposter above', () =>
   assert.equal(card.x?.repostedBy, 'Alice');
   assert.deepEqual(card.x?.author, { name: 'Bob', handle: 'bob', avatarUrl: null });
   assert.equal(card.x?.text, 'the original');
+});
+
+test('missing titles are asked for by purpose; finished ones go back into the items', () => {
+  const items = [
+    { id: '1', title: 'A', title_translation: null },
+    { id: '2', title: 'B', title_translation: { text: '乙', engine_fingerprint: 'f' } },
+    { id: '3', title: 'C', board: 'hn' },
+    { id: '4', title: '  ' },
+    { id: '5', title: 'A' },
+  ];
+  assert.deepEqual(missingTitles(items), { title: ['A'], board_title: ['C'] });
+  const filled = withTitleTranslations(items, new Map([['A', '甲'], ['C', '丙']]), 'fp');
+  assert.equal(filled[0].title_translation?.text, '甲');
+  assert.equal(filled[1], items[1], 'already translated: same object');
+  assert.equal(filled[2].title_translation?.text, '丙');
+  assert.equal(filled[3], items[3]);
+  assert.equal(withTitleTranslations(items, new Map(), 'fp'), items);
 });

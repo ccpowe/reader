@@ -13,8 +13,7 @@
  *
  * Pure apart from the injected `inject`, `send` and timers: runs under `node --test`.
  */
-import type { TranslatedItem } from './api/schema.gen.ts';
-import { TranslationScheduler, type PlanBatch, type SchedulerStatus } from './translation-scheduler.ts';
+import { TranslationScheduler, type PlanBatch, type SchedulerStatus, type TranslationAnswer } from './translation-scheduler.ts';
 import type { TranslationMode } from './web-translation-host.ts';
 import { jsValue } from './web-translation-host.ts';
 import { t } from './i18n/index.ts';
@@ -47,7 +46,7 @@ export type CaptionBootstrapConfig = {
 export type CaptionHostDeps = {
   inject?: (script: string) => void;
   bootstrap: (config: CaptionBootstrapConfig) => string;
-  send: (texts: string[], signal: AbortSignal) => Promise<TranslatedItem[]>;
+  send: (texts: string[], signal: AbortSignal) => Promise<TranslationAnswer[]>;
   onState: (state: CaptionState) => void;
   onTimeline: (timeline: CaptionTimeline) => void;
   /** the player's 双语 button was pressed: the route decides and calls setMode */

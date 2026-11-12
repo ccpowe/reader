@@ -25,7 +25,12 @@ export type SegmentResult = {
   translation_status: 'succeeded' | 'failed';
   translated_text?: string;
   error_code?: string;
+  /** already in the target language, answered without the model: the page shows nothing under it */
+  same_as_source?: boolean;
 };
+
+/** A server answer, or the app's own for a text already in the target language (queries/translation). */
+export type TranslationAnswer = TranslatedItem & { same_as_source?: boolean };
 
 export type SchedulerStatus = {
   /** segments waiting for or in a request */
@@ -37,7 +42,7 @@ export type SchedulerStatus = {
 };
 
 export type SchedulerDeps = {
-  send: (texts: string[], signal: AbortSignal) => Promise<TranslatedItem[]>;
+  send: (texts: string[], signal: AbortSignal) => Promise<TranslationAnswer[]>;
   deliver: (results: SegmentResult[]) => void;
   onStatus?: (status: SchedulerStatus) => void;
   now?: () => number;
@@ -283,6 +288,7 @@ export class TranslationScheduler {
                 source_text: segment.text,
                 translation_status: 'succeeded',
                 translated_text: item.text,
+                ...(item.same_as_source ? { same_as_source: true } : {}),
               });
             } else if (item?.status === 'pending') {
               unfinished.push(segment);

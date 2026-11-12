@@ -70,6 +70,8 @@ function youTubeTranslationBootstrap(config: YouTubeTranslationBootstrapConfig) 
 
   const navigationId = `youtube-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
   const translations = new Map<string, string>();
+  // Lines already in the target language (answered by the app without the model): original only.
+  const sameAsSource = new Set<string>();
   const translationExpiresAt = new Map<string, number>();
   let captionWindowEpoch = 0;
   let lastRequestedIndex = -1;
@@ -845,7 +847,7 @@ function youTubeTranslationBootstrap(config: YouTubeTranslationBootstrapConfig) 
     timelineStart = Math.min(timelineStart, Math.max(groups.length - 1, 0));
     let characterCount = 0;
     for (const group of groups.slice(timelineStart, timelineStart + 180)) {
-      const translated = translations.get(group.id) ?? null;
+      const translated = shownTranslation(group) || null;
       const nextCharacterCount = characterCount + group.text.length + (translated?.length ?? 0);
       if (nextCharacterCount > 40_000) break;
       characterCount = nextCharacterCount;
@@ -935,7 +937,7 @@ function youTubeTranslationBootstrap(config: YouTubeTranslationBootstrapConfig) 
       });
       return;
     }
-    const translated = translations.get(group.id) ?? '';
+    const translated = shownTranslation(group);
     renderOverlay(group, translated);
     const signature = `${group.id}:${translated}`;
     if (signature === lastCaptionSignature) return;
@@ -1151,7 +1153,7 @@ function youTubeTranslationBootstrap(config: YouTubeTranslationBootstrapConfig) 
     let changed = false;
     for (const raw of rawResults) {
       if (!raw || typeof raw !== 'object') continue;
-      const result = raw as { cache_expires_at?: unknown; segment_id?: unknown; translated_text?: unknown; translation_status?: unknown };
+      const result = raw as { cache_expires_at?: unknown; same_as_source?: unknown; segment_id?: unknown; translated_text?: unknown; translation_status?: unknown };
       if (
         typeof result.segment_id === 'string' &&
         activeSegmentIds.has(result.segment_id) &&
@@ -1163,6 +1165,8 @@ function youTubeTranslationBootstrap(config: YouTubeTranslationBootstrapConfig) 
         if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) continue;
         translationExpiresAt.set(result.segment_id, expiresAt);
         const text = result.translated_text.trim();
+        if (result.same_as_source === true) sameAsSource.add(result.segment_id);
+        else sameAsSource.delete(result.segment_id);
         if (translations.get(result.segment_id) !== text) {
           translations.set(result.segment_id, text);
           changed = true;
@@ -1171,6 +1175,12 @@ function youTubeTranslationBootstrap(config: YouTubeTranslationBootstrapConfig) 
     }
     if (changed) render();
   };
+
+  // A line already in the target language shows only the original; it stays in `translations` so it
+  // is not asked for again.
+  function shownTranslation(group: CaptionGroup): string {
+    return sameAsSource.has(group.id) ? '' : (translations.get(group.id) ?? '');
+  }
 
   const resetTranslations = () => {
     translations.clear();

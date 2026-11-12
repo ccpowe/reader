@@ -133,6 +133,26 @@ figure{margin:0 0 28px}figure img{background:var(--sunken);border-radius:8px;dis
 .content td,.content th{border:1px solid var(--line);padding:6px 10px}
 .content iframe{max-width:100%}`;
 
+/** An image's identity: host and path, without size / quality parameters (feeds add their own). */
+function imageKey(url: string): string | null {
+  try {
+    const parsed = new URL(url.replace(/&amp;/g, '&'));
+    return `${parsed.host}${parsed.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether the body already shows this image, so the reader page does not repeat it above. */
+export function showsImage(bodyHtml: string, imageUrl: string): boolean {
+  const key = imageKey(imageUrl);
+  if (!key) return bodyHtml.includes(imageUrl);
+  for (const match of bodyHtml.matchAll(/<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi)) {
+    if (imageKey(match[1]) === key) return true;
+  }
+  return false;
+}
+
 /**
  * Reader mode for an article whose body the server has. The body is the server's sanitized HTML;
  * the document also forbids scripts, forms and frames (Content-Security-Policy), and resolves
@@ -150,7 +170,7 @@ export function readerDocument(article: {
   lang?: string | null;
 }): string {
   const byline = [article.author ?? article.sourceName, article.publishedAt ? articleDate(article.publishedAt) : null].filter(Boolean).join(' · ');
-  const hero = article.imageUrl && !article.bodyHtml.includes(article.imageUrl) ? `<figure><img alt="" src="${escapeHtml(article.imageUrl)}"></figure>` : '';
+  const hero = article.imageUrl && !showsImage(article.bodyHtml, article.imageUrl) ? `<figure><img alt="" src="${escapeHtml(article.imageUrl)}"></figure>` : '';
   return (
     `<!doctype html><html${article.lang && /^[a-zA-Z0-9-]{1,50}$/.test(article.lang) ? ` lang="${article.lang}"` : ''}><head><meta charset="utf-8">` +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +

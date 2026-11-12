@@ -69,7 +69,7 @@ export function removeAvatar(identity: string): Promise<void> {
  * reads under the old setting are cancelled and nothing of it stays on screen while re-reading.
  */
 async function resetTranslatedData(identity: string) {
-  for (const part of ['board-translations', 'board', 'feed', 'saved', 'article']) {
+  for (const part of ['board-translations', 'title-translations', 'board', 'feed', 'saved', 'article']) {
     await queryClient.resetQueries({ queryKey: [identity, part] });
   }
 }

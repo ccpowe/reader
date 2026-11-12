@@ -31,7 +31,7 @@ type PreservedVariable = {
 
 type NodeIdentity = { key: string; revision: number; fingerprint: string; entityId?: string };
 
-type EntityPart = { id: string; text: string; joiner: string; state: 'discovered' | 'queued' | 'succeeded' | 'failed'; translated?: string; blocked?: boolean };
+type EntityPart = { id: string; text: string; joiner: string; state: 'discovered' | 'queued' | 'succeeded' | 'failed'; translated?: string; blocked?: boolean; sameAsSource?: boolean };
 
 type ParagraphEntity = {
   id: string;
@@ -1142,7 +1142,17 @@ export function webTranslationBootstrap(config: BootstrapConfig) {
     });
     const tokenPattern = /(\u27eaREADER_(?:(?:OPEN|CLOSE)_)?\d+\u27eb)/g;
     const parents: (DocumentFragment | Element)[] = [fragment];
-    translated.split(tokenPattern).filter(Boolean).forEach((part) => {
+    // Models often space a link's text away from its markers ("\u7684 \u27eaOPEN\u27eb Foundation \u27eaCLOSE\u27eb"):
+    // keep that space outside the element, so a link's underline does not run over blanks.
+    const outsideSpaces = translated
+      .replace(/(\u27eaREADER_OPEN_\d+\u27eb)(\s+)/g, '$2$1')
+      .replace(/(\s+)(\u27eaREADER_CLOSE_\d+\u27eb)/g, '$2$1')
+      // …and one space there, not the model's inner and outer ones together.
+      .replace(/([ \t])[ \t]+(?=\u27eaREADER_OPEN_\d+\u27eb)/g, '$1')
+      .replace(/(\u27eaREADER_CLOSE_\d+\u27eb[ \t])[ \t]+/g, '$1')
+      // No space between a link and the full-width punctuation after it ("Aux-2，" not "Aux-2 ，").
+      .replace(/(\u27eaREADER_CLOSE_\d+\u27eb)[ \t]+(?=[\u3000-\u303f\uff01-\uff0f\uff1a-\uff20])/g, '$1');
+    outsideSpaces.split(tokenPattern).filter(Boolean).forEach((part) => {
       const descriptor = variables.get(part);
       if (!descriptor) { parents[parents.length - 1].appendChild(entity.container.ownerDocument.createTextNode(part)); return; }
       if (descriptor.close) { parents.pop(); return; }
@@ -1310,6 +1320,14 @@ export function webTranslationBootstrap(config: BootstrapConfig) {
       ? [['href', 'target', 'title', 'rel'].map(name => variable.sourceElement.getAttribute(name)), (variable.sourceElement as HTMLAnchorElement).href, linkAppearance(variable.sourceElement)]
       : variable.text)]));
   const renderEntity = (entity: ParagraphEntity, notify = true) => {
+    // Text already in the target language is answered by the app without the model, marked
+    // `same_as_source`: nothing to show under it.
+    if (entity.parts.every(part => part.sameAsSource)) {
+      removeTranslation(entity);
+      entity.state = 'translated';
+      if (notify) entity.parts.forEach(part => post({ type: 'reader_translation_segment_event', segment_id: part.id, reason: 'rendered', state: 'translated' }));
+      return;
+    }
     ownedWrite(() => {
       // Source wrappers belong only to translation-only mode. Restore before
       // moving a translation between inside/sibling positions after a resize.
@@ -1383,7 +1401,7 @@ export function webTranslationBootstrap(config: BootstrapConfig) {
     if (!Array.isArray(rawResults) || resultEpoch !== documentEpoch || !epochAcknowledged) return;
     for (const raw of rawResults) {
       if (!raw || typeof raw !== 'object') continue;
-      const result = raw as { cache_expires_at?: unknown; error_code?: unknown; segment_id?: unknown; source_text?: unknown; translated_text?: unknown; translation_status?: unknown };
+      const result = raw as { cache_expires_at?: unknown; error_code?: unknown; same_as_source?: unknown; segment_id?: unknown; source_text?: unknown; translated_text?: unknown; translation_status?: unknown };
       if (typeof result.segment_id !== 'string' || typeof result.source_text !== 'string') continue;
       const owner = segmentOwners.get(result.segment_id);
       if (!owner || normalizeText(result.source_text) !== normalizeText(owner.part.text)) continue;
@@ -1406,7 +1424,7 @@ export function webTranslationBootstrap(config: BootstrapConfig) {
             renderFailures.placeholder_mismatch = (renderFailures.placeholder_mismatch ?? 0) + 1;
             diagnostics(); return;
           }
-          part.translated = result.translated_text.trim(); part.state = 'succeeded';
+          part.translated = result.translated_text.trim(); part.state = 'succeeded'; part.sameAsSource = result.same_as_source === true;
           const previousTimer = expiryTimers.get(part.id);
           if (previousTimer !== undefined) window.clearTimeout(previousTimer);
           const expire = () => {
@@ -1478,7 +1496,8 @@ export function webTranslationBootstrap(config: BootstrapConfig) {
   );
   const translationPositionCurrent = (entity: ParagraphEntity) => {
     const translation = translations.get(entity.id);
-    if (!translation) return entity.state !== 'translated';
+    // A paragraph already in the target language is done without a translation node.
+    if (!translation) return entity.state !== 'translated' || entity.parts.every(part => part.sameAsSource);
     if (!translation.isConnected) return false;
     const wrapper = sourceWrappers.get(entity.id);
     const sourceAnchor = entity.renderedInside ? entity.rootNodes[entity.rootNodes.length - 1] : entity.insertionAnchor;

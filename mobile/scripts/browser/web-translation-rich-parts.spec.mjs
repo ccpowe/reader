@@ -165,3 +165,14 @@ test('render-only template activation updates a successful layout without provid
   expect(await page.evaluate(()=>window.saved===document.querySelector('.reader-translation-node'))).toBe(true);
   expect((await segments(page)).length).toBe(1);
 });
+test('spaces a model puts inside link markers stay outside the rendered link',async({page})=>{
+  await start(page,'<p id="source">Nabu Casa runs the <a href="https://example.org/foundation">Open Home Foundation</a> for everyone today.</p>');
+  await expect.poll(async()=> (await segments(page)).length).toBe(1);
+  const [segment]=await segments(page);
+  const translated=segment.text.replace(/⟪READER_OPEN_(\d+)⟫/,'运营的 ⟪READER_OPEN_$1⟫ ').replace(/⟪READER_CLOSE_(\d+)⟫/,' ⟪READER_CLOSE_$1⟫ 的商业分支').replace(/^[^⟪]*/,'Nabu Casa ').replace(/⟫[^⟪]*$/,'⟫ ，的商业分支。');
+  await page.evaluate(({id,text,source})=>window.__readerTranslationBridge.applyTranslations([{segment_id:id,source_text:source,translated_text:text,translation_status:'succeeded'}]),{id:segment.segment_id,text:translated,source:segment.text});
+  const link=page.locator('.reader-translation-node a');
+  await expect(link).toHaveCount(1);
+  expect(await link.evaluate(a=>a.textContent)).toBe('Open Home Foundation');
+  expect(await page.locator('.reader-translation-node').evaluate(n=>n.textContent)).toBe('Nabu Casa Open Home Foundation，的商业分支。');
+});

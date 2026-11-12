@@ -2,7 +2,7 @@
  * One feed (全部, a folder, or one subscription) as a list of cards: loading, paging, pull to
  * refresh, saving from a card, and where it was left. Used by 今日 and by a subscription's page.
  */
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 
@@ -10,10 +10,11 @@ import type { FeedCardItem } from '@/components/FeedCard';
 import { FeedList, type FeedListState } from '@/components/FeedList';
 import type { FeedItem } from '@/lib/api/schema.gen';
 import { queryClient, useSession } from '@/lib/app-session';
-import { absoluteUrl, toCard, type FeedScope } from '@/lib/feed';
+import { absoluteUrl, missingTitles, toCard, withTitleTranslations, type FeedScope } from '@/lib/feed';
 import { createListMemory } from '@/lib/list-memory';
 import { subscriptionsQuery } from '@/lib/queries/subscriptions';
 import { feedQuery, setSaved, UnknownOutcome } from '@/lib/queries/today';
+import { titleTranslationsQuery, translationPreferenceQuery } from '@/lib/queries/translation';
 import { isAborted } from '@/lib/query';
 import { errorMessage } from '@/lib/user-error';
 import { EmptyState } from '@/ui';
@@ -60,10 +61,18 @@ export function FeedPage({
   const [refreshing, setRefreshing] = useState(false);
   const offsetKey = `${identity}|${JSON.stringify(scope)}`;
 
+  // Titles the server had no translation for yet are asked for here, then shown in place.
+  const loaded = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
+  const missing = useMemo(() => missingTitles(loaded), [loaded]);
+  const preference = useQuery(translationPreferenceQuery(identity));
+  const titles = useQuery({ ...titleTranslationsQuery(identity, ['feed', scope], missing, preference.data), subscribed: active });
+  // Only while titles are translated: switching it off shows the originals at once.
+  const filled = preference.data?.enabled ? titles.data : undefined;
+
   // Times are relative to when this feed was loaded (render stays pure; a refresh updates them).
   const items = useMemo(
-    () => cardsOf(query.data?.pages.flatMap((page) => page.items) ?? [], query.dataUpdatedAt, absoluteUrl(apiBase), lang),
-    [query.data, query.dataUpdatedAt, apiBase, lang],
+    () => cardsOf(withTitleTranslations(loaded, filled?.done, filled?.fingerprint ?? ''), query.dataUpdatedAt, absoluteUrl(apiBase), lang),
+    [loaded, filled, query.dataUpdatedAt, apiBase, lang],
   );
 
   async function refresh() {

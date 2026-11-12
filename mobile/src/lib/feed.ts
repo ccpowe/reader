@@ -110,3 +110,29 @@ export function patchItems<P extends { items: FeedItem[] }>(pages: P[], id: stri
   });
   return changed ? next : pages;
 }
+
+/** What a list item needs for filling in its title translation (feed and saved items). */
+type Titled = { title: string; title_translation?: { text: string; engine_fingerprint: string } | null; board?: string | null };
+
+/**
+ * Titles the loaded items still lack a translation for, by the purpose they are asked with: items
+ * saved from a board use `board_title`, so the board's own translation is found in the cache.
+ */
+export function missingTitles(items: readonly Titled[]): { title: string[]; board_title: string[] } {
+  const title = new Set<string>();
+  const board = new Set<string>();
+  for (const item of items) {
+    if (item.title_translation || !item.title.trim()) continue;
+    (item.board ? board : title).add(item.title);
+  }
+  return { title: [...title], board_title: [...board] };
+}
+
+/** Put finished title translations into the items; untouched items keep their object (the card cache). */
+export function withTitleTranslations<T extends Titled>(items: readonly T[], done: ReadonlyMap<string, string> | undefined, fingerprint: string): T[] {
+  if (!done || done.size === 0) return items as T[];
+  return items.map((item) => {
+    const text = item.title_translation ? undefined : done.get(item.title);
+    return text ? { ...item, title_translation: { text, engine_fingerprint: fingerprint } } : item;
+  });
+}

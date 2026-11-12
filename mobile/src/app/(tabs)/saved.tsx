@@ -11,9 +11,10 @@ import Animated from 'react-native-reanimated';
 import type { FeedCardItem } from '@/components/FeedCard';
 import { FeedList, type FeedListState } from '@/components/FeedList';
 import { useIdentity, useSession } from '@/lib/app-session';
-import { absoluteUrl, folderLabel, folderList } from '@/lib/feed';
+import { absoluteUrl, folderLabel, folderList, missingTitles, withTitleTranslations } from '@/lib/feed';
 import { createListMemory } from '@/lib/list-memory';
 import { hiddenSaved, savedQuery, unsaveLater } from '@/lib/queries/saved';
+import { titleTranslationsQuery, translationPreferenceQuery } from '@/lib/queries/translation';
 import { subscriptionsQuery } from '@/lib/queries/subscriptions';
 import { meQuery, UnknownOutcome } from '@/lib/queries/today';
 import { isAborted } from '@/lib/query';
@@ -65,13 +66,21 @@ function SavedList({
   const offsetKey = `${identity}|${JSON.stringify(scope)}`;
   const searching = scope.q.trim() !== '';
 
+  // Titles the server had no translation for yet (items saved from a board, for one) are asked for here.
+  const loaded = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
+  const missing = useMemo(() => missingTitles(loaded), [loaded]);
+  const preference = useQuery(translationPreferenceQuery(identity));
+  const titles = useQuery({ ...titleTranslationsQuery(identity, ['saved', scope], missing, preference.data), subscribed: focused });
+  // Only while titles are translated: switching it off shows the originals at once.
+  const filled = preference.data?.enabled ? titles.data : undefined;
+
   const cards = useMemo(
     () =>
-      (query.data?.pages.flatMap((page) => page.items) ?? []).map((item) =>
+      withTitleTranslations(loaded, filled?.done, filled?.fingerprint ?? '').map((item) =>
         savedCard(item, query.dataUpdatedAt, absoluteUrl(apiBase)),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- lang: the texts savedCard builds
-    [query.data, query.dataUpdatedAt, apiBase, lang],
+    [loaded, filled, query.dataUpdatedAt, apiBase, lang],
   );
   const items = cards.filter((card) => !hiddenSaved.has(identity, card.id));
 

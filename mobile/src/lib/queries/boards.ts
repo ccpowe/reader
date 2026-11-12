@@ -5,20 +5,16 @@
 import { queryOptions } from '@tanstack/react-query';
 
 import { errorCode, isApiError } from '../api/errors';
-import type {
-  BoardResponse,
-  PreferenceResponse,
-  SavedFromBoard,
-  SaveFromBoardRequest,
-  TranslatedItem,
-  TranslateRequest,
-  TranslateResponse,
-} from '../api/schema.gen';
+import type { BoardResponse, PreferenceResponse, SavedFromBoard, SaveFromBoardRequest } from '../api/schema.gen';
 import { queryClient, session } from '../app-session';
 import { identityOf } from '../connection/session';
 import { missingTranslations, viewParams, type BoardView } from '../boards';
 import { key } from '../query';
+import { translateAll } from './translation';
 import { UnknownOutcome } from './today';
+
+// The translation setting lives with the other translation queries; boards' pages import it from here too.
+export { translationPreferenceQuery } from './translation';
 
 export function boardQuery(identity: string, view: BoardView) {
   return queryOptions({
@@ -66,54 +62,7 @@ export async function refreshBoard(identity: string, view: BoardView): Promise<v
   queryClient.setQueryData(boardQuery(identity, view).queryKey, { ...fresh, items });
 }
 
-export function translationPreferenceQuery(identity: string) {
-  return queryOptions({
-    queryKey: key(identity, 'translation-preference'),
-    queryFn: ({ signal }) => session.api().request<PreferenceResponse>('/me/translation-preference', { signal }),
-    staleTime: 5 * 60_000,
-  });
-}
-
 export type BoardTranslations = { titles: Map<string, string>; descriptions: Map<string, string>; fingerprint: string };
-
-const ROUNDS = 6;
-
-function wait(ms: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => {
-      clearTimeout(timer);
-      reject(signal.reason);
-    });
-  });
-}
-
-/** Ask for texts until each is finished or failed (pending ones again after a pause), a few rounds at most. */
-async function translateAll(purpose: TranslateRequest['purpose'], texts: string[], signal: AbortSignal) {
-  const done = new Map<string, string>();
-  let fingerprint = '';
-  let left = texts;
-  for (let round = 0; round < ROUNDS && left.length > 0; round++) {
-    if (round > 0) await wait(2_000, signal);
-    const pending: string[] = [];
-    for (let start = 0; start < left.length; start += 50) {
-      const chunk = left.slice(start, start + 50);
-      const response = await session.api().request<TranslateResponse>('/translations', {
-        method: 'POST',
-        body: { purpose, texts: chunk } satisfies TranslateRequest,
-        signal,
-        timeoutMs: 25_000,
-      });
-      fingerprint = response.engine_fingerprint;
-      response.items.forEach((item: TranslatedItem, index) => {
-        if (item.status === 'succeeded' && item.text?.trim()) done.set(chunk[index], item.text.trim());
-        else if (item.status === 'pending') pending.push(chunk[index]);
-      });
-    }
-    left = pending;
-  }
-  return { done, fingerprint };
-}
 
 /**
  * The translations a loaded board lacks (titles and descriptions), asked for once per board copy.

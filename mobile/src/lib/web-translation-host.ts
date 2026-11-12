@@ -15,8 +15,7 @@
  *
  * Pure apart from the injected `inject`, `send` and timers: runs under `node --test`.
  */
-import type { TranslatedItem } from './api/schema.gen.ts';
-import { TranslationScheduler, type PlanBatch, type SchedulerStatus, type SegmentResult } from './translation-scheduler.ts';
+import { TranslationScheduler, type PlanBatch, type SchedulerStatus, type SegmentResult, type TranslationAnswer } from './translation-scheduler.ts';
 import { t } from './i18n/index.ts';
 
 export type TranslationMode = 'original' | 'bilingual';
@@ -60,7 +59,7 @@ export type HostDeps = {
   inject?: (script: string) => void;
   /** the bootstrap script for this config (injected/webTranslation.ts createWebTranslationScript) */
   bootstrap: (config: BootstrapConfig) => string;
-  send: (texts: string[], signal: AbortSignal) => Promise<TranslatedItem[]>;
+  send: (texts: string[], signal: AbortSignal) => Promise<TranslationAnswer[]>;
   onState: (state: HostState) => void;
   mode: TranslationMode;
   profile?: 'reader';

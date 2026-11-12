@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { ApiError } from './api/errors.ts';
 import type { TranslatedItem } from './api/schema.gen.ts';
-import { TranslationScheduler, type PlanBatch, type SegmentResult } from './translation-scheduler.ts';
+import { TranslationScheduler, type PlanBatch, type SegmentResult, type TranslationAnswer } from './translation-scheduler.ts';
 
 /** Manual clock and timers; `send` calls wait until the test answers them. */
 function harness(maxConcurrent = 3) {
@@ -13,7 +13,7 @@ function harness(maxConcurrent = 3) {
   const calls: {
     texts: string[];
     signal: AbortSignal;
-    answer: (items: TranslatedItem[]) => void;
+    answer: (items: TranslationAnswer[]) => void;
     reject: (e: unknown) => void;
   }[] = [];
   const delivered: SegmentResult[] = [];
@@ -265,4 +265,18 @@ test('429 pauses every request, and gives up after a few', async () => {
     ],
   );
   assert.equal(h.calls.length, 12);
+});
+
+test('a text the app answered itself (already in the target language) reaches the page marked', async () => {
+  const h = harness();
+  h.scheduler.enqueue([batch('b1', ['中文段落', 'English'])]);
+  h.calls[0].answer([{ status: 'succeeded', text: '中文段落', same_as_source: true }, ok('英文')]);
+  await h.flush();
+  assert.deepEqual(
+    h.delivered.map((r) => [r.translated_text, r.same_as_source]),
+    [
+      ['中文段落', true],
+      ['英文', undefined],
+    ],
+  );
 });

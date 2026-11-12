@@ -46,6 +46,14 @@ test('reader document: escaped shell, scripts forbidden, body kept', () => {
   assert.match(html, /data-reader-translatable-root><p>Body <em>text<\/em><\/p><\/section>/);
   // the hero is not repeated when the body already shows it
   assert.doesNotMatch(readerDocument({ url: 'https://e.com', title: 't', imageUrl: 'https://e.com/i.png', bodyHtml: '<img src="https://e.com/i.png">' }), /<figure>/);
+  // …also when the body escapes the ampersands or asks for another size (The Verge)
+  const verge = 'https://platform.theverge.com/up/2026/11/a.jpg?quality=90&strip=all&crop=0,0,100,100';
+  assert.doesNotMatch(
+    readerDocument({ url: 'https://e.com', title: 't', imageUrl: verge, bodyHtml: '<p>x</p><img alt="" src="https://platform.theverge.com/up/2026/11/a.jpg?quality=90&amp;strip=all&amp;w=1200">' }),
+    /<figure>/,
+  );
+  // a different image in the body keeps the hero
+  assert.match(readerDocument({ url: 'https://e.com', title: 't', imageUrl: verge, bodyHtml: '<img src="https://platform.theverge.com/up/2026/11/b.jpg">' }), /<figure>/);
   assert.equal(articleDate('nope'), '');
 });
 

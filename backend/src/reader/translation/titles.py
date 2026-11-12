@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from reader.core.settings import Settings
 from reader.models import Subscription, Translation, TranslationPreference
 from reader.translation.engines import Engine, catalog, find_engine
+from reader.translation.script import already_in_language
 from reader.translation.service import (
     FAILED_PAUSE,
     STALE_RUNNING,
@@ -113,6 +114,8 @@ def pending_rows(titles: Iterable[str], targets: Iterable[tuple[str, str]]) -> l
         }
         for locale, fingerprint in targets
         for title in titles
+        # A title already in that language (a Chinese feed read in Chinese) needs no model.
+        if not already_in_language(title, locale)
     ]
     return sorted(
         rows, key=lambda row: (row["source_hash"], row["target_locale"], row["engine_fingerprint"])
