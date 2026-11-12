@@ -146,6 +146,7 @@ export default function Subscriptions() {
   return (
     <>
       <SubscriptionsView
+        onPressUser={() => router.navigate('/me')}
         banner={online ? null : t().common.offline}
         expandedId={expandedId}
         onAdd={() => {

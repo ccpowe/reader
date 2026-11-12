@@ -124,7 +124,7 @@ export function MeView({
       tab="me"
     >
       <ChromeScrollView contentContainerClassName="pb-8">
-        <PageHeader title={t().me.title} user={user} />
+        <PageHeader onPressUser={onOpenProfile} title={t().me.title} user={user} />
         <Pressable
           accessibilityRole="button"
           className="flex-row items-center gap-4 px-6 py-4 active:bg-pressed"

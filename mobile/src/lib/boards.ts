@@ -70,8 +70,12 @@ export const VARIANTS: Record<BoardKey, { key: string; label: string }[]> = {
 /** What one board page shows: the board, its version, and for Reddit the community. */
 export type BoardView = { board: BoardKey; variant: string; subreddit: string | null };
 
+/** The version a board opens on when the reader has not chosen one: GitHub's weekly board (old app), else the first. */
+const DEFAULT_VARIANT: Partial<Record<BoardKey, string>> = { github: 'weekly' };
+
 export function defaultView(board: BoardKey, subreddit: string | null = null): BoardView {
-  return { board, variant: VARIANTS[board][0]?.key ?? '', subreddit: board === 'reddit' ? subreddit : null };
+  const variant = DEFAULT_VARIANT[board] ?? VARIANTS[board][0]?.key ?? '';
+  return { board, variant, subreddit: board === 'reddit' ? subreddit : null };
 }
 
 export function viewParams(view: BoardView): Record<string, string> {

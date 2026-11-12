@@ -58,6 +58,7 @@ export type SubscriptionsState = { kind: 'loading' } | { kind: 'failed'; message
 
 export function SubscriptionsView({
   user,
+  onPressUser,
   banner,
   state,
   openFolder,
@@ -75,6 +76,8 @@ export function SubscriptionsView({
   onMenu,
 }: {
   user?: { name: string; avatarUrl?: string | null };
+  /** the header's avatar: opens 我的 */
+  onPressUser?: () => void;
   banner?: string | null;
   state: SubscriptionsState;
   /** the folder being shown (its key); none = the folder cards */
@@ -182,7 +185,7 @@ export function SubscriptionsView({
               {banner}
             </Message>
           ) : null}
-          <PageHeader title={t().subs.title} user={user} />
+          <PageHeader title={t().subs.title} onPressUser={onPressUser} user={user} />
         </>
       }
       tab="subscriptions"

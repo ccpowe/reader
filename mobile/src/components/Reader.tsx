@@ -24,8 +24,8 @@ import { CaptionList, type CaptionListHandle } from '@/components/CaptionList';
 import { CaptionPlayer } from '@/components/CaptionPlayer';
 import { TranslatedWebView } from '@/components/TranslatedWebView';
 import { EMPTY_TIMELINE, captionProblem, type CaptionHost, type CaptionState, type CaptionTimeline } from '@/lib/caption-host';
-import { WebView, type WebViewHandle } from '@/lib/webview';
-import { backStaysInside, documentKey, initialReaderPage, readerPageReducer } from '@/lib/reader-page';
+import type { WebViewHandle } from '@/lib/webview';
+import { backStaysInside, documentKey, initialReaderPage, readerKey, readerPageReducer, shareUrl } from '@/lib/reader-page';
 import {
   YOUTUBE_APP_REFERER,
   articleDate,
@@ -84,7 +84,9 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
     initialReaderPage(kind.kind === 'youtube' ? 'player' : 'page', url),
   );
   const [notice, setNotice] = useState<{ id: number; message: string } | null>(null);
+  // The page (original page or YouTube player) and, over it, the reader-mode document.
   const web = useRef<WebViewHandle | null>(null);
+  const readerWeb = useRef<WebViewHandle | null>(null);
   // The reader document follows the app's light / dark theme (P20). It is built with the theme of
   // the moment reader mode opens; a later change is applied in place, since a new document would
   // reload the page (scroll and translations lost).
@@ -94,17 +96,22 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
     const listener = Appearance.addChangeListener(({ colorScheme }) => {
       const next = JSON.stringify(colorScheme === 'dark' ? 'dark' : 'light');
       // Only the app's own reader document (marked), never a site's page.
-      web.current?.injectJavaScript(
+      readerWeb.current?.injectJavaScript(
         `if(document.querySelector('meta[name="reader-document"]'))document.documentElement.setAttribute('data-theme',${next});true;`,
       );
     });
     return () => listener.remove();
   });
-  const [host, setHost] = useState<WebTranslationHost | null>(null);
+  // One translation host per document: the page's, and reader mode's while it is shown.
+  const [pageHost, setPageHost] = useState<WebTranslationHost | null>(null);
+  const [readerHost, setReaderHost] = useState<WebTranslationHost | null>(null);
   const [mode, setMode] = useState<TranslationMode>('original');
-  const [translation, setTranslation] = useState<HostState | null>(null);
+  const [pageTranslation, setPageTranslation] = useState<HostState | null>(null);
+  const [readerTranslation, setReaderTranslation] = useState<HostState | null>(null);
   const [extracting, setExtracting] = useState(false);
   const { view } = state;
+  const host = view === 'reader' ? readerHost : pageHost;
+  const translation = view === 'reader' ? readerTranslation : pageTranslation;
   // The player has its own caption translation; every other view is a page the runtime translates.
   const translatable = view !== 'player';
   // State for the tools and handlers; the ref for the caption list's mount-time callback.
@@ -141,7 +148,9 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
   function toggleTranslation() {
     const next = mode === 'original' ? 'bilingual' : 'original';
     setMode(next);
-    host?.setMode(next);
+    // Both documents follow it: reader mode and the page underneath.
+    pageHost?.setMode(next);
+    readerHost?.setMode(next);
   }
 
   function toggleTimelineTranslation() {
@@ -155,9 +164,9 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
     if (view === 'reader') return dispatch({ type: 'switch', view: 'page' });
     setTheme(scheme);
     if (readable) return dispatch({ type: 'switch', view: 'reader' });
-    if (!host || extracting) return;
+    if (!pageHost || extracting) return;
     setExtracting(true);
-    const result = await host.extract();
+    const result = await pageHost.extract();
     setExtracting(false);
     if (result.ok) dispatch({ type: 'show-extracted', article: result.article });
     else if (result.reason === 'too_large') notify(t().reader.tooLong);
@@ -169,13 +178,13 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
    * unknown schemes to the system). Only http(s) loads; a link tapped in reader mode opens as the
    * original page at that address.
    */
-  function allowNavigation(request: ShouldStartLoadRequest): boolean {
+  function allowPageNavigation(request: ShouldStartLoadRequest): boolean {
+    return safeHttpUrl(request.url) !== null || request.url === 'about:blank';
+  }
+  function allowReaderNavigation(request: ShouldStartLoadRequest): boolean {
     const target = safeHttpUrl(request.url);
-    if (view === 'reader') {
-      if (target && request.isTopFrame !== false) dispatch({ type: 'open-page', url: target });
-      return false;
-    }
-    return target !== null || request.url === 'about:blank';
+    if (target && request.isTopFrame !== false) dispatch({ type: 'open-page', url: target });
+    return false;
   }
 
   const tools: ReaderTool[] = [];
@@ -221,23 +230,24 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
   }
 
   const extracted = view === 'reader' ? state.extracted : null;
-  const source =
-    view === 'reader' && extracted
-      ? {
-          html: readerDocument({
-            url: extracted.url,
-            title: extracted.title || doc.title,
-            author: extracted.byline,
-            sourceName: doc.sourceName,
-            publishedAt: doc.publishedAt,
-            bodyHtml: '',
-            lang: extracted.lang,
-            theme,
-          }),
-          baseUrl: extracted.url,
-        }
-      : view === 'reader'
+  const readerSource =
+    view !== 'reader'
+      ? null
+      : extracted
         ? {
+            html: readerDocument({
+              url: extracted.url,
+              title: extracted.title || doc.title,
+              author: extracted.byline,
+              sourceName: doc.sourceName,
+              publishedAt: doc.publishedAt,
+              bodyHtml: '',
+              lang: extracted.lang,
+              theme,
+            }),
+            baseUrl: extracted.url,
+          }
+        : {
             html: readerDocument({
               url,
               title: doc.displayTitle,
@@ -249,18 +259,23 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
               theme,
             }),
             baseUrl: url,
-          }
-        : view === 'player' && kind.kind === 'youtube'
-          ? { uri: youtubeEmbedUrl(kind.videoId), headers: { Referer: YOUTUBE_APP_REFERER } }
-          : { uri: kind.kind === 'youtube' && state.pageUrl === url ? youtubeWatchUrl(kind.videoId) : state.pageUrl };
+          };
+  const pageSource =
+    view === 'player' && kind.kind === 'youtube'
+      ? { uri: youtubeEmbedUrl(kind.videoId), headers: { Referer: YOUTUBE_APP_REFERER } }
+      : { uri: kind.kind === 'youtube' && state.pageUrl === url ? youtubeWatchUrl(kind.videoId) : state.pageUrl };
 
-  const webProps = {
+  const common = {
     allowsFullscreenVideo: true,
     allowsInlineMediaPlayback: true,
     domStorageEnabled: true,
-    // A new view or address is a new document: remount rather than navigate (react-guidelines §2).
-    key: documentKey(state),
     mediaPlaybackRequiresUserAction: true,
+    originWhitelist: ['*'],
+    setSupportMultipleWindows: false,
+    style: { flex: 1, backgroundColor: 'transparent' },
+  };
+  // The page's load drives the progress line and problems; reader mode is the app's own document.
+  const pageEvents = {
     onError: (event: WebViewErrorEvent) =>
       dispatch({ type: 'failed', message: t().reader.pageFailed(event.nativeEvent.description || t().reader.networkProblem) }),
     onHttpError: (event: WebViewHttpErrorEvent) => {
@@ -270,18 +285,17 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
     onLoadEnd: () => dispatch({ type: 'load-end' }),
     onLoadProgress: (event: WebViewProgressEvent) => dispatch({ type: 'progress', progress: event.nativeEvent.progress }),
     onLoadStart: () => dispatch({ type: 'load-start' }),
-    onNavigationStateChange: (navigation: WebViewNavigation) => dispatch({ type: 'history', canGoBack: navigation.canGoBack }),
-    onShouldStartLoadWithRequest: allowNavigation,
-    originWhitelist: ['*'],
-    setSupportMultipleWindows: false,
-    source,
-    style: { flex: 1, backgroundColor: 'transparent' },
+    onNavigationStateChange: (navigation: WebViewNavigation) =>
+      dispatch({ type: 'history', canGoBack: navigation.canGoBack, url: safeHttpUrl(navigation.url) ?? undefined }),
+    onShouldStartLoadWithRequest: allowPageNavigation,
   };
-  const { key: documentId, ...shared } = webProps;
+  // A new page address is a new document: remount rather than navigate (react-guidelines §2).
+  const pageKey = documentKey(state);
   const page = !translatable ? (
     <CaptionPlayer
-      {...shared}
-      key={documentId}
+      {...common}
+      {...pageEvents}
+      key={pageKey}
       mode={playerMode}
       onCaptionState={setCaptions}
       onHost={(current) => {
@@ -296,20 +310,21 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
         setTimeline(next);
         captionList.current?.follow(next);
       }}
+      source={pageSource}
       timelineMode={timelineMode}
       webRef={(handle) => {
         web.current = handle;
       }}
     />
-  ) : translatable ? (
+  ) : (
     <TranslatedWebView
-      {...shared}
-      key={documentId}
+      {...common}
+      {...pageEvents}
+      key={pageKey}
       mode={mode}
-      onHost={setHost}
-      onTranslationState={setTranslation}
-      profile={view === 'reader' ? 'reader' : undefined}
-      readerContent={extracted ? { html: extracted.html, url: extracted.url } : undefined}
+      onHost={setPageHost}
+      onTranslationState={setPageTranslation}
+      source={pageSource}
       captions={
         kind.kind === 'youtube'
           ? {
@@ -329,9 +344,26 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
         web.current = handle;
       }}
     />
-  ) : (
-    <WebView {...shared} javaScriptEnabled key={documentId} ref={web} />
   );
+  // Reader mode lies over the page, which stays loaded underneath (back from it is where you were).
+  const readerLayer = readerSource ? (
+    <View className="absolute inset-0 bg-canvas">
+      <TranslatedWebView
+        {...common}
+        key={readerKey(state)}
+        mode={mode}
+        onHost={setReaderHost}
+        onShouldStartLoadWithRequest={allowReaderNavigation}
+        onTranslationState={setReaderTranslation}
+        profile="reader"
+        readerContent={extracted ? { html: extracted.html, url: extracted.url } : undefined}
+        source={readerSource}
+        webRef={(handle) => {
+          readerWeb.current = handle;
+        }}
+      />
+    </View>
+  ) : null;
   const translationIssue = !translatable
     ? captions && captionProblem(captions, timelineMode === 'bilingual' || playerMode === 'bilingual')
     : translation && translationProblem(translation, mode);
@@ -339,11 +371,18 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
   return (
     <ArticleView
       onBack={() => router.back()}
-      onOpenExternal={() => void Linking.openURL(url).catch(() => undefined)}
-      onShare={() => void Share.share({ message: `${doc.title}\n${url}`, url }).catch(() => undefined)}
+      // The page as it is now (links followed), or the article reader mode shows.
+      onOpenExternal={() => void Linking.openURL(shareUrl(state)).catch(() => undefined)}
+      onShare={() => {
+        const address = shareUrl(state);
+        // The article's title only goes with the article; a page reached by a link is shared as its address.
+        const message = address === state.articleUrl ? `${doc.title}\n${address}` : address;
+        void Share.share({ message, url: address }).catch(() => undefined);
+      }}
       onToggleSave={() => void toggleSave()}
       problem={
-        state.load.status === 'failed'
+        // A failure of the page underneath reader mode is not reader mode's problem.
+        state.load.status === 'failed' && view !== 'reader'
           ? {
               message: state.load.message,
               action: (
@@ -370,7 +409,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
               }
             : null
       }
-      progress={state.load.status === 'loading' ? state.load.progress : 1}
+      progress={view !== 'reader' && state.load.status === 'loading' ? state.load.progress : 1}
       saved={doc.saved}
       title={kind.kind === 'youtube' ? t().reader.video : kind.kind === 'social' ? t().reader.post : t().reader.article}
       tools={tools}
@@ -404,7 +443,10 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
           />
         </View>
       ) : (
-        page
+        <View className="flex-1">
+          {page}
+          {readerLayer}
+        </View>
       )}
       {notice ? (
         <Animated.View className="absolute bottom-6 left-0 right-0" key={notice.id} pointerEvents="none" style={toastLife}>

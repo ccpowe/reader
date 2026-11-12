@@ -195,6 +195,7 @@ export default function Saved() {
   return (
     <>
       <SavedView
+        onPressUser={() => router.navigate('/me')}
         banner={online ? null : t().common.offline}
         folder={group}
         folders={folders}

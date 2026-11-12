@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { backStaysInside, documentKey, initialReaderPage, readerPageReducer as r } from './reader-page.ts';
+import { backStaysInside, documentKey, initialReaderPage, readerKey, readerPageReducer as r, shareUrl } from './reader-page.ts';
 
 const start = initialReaderPage('page', 'https://e.com/a');
 
@@ -17,20 +17,34 @@ test('a later successful load clears an earlier failure', () => {
   assert.equal(r(s, { type: 'progress', progress: 0.9 }), s); // late tick ignored
 });
 
-test('switching views starts a fresh document; the same view is not a switch', () => {
-  const loaded = r(r(start, { type: 'load-end' }), { type: 'history', canGoBack: true });
+test('reader mode lies over the page, which keeps its load, history and place (old app)', () => {
+  const loaded = r(r(start, { type: 'load-end' }), { type: 'history', canGoBack: true, url: 'https://e.com/a#part' });
   const reader = r(loaded, { type: 'switch', view: 'reader' });
-  assert.deepEqual(reader, {
-    view: 'reader',
-    articleUrl: 'https://e.com/a',
-    pageUrl: 'https://e.com/a',
-    load: { status: 'loading', progress: 0 },
-    canGoBack: false,
-    origin: 'page',
-    extracted: null,
-  });
+  assert.equal(reader.view, 'reader');
+  assert.deepEqual(reader.load, { status: 'loaded' });
+  assert.equal(reader.canGoBack, true);
+  assert.equal(documentKey(reader), documentKey(loaded), 'the page WebView is not remounted');
   assert.equal(r(reader, { type: 'switch', view: 'reader' }), reader);
-  assert.notEqual(documentKey(reader), documentKey(loaded));
+  const back = r(reader, { type: 'switch', view: 'page' });
+  assert.deepEqual(back, { ...loaded, view: 'page' });
+});
+
+test('to and from the YouTube player is a fresh document', () => {
+  const player = initialReaderPage('player', 'https://youtube.com/watch?v=x');
+  const page = r(r(player, { type: 'switch', view: 'page' }), { type: 'load-end' });
+  const again = r(page, { type: 'switch', view: 'player' });
+  assert.deepEqual(again.load, { status: 'loading', progress: 0 });
+  assert.notEqual(documentKey(again), documentKey(page));
+});
+
+test('share uses the page as it is now, or the article reader mode shows', () => {
+  const followed = r(start, { type: 'history', canGoBack: true, url: 'https://e.com/next' });
+  assert.equal(shareUrl(followed), 'https://e.com/next');
+  assert.equal(shareUrl(r(followed, { type: 'switch', view: 'reader' })), 'https://e.com/a');
+  const article = { url: 'https://e.com/next', title: 'T', byline: null, lang: 'en', html: '<p>x</p>', text: 'x' };
+  assert.equal(shareUrl(r(followed, { type: 'show-extracted', article })), 'https://e.com/next');
+  const link = r(r(start, { type: 'switch', view: 'reader' }), { type: 'open-page', url: 'https://other.example/x' });
+  assert.equal(shareUrl(link), 'https://other.example/x');
 });
 
 test('a link from reader mode opens as the original page at that address', () => {
@@ -61,7 +75,7 @@ test('reader mode from the page keeps its article across a link and back', () =>
   const article = { url: 'https://e.com/a', title: 'T', byline: null, lang: 'en', html: '<p>x</p>', text: 'x' };
   const reader = r(start, { type: 'show-extracted', article });
   assert.equal(reader.view, 'reader');
-  assert.equal(documentKey(reader), 'reader:https://e.com/a');
+  assert.equal(readerKey(reader), 'reader:https://e.com/a');
   const link = r(reader, { type: 'open-page', url: 'https://e.com/b' });
   const back = r(link, { type: 'back' });
   assert.equal(back.view, 'reader');
@@ -82,4 +96,17 @@ test('the HN discussion opens from the page and returns to it', () => {
     url: 'https://x/2',
   });
   assert.equal(r(viaReader, { type: 'back' }).view, 'reader');
+});
+
+test('reader mode taken from a linked page goes back to that page as it was', () => {
+  const link = r(r(start, { type: 'switch', view: 'reader' }), { type: 'open-page', url: 'https://e.com/b' });
+  const loaded = r(r(link, { type: 'load-end' }), { type: 'history', canGoBack: true, url: 'https://e.com/b#2' });
+  const article = { url: 'https://e.com/b#2', title: 'B', byline: null, lang: 'en', html: '<p>b</p>', text: 'b' };
+  const reader = r(loaded, { type: 'show-extracted', article });
+  const back = r(reader, { type: 'switch', view: 'page' });
+  assert.equal(back.pageUrl, 'https://e.com/b');
+  assert.equal(back.currentUrl, 'https://e.com/b#2');
+  assert.deepEqual(back.load, { status: 'loaded' });
+  assert.equal(back.canGoBack, true);
+  assert.equal(documentKey(back), documentKey(loaded));
 });

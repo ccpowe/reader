@@ -12,6 +12,7 @@ import { t } from '@/lib/i18n';
 
 export function SavedView({
   user,
+  onPressUser,
   banner,
   folders,
   folder,
@@ -21,6 +22,8 @@ export function SavedView({
   children,
 }: {
   user?: { name: string; avatarUrl?: string | null };
+  /** the header's avatar: opens 我的 */
+  onPressUser?: () => void;
   banner?: string | null;
   /** folder tabs after 全部: key ('' = 未分类) and label */
   folders: { key: string; label: string }[];
@@ -44,7 +47,7 @@ export function SavedView({
               {banner}
             </Message>
           ) : null}
-          <PageHeader title={t().saved.title} user={user} />
+          <PageHeader title={t().saved.title} onPressUser={onPressUser} user={user} />
           <View className="pb-1 pt-2">
             <SearchField
               autoCapitalize="none"

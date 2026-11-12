@@ -111,28 +111,50 @@ export function patchItems<P extends { items: FeedItem[] }>(pages: P[], id: stri
   return changed ? next : pages;
 }
 
-/** What a list item needs for filling in its title translation (feed and saved items). */
-type Titled = { title: string; title_translation?: { text: string; engine_fingerprint: string } | null; board?: string | null };
+/** What a list item needs for filling in its translations (feed and saved items). */
+type Titled = {
+  title: string;
+  title_translation?: { text: string; engine_fingerprint: string } | null;
+  board?: string | null;
+  x?: { repost?: { text?: string | null } | null; quote?: { text?: string | null } | null } | null;
+};
 
 /**
- * Titles the loaded items still lack a translation for, by the purpose they are asked with: items
- * saved from a board use `board_title`, so the board's own translation is found in the cache.
+ * Texts the loaded items still lack a translation for, by the purpose they are asked with: titles
+ * (`board_title` for items saved from a board, so the board's own translation is found), and the
+ * reposted / quoted post of an X item (`paragraph`; old app: those were translated too).
  */
-export function missingTitles(items: readonly Titled[]): { title: string[]; board_title: string[] } {
+export function missingTitles(items: readonly Titled[]): { title: string[]; board_title: string[]; paragraph: string[] } {
   const title = new Set<string>();
   const board = new Set<string>();
+  const paragraph = new Set<string>();
   for (const item of items) {
-    if (item.title_translation || !item.title.trim()) continue;
-    (item.board ? board : title).add(item.title);
+    if (!item.title_translation && item.title.trim()) (item.board ? board : title).add(item.title);
+    for (const text of [item.x?.repost?.text, item.x?.quote?.text]) if (text?.trim()) paragraph.add(text);
   }
-  return { title: [...title], board_title: [...board] };
+  return { title: [...title], board_title: [...board], paragraph: [...paragraph] };
 }
 
-/** Put finished title translations into the items; untouched items keep their object (the card cache). */
+/** Put finished translations into the items; untouched items keep their object (the card cache). */
 export function withTitleTranslations<T extends Titled>(items: readonly T[], done: ReadonlyMap<string, string> | undefined, fingerprint: string): T[] {
   if (!done || done.size === 0) return items as T[];
   return items.map((item) => {
-    const text = item.title_translation ? undefined : done.get(item.title);
-    return text ? { ...item, title_translation: { text, engine_fingerprint: fingerprint } } : item;
+    const title = item.title_translation ? undefined : done.get(item.title);
+    const repost = item.x?.repost?.text ? done.get(item.x.repost.text) : undefined;
+    const quote = item.x?.quote?.text ? done.get(item.x.quote.text) : undefined;
+    if (!title && !repost && !quote) return item;
+    return {
+      ...item,
+      ...(title ? { title_translation: { text: title, engine_fingerprint: fingerprint } } : {}),
+      ...(item.x && (repost || quote)
+        ? {
+            x: {
+              ...item.x,
+              ...(repost ? { repost: { ...item.x.repost, text: repost } } : {}),
+              ...(quote ? { quote: { ...item.x.quote, text: quote } } : {}),
+            },
+          }
+        : {}),
+    };
   });
 }

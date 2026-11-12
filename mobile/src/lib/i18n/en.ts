@@ -218,6 +218,9 @@ export const en: Messages = {
     unsaveUnknown: 'No confirmation from the server. Reloaded the saved items.',
   },
   reader: {
+    moveToolsUp: 'Move tools up',
+    moveToolsDown: 'Move tools down',
+    dragToolsHint: 'Drag up or down to move the tools',
     article: 'Article',
     video: 'Video',
     post: 'Post',

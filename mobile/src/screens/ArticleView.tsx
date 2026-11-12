@@ -7,33 +7,87 @@
  */
 import type { Icon as TablerIcon } from '@tabler/icons-react-native';
 import { IconArrowLeft, IconBookmark, IconBookmarkFilled, IconExternalLink, IconShare2 } from '@tabler/icons-react-native';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import { cn } from '@/lib/cn';
+import { clampPosition, toolsPosition } from '@/lib/reader-tools-position';
+import { useMountEffect } from '@/lib/use-mount-effect';
 import { Icon, IconButton, Message, TopBar, useShadow } from '@/ui';
 import { t } from '@/lib/i18n';
 
 export type ReaderTool = { key: string; icon: TablerIcon; label: string; on: boolean; onPress?: () => void };
 
+/**
+ * The floating tools on the right edge (P23 R3-A, old app): drag the pill up or down; the place is
+ * remembered on this device. Screen readers move it with the increment / decrement actions.
+ */
 function FloatingTools({ tools }: { tools: ReaderTool[] }) {
   const shadow = useShadow('md');
+  const [area, setArea] = useState(0);
+  const [pill, setPill] = useState(0);
+  const travel = Math.max(0, area - pill);
+  const position = useSharedValue(toolsPosition.get());
+  const start = useSharedValue(0);
+  useMountEffect(() =>
+    toolsPosition.subscribe((remembered) => {
+      position.set(remembered);
+    }),
+  );
+  const remember = (value: number) => toolsPosition.set(value);
+  // A vertical drag moves it; a tap still reaches the buttons.
+  const drag = Gesture.Pan()
+    .activeOffsetY([-6, 6])
+    .failOffsetX([-12, 12])
+    .onBegin(() => {
+      start.set(position.get());
+    })
+    .onUpdate((event) => {
+      if (travel > 0) position.set(Math.max(0, Math.min(1, start.get() + event.translationY / travel)));
+    })
+    .onFinalize(() => {
+      scheduleOnRN(remember, position.get());
+    });
+  const placed = useAnimatedStyle(() => ({ top: position.get() * travel }));
+  function moveBy(delta: number) {
+    const next = clampPosition(position.get() + delta);
+    position.set(next);
+    toolsPosition.set(next);
+  }
   if (tools.length === 0) return null;
   return (
-    <View className="absolute right-2 top-1/2 rounded-full bg-raised p-1" style={shadow} testID="align-ignore">
-      {tools.map((tool) => (
-        <Pressable
-          accessibilityLabel={tool.label}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: tool.on }}
-          className={cn('h-12 w-12 items-center justify-center rounded-full active:bg-pressed', tool.on ? 'bg-selected' : '')}
-          key={tool.key}
-          onPress={tool.onPress}
+    <View className="absolute inset-0" onLayout={(event) => setArea(event.nativeEvent.layout.height)} pointerEvents="box-none">
+      <GestureDetector gesture={drag}>
+        <Animated.View
+          className="absolute right-2 rounded-full bg-raised p-1"
+          onLayout={(event) => setPill(event.nativeEvent.layout.height)}
+          style={[shadow, placed]}
+          testID="align-ignore"
         >
-          <Icon icon={tool.icon} size="toolbar" tone={tool.on ? 'strong' : 'neutral'} />
-        </Pressable>
-      ))}
+          {tools.map((tool) => (
+            <Pressable
+              accessibilityActions={[
+                { name: 'increment', label: t().reader.moveToolsDown },
+                { name: 'decrement', label: t().reader.moveToolsUp },
+              ]}
+              accessibilityHint={t().reader.dragToolsHint}
+              accessibilityLabel={tool.label}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: tool.on }}
+              className={cn('h-12 w-12 items-center justify-center rounded-full active:bg-pressed', tool.on ? 'bg-selected' : '')}
+              key={tool.key}
+              onAccessibilityAction={(event) => moveBy(event.nativeEvent.actionName === 'increment' ? 0.1 : -0.1)}
+              onPress={tool.onPress}
+            >
+              <Icon icon={tool.icon} size="toolbar" tone={tool.on ? 'strong' : 'neutral'} />
+            </Pressable>
+          ))}
+        </Animated.View>
+      </GestureDetector>
     </View>
   );
 }
@@ -88,8 +142,8 @@ export function ArticleView({
       ) : null}
       <View className="flex-1" style={{ paddingBottom: insets.bottom }}>
         {children}
+        <FloatingTools tools={tools} />
       </View>
-      <FloatingTools tools={tools} />
     </View>
   );
 }

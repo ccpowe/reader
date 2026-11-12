@@ -137,11 +137,20 @@ test('missing titles are asked for by purpose; finished ones go back into the it
     { id: '4', title: '  ' },
     { id: '5', title: 'A' },
   ];
-  assert.deepEqual(missingTitles(items), { title: ['A'], board_title: ['C'] });
+  assert.deepEqual(missingTitles(items), { title: ['A'], board_title: ['C'], paragraph: [] });
   const filled = withTitleTranslations(items, new Map([['A', '甲'], ['C', '丙']]), 'fp');
   assert.equal(filled[0].title_translation?.text, '甲');
   assert.equal(filled[1], items[1], 'already translated: same object');
   assert.equal(filled[2].title_translation?.text, '丙');
   assert.equal(filled[3], items[3]);
   assert.equal(withTitleTranslations(items, new Map(), 'fp'), items);
+});
+
+test('the reposted and quoted post of an X item are translated too (old app)', () => {
+  const item = { title: 'Main', title_translation: { text: '主帖', engine_fingerprint: 'f' }, x: { repost: { text: 'Reposted' }, quote: { text: 'Quoted' } } };
+  assert.deepEqual(missingTitles([item]).paragraph, ['Reposted', 'Quoted']);
+  const [filled] = withTitleTranslations([item], new Map([['Reposted', '转帖'], ['Quoted', '引用']]), 'f');
+  assert.equal(filled.x?.repost?.text, '转帖');
+  assert.equal(filled.x?.quote?.text, '引用');
+  assert.equal(filled.title_translation?.text, '主帖');
 });

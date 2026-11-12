@@ -177,6 +177,7 @@ export default function Boards() {
   return (
     <>
       <BoardsView
+        onPressUser={() => router.navigate('/me')}
         banner={online ? null : t().common.offline}
         board={board}
         onRefresh={() => void refresh(board)}

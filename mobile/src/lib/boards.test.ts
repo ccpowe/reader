@@ -42,7 +42,7 @@ const response = (over: Partial<BoardResponse> = {}): BoardResponse => ({
 });
 
 test('views: default version, request params, label', () => {
-  assert.deepEqual(defaultView('github'), { board: 'github', variant: 'daily', subreddit: null });
+  assert.deepEqual(defaultView('github'), { board: 'github', variant: 'weekly', subreddit: null }); // old app's default
   assert.deepEqual(defaultView('hn'), { board: 'hn', variant: '', subreddit: null });
   assert.deepEqual(viewParams({ board: 'reddit', variant: 'top-week', subreddit: 'rust' }), {
     variant: 'top-week',

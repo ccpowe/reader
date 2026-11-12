@@ -214,6 +214,9 @@ export const zh = {
     unsaveUnknown: '没收到服务器的确认，已重新加载收藏。',
   },
   reader: {
+    moveToolsUp: '工具上移',
+    moveToolsDown: '工具下移',
+    dragToolsHint: '上下拖动可移动工具',
     article: '文章',
     video: '视频',
     post: '帖子',

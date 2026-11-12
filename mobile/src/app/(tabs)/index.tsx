@@ -7,7 +7,7 @@ import { ChromePadded, useTabBarInset } from '@/components/CollapsingChrome';
 import { onlineManager, useQuery } from '@tanstack/react-query';
 import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
-import { View } from 'react-native';
+import { BackHandler, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import Animated from 'react-native-reanimated';
 
@@ -94,6 +94,17 @@ export default function Today() {
   const channelSubscription = channel ? list.find((s) => s.id === channel) : undefined;
   // A subscription gone since (unsubscribed elsewhere) is shown no longer.
   const shownChannel = channel && (subscriptions.data === undefined || channelSubscription) ? channel : null;
+  // Android back leaves the one-channel view first (old app), then does what it always does.
+  useFocusEffect(
+    useCallback(() => {
+      if (!shownChannel) return undefined;
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        setChannel(null);
+        return true;
+      });
+      return () => subscription.remove();
+    }, [shownChannel]),
+  );
 
   function selectFolder(folder: string | null) {
     const index = pages.indexOf(folder);
@@ -198,6 +209,7 @@ export default function Today() {
   return (
     <>
       <TodayView
+        onPressUser={() => router.navigate('/me')}
         banner={online ? null : t().common.offline}
         channel={channelSubscription ? (channelSubscription.name ?? channelSubscription.url) : null}
         date={todayLabel(opened)}

@@ -15,6 +15,7 @@ import { t } from '@/lib/i18n';
 export function TodayView({
   date,
   user,
+  onPressUser,
   folders,
   folder,
   channel,
@@ -28,6 +29,8 @@ export function TodayView({
   /** e.g. "11 月 11 日 · 星期三" */
   date: string;
   user?: { name: string; avatarUrl?: string | null };
+  /** the header's avatar: opens 我的 */
+  onPressUser?: () => void;
   /** tabs after 全部: key and label */
   folders: { key: string; label: string }[];
   /** null = 全部 */
@@ -58,12 +61,14 @@ export function TodayView({
           {banner}
         </Message>
       ) : null}
-      <PageHeader aside={date} title={t().today.title} user={user} />
+      <PageHeader aside={date} title={t().today.title} onPressUser={onPressUser} user={user} />
       {channel ? (
         <View className="h-11 flex-row items-center gap-2 border-b border-subtle px-6">
           <Text className="flex-1" numberOfLines={1} tone="secondary">
             {t().today.onlyChannel(channel)}
           </Text>
+          {/* another channel straight from here (old app), or back to the folders */}
+          {filter}
           <IconButton icon={IconX} label={t().today.backToFolders} onPress={onClearChannel} size="sm" />
         </View>
       ) : (

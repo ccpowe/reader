@@ -109,7 +109,7 @@ export type TitleTranslations = { done: Map<string, string>; fingerprint: string
 export function titleTranslationsQuery(
   identity: string,
   list: unknown,
-  missing: { title: string[]; board_title: string[] },
+  missing: { title: string[]; board_title: string[]; paragraph: string[] },
   preference: PreferenceResponse | undefined,
 ) {
   return queryOptions({
@@ -121,16 +121,18 @@ export function titleTranslationsQuery(
       preference?.engine_fingerprint ?? null,
       missing.title,
       missing.board_title,
+      missing.paragraph,
     ),
-    enabled: preference?.enabled === true && (missing.title.length > 0 || missing.board_title.length > 0),
+    enabled: preference?.enabled === true && (missing.title.length > 0 || missing.board_title.length > 0 || missing.paragraph.length > 0),
     queryFn: async ({ signal }): Promise<TitleTranslations> => {
-      const [titles, boards] = await Promise.all([
+      const [titles, boards, paragraphs] = await Promise.all([
         missing.title.length ? translateAll('title', missing.title, signal) : null,
         missing.board_title.length ? translateAll('board_title', missing.board_title, signal) : null,
+        missing.paragraph.length ? translateAll('paragraph', missing.paragraph, signal) : null,
       ]);
       return {
-        done: new Map([...(titles?.done ?? []), ...(boards?.done ?? [])]),
-        fingerprint: titles?.fingerprint || boards?.fingerprint || preference?.engine_fingerprint || '',
+        done: new Map([...(titles?.done ?? []), ...(boards?.done ?? []), ...(paragraphs?.done ?? [])]),
+        fingerprint: titles?.fingerprint || boards?.fingerprint || paragraphs?.fingerprint || preference?.engine_fingerprint || '',
       };
     },
     placeholderData: keepPreviousData,

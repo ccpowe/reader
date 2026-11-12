@@ -73,6 +73,7 @@ function ContextLine({
 
 export function BoardsView({
   user,
+  onPressUser,
   board,
   refreshing = false,
   banner,
@@ -81,6 +82,8 @@ export function BoardsView({
   onRefresh,
 }: {
   user?: { name: string; avatarUrl?: string | null };
+  /** the header's avatar: opens 我的 */
+  onPressUser?: () => void;
   board: BoardKey;
   refreshing?: boolean;
   banner?: string | null;
@@ -100,6 +103,7 @@ export function BoardsView({
           ) : null}
           <PageHeader
             aside={<IconButton disabled={refreshing} icon={IconRefresh} label={t().boards.refresh} onPress={onRefresh} />}
+            onPressUser={onPressUser}
             title={t().boards.title}
             user={user}
           />
