@@ -2,29 +2,24 @@
  * One board entry, old app frame (P26: checked against the device): a two-digit rank, the title
  * (translated when available) in regular weight, then what the board has — description, domain
  * or author, a stats line (HN: ▲ points · comments; GitHub: contributors, language, stars,
- * forks; Product Hunt: ▲ votes · comments; TechTwitter: topics), and a thumbnail on the right
+ * forks; Product Hunt: ▲ votes · comments; TechTwitter: topics, quality, age), and a thumbnail on the right
  * when there is one. No row bookmark: saving is on the entry page.
  */
 import { IconGitFork, IconStar, IconTriangle } from '@tabler/icons-react-native';
 import { Image, Pressable, View } from 'react-native';
 
+import type { BoardRow } from '@/lib/boards';
 import { Avatar, Icon, Text } from '@/ui';
 
-export type BoardEntryItem = {
-  rank: number;
-  title: string;
-  description?: string | null;
-  /** HN / Product Hunt: the linked site; Reddit: u/author */
-  byline?: string | null;
-  score?: string | null;
-  comments?: string | null;
-  language?: string | null;
-  stars?: string | null;
-  forks?: string | null;
-  contributors?: { name: string; avatarUrl?: string | null }[];
-  tags?: string[];
-  imageUrl?: string | null;
-};
+export type BoardEntryItem = Pick<BoardRow, 'rank' | 'title'> &
+  Partial<
+    Pick<
+      BoardRow,
+      'description' | 'byline' | 'score' | 'comments' | 'language' | 'stars' | 'forks' | 'tags' | 'quality' | 'age' | 'imageUrl'
+    >
+  > & {
+    contributors?: { name: string; avatarUrl?: string | null }[];
+  };
 
 function Stat({ icon, value }: { icon?: typeof IconStar; value: string }) {
   return (
@@ -46,6 +41,8 @@ function Stats({ entry }: { entry: BoardEntryItem }) {
     entry.stars ? <Stat icon={IconStar} key="stars" value={entry.stars} /> : null,
     entry.forks ? <Stat icon={IconGitFork} key="forks" value={entry.forks} /> : null,
     ...(entry.tags ?? []).map((tag) => <Stat key={`#${tag}`} value={`#${tag}`} />),
+    entry.quality ? <Stat key="quality" value={entry.quality} /> : null,
+    entry.age ? <Stat key="age" value={entry.age} /> : null,
   ].filter(Boolean);
   if (contributors.length === 0 && parts.length === 0) return null;
   return (
@@ -53,7 +50,10 @@ function Stats({ entry }: { entry: BoardEntryItem }) {
       {contributors.length > 0 ? (
         <View className="flex-row">
           {contributors.slice(0, 3).map((person, index) => (
-            <View className={index > 0 ? '-ml-1.5 rounded-full border-2 border-canvas' : 'rounded-full border-2 border-canvas'} key={person.name}>
+            <View
+              className={index > 0 ? '-ml-1.5 rounded-full border-2 border-canvas' : 'rounded-full border-2 border-canvas'}
+              key={person.name}
+            >
               <Avatar name={person.name} size={20} uri={person.avatarUrl} />
             </View>
           ))}

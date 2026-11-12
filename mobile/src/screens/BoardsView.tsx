@@ -1,36 +1,40 @@
 /**
  * 榜单 (PRODUCT §3.2), old app layout (device screenshots) at P25 values: READER header with a
- * refresh button, board tabs, then one context line — the variant (GitHub period, Product Hunt
- * day, Reddit community · sort) with the 调整 button when the board has options (P23 R2-A), and
- * the freshness / paused state (P17) — then the ranked list.
+ * refresh button, board tabs, then the board pager (`children`). Each page is a BoardList: one
+ * context line — the version (GitHub period, Product Hunt day, Reddit community · sort) with the
+ * 调整 button when the board has options (P23 R2-A), and the freshness / paused state (P17) — then
+ * the ranked list. Presentational: data and callbacks come from the route.
  */
 import { IconAdjustmentsHorizontal, IconRefresh } from '@tabler/icons-react-native';
-import { FlatList, View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { FlatList, RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { useCSSVariable } from 'uniwind';
 
 import { BoardEntry, type BoardEntryItem } from '@/components/BoardEntry';
-import { Button, EmptyState, IconButton, Input, PageHeader, SectionHeading, Skeleton, Tabs, Text } from '@/ui';
+import { BOARDS, VARIANTS, communityName, type BoardKey, type BoardView, type Freshness } from '@/lib/boards';
+import { Button, EmptyState, IconButton, Input, Message, PageHeader, SectionHeading, Skeleton, Tabs, Text } from '@/ui';
+import { delayLoading, duration } from '@/ui/theme';
 
-export type BoardKey = 'hn' | 'github' | 'product_hunt' | 'reddit' | 'techtwitter';
+export type { BoardKey, Freshness };
 
-export const boardTabs: { key: BoardKey; label: string }[] = [
-  { key: 'hn', label: 'Hacker News' },
-  { key: 'reddit', label: 'Reddit' },
-  { key: 'github', label: 'GitHub' },
-  { key: 'techtwitter', label: 'X 技术热门' },
-  { key: 'product_hunt', label: 'Product Hunt' },
-];
-
-const hasOptions: Record<BoardKey, boolean> = { hn: false, techtwitter: false, github: true, product_hunt: true, reddit: true };
-
-export type Freshness =
-  | { kind: 'fresh'; age: string }
-  | { kind: 'stale'; age: string }
-  | { kind: 'paused'; reason: string; resumesIn: string };
+/** A row and the address it opens. */
+export type BoardListRow = BoardEntryItem & { url: string };
 
 export type BoardState =
   | { kind: 'loading' }
   | { kind: 'unavailable'; reason: string }
-  | { kind: 'ready'; entries: BoardEntryItem[]; freshness: Freshness };
+  | { kind: 'failed'; message: string }
+  /** Reddit without a community chosen */
+  | { kind: 'no-community' }
+  | { kind: 'ready'; rows: BoardListRow[]; freshness: Freshness | null; refreshFailed?: string | null };
+
+const appearLate = {
+  animationName: { from: { opacity: 0 }, to: { opacity: 1 } },
+  animationDuration: `${duration.fast}ms`,
+  animationDelay: `${delayLoading}ms`,
+  animationFillMode: 'both',
+} as const;
 
 function freshnessText(freshness: Freshness) {
   if (freshness.kind === 'fresh') return `更新于 ${freshness.age}`;
@@ -38,20 +42,29 @@ function freshnessText(freshness: Freshness) {
   return `暂停中：${freshness.reason}，${freshness.resumesIn}后恢复`;
 }
 
-function ContextLine({ board, variantLabel, freshness, onOpenOptions }: { board: BoardKey; variantLabel?: string; freshness?: Freshness; onOpenOptions?: () => void }) {
+function ContextLine({
+  label,
+  freshness,
+  onOpenOptions,
+}: {
+  label?: string;
+  freshness?: Freshness | null;
+  onOpenOptions?: () => void;
+}) {
+  if (!label && !freshness && !onOpenOptions) return null;
   // One Text with nested spans, so the label and the smaller status share a baseline.
   return (
     <View className="min-h-11 flex-row items-center gap-2 px-6">
       <Text className="flex-1" level="ui-strong" numberOfLines={1}>
-        {variantLabel ?? ''}
+        {label ?? ''}
         {freshness ? (
           <Text level="caption" tone={freshness.kind === 'fresh' ? 'tertiary' : 'secondary'}>
-            {variantLabel ? '  ·  ' : ''}
+            {label ? '  ·  ' : ''}
             {freshnessText(freshness)}
           </Text>
         ) : null}
       </Text>
-      {hasOptions[board] ? <IconButton icon={IconAdjustmentsHorizontal} label="调整榜单" onPress={onOpenOptions} /> : null}
+      {onOpenOptions ? <IconButton icon={IconAdjustmentsHorizontal} label="调整榜单" onPress={onOpenOptions} /> : null}
     </View>
   );
 }
@@ -59,104 +72,204 @@ function ContextLine({ board, variantLabel, freshness, onOpenOptions }: { board:
 export function BoardsView({
   user,
   board,
-  variantLabel,
-  state,
   refreshing = false,
+  banner,
+  children,
   onSelectBoard,
-  onOpenOptions,
   onRefresh,
 }: {
-  user: { name: string; avatarUrl?: string | null };
+  user?: { name: string; avatarUrl?: string | null };
   board: BoardKey;
-  /** e.g. "r / codex · 热门", "周榜"; boards without options have none */
-  variantLabel?: string;
-  state: BoardState;
   refreshing?: boolean;
+  banner?: string | null;
+  children: ReactNode;
   onSelectBoard?: (board: BoardKey) => void;
-  onOpenOptions?: () => void;
   onRefresh?: () => void;
 }) {
   return (
     <View className="flex-1 bg-canvas">
-      <PageHeader aside={<IconButton disabled={refreshing} icon={IconRefresh} label="刷新" onPress={onRefresh} />} title="榜单" user={user} />
-      <Tabs bordered onSelect={(key) => onSelectBoard?.(key)} options={boardTabs} selected={board} />
-      {state.kind === 'loading' ? (
-        <>
-          <ContextLine board={board} onOpenOptions={onOpenOptions} variantLabel={variantLabel} />
-          <View className="gap-8 px-6 py-4">
-            {[0, 1, 2, 3].map((index) => (
-              <Skeleton key={index} lines={2} />
-            ))}
-          </View>
-        </>
-      ) : state.kind === 'unavailable' ? (
-        <EmptyState description={`${state.reason}。Reader 每小时自动重试。`} title="这个榜单暂不可用" />
-      ) : (
-        <FlatList
-          ListEmptyComponent={<EmptyState title="这个榜单现在是空的" />}
-          ListHeaderComponent={<ContextLine board={board} freshness={state.freshness} onOpenOptions={onOpenOptions} variantLabel={variantLabel} />}
-          data={state.entries}
-          keyExtractor={(entry) => String(entry.rank)}
-          renderItem={({ item }) => <BoardEntry entry={item} />}
-        />
-      )}
+      {banner ? (
+        <Message bar kind="warning">
+          {banner}
+        </Message>
+      ) : null}
+      <PageHeader
+        aside={<IconButton disabled={refreshing} icon={IconRefresh} label="刷新" onPress={onRefresh} />}
+        title="榜单"
+        user={user}
+      />
+      <Tabs bordered onSelect={(key) => onSelectBoard?.(key)} options={BOARDS} selected={board} />
+      <View className="flex-1">{children}</View>
     </View>
   );
 }
 
-/** Content of the "调整" sheet for the current board. */
-export function BoardOptions({
-  board,
-  variant,
-  subreddit,
-  subscribedCommunities = [],
-  onVariant,
+/** One board's list with all its states. */
+export function BoardList({
+  state,
+  label,
+  refreshing = false,
+  initialOffset = 0,
+  onOpenOptions,
+  onOpen,
+  onRefresh,
+  onRetry,
+  onOffset,
 }: {
-  board: BoardKey;
-  variant: string;
-  subreddit?: string;
-  subscribedCommunities?: string[];
-  onVariant?: (variant: string) => void;
+  state: BoardState;
+  /** e.g. "r/codex · 热门", "周榜" */
+  label?: string;
+  refreshing?: boolean;
+  initialOffset?: number;
+  /** boards with versions or a community */
+  onOpenOptions?: () => void;
+  onOpen?: (row: BoardListRow) => void;
+  onRefresh?: () => void;
+  onRetry?: () => void;
+  onOffset?: (offset: number) => void;
 }) {
-  const choices: Record<BoardKey, { key: string; label: string }[]> = {
-    hn: [],
-    techtwitter: [],
-    github: [
-      { key: 'daily', label: '日榜' },
-      { key: 'weekly', label: '周榜' },
-      { key: 'monthly', label: '月榜' },
-    ],
-    product_hunt: [
-      { key: 'today', label: '今天' },
-      { key: 'yesterday', label: '昨天' },
-    ],
-    reddit: [
-      { key: 'hot', label: '热门' },
-      { key: 'rising', label: '上升' },
-      { key: 'top-day', label: 'Top · 日' },
-      { key: 'top-week', label: 'Top · 周' },
-      { key: 'top-month', label: 'Top · 月' },
-      { key: 'top-year', label: 'Top · 年' },
-    ],
-  };
+  const spinner = useCSSVariable('--color-icon-neutral') as string | undefined;
+  if (state.kind === 'loading') {
+    return (
+      <View>
+        <ContextLine label={label} onOpenOptions={onOpenOptions} />
+        <Animated.View className="gap-8 px-6 py-4" style={appearLate}>
+          {[0, 1, 2, 3].map((index) => (
+            <Skeleton key={index} lines={2} />
+          ))}
+        </Animated.View>
+      </View>
+    );
+  }
+  if (state.kind === 'unavailable') {
+    return (
+      <View className="flex-1">
+        <ContextLine label={label} onOpenOptions={onOpenOptions} />
+        <EmptyState
+          action={<Button onPress={onRetry} title="重试" />}
+          description={`${state.reason}。`}
+          title="这个榜单暂不可用"
+        />
+      </View>
+    );
+  }
+  if (state.kind === 'failed') {
+    return (
+      <View className="flex-1">
+        <ContextLine label={label} onOpenOptions={onOpenOptions} />
+        <EmptyState action={<Button onPress={onRetry} title="重试" />} description={state.message} title="没能加载" />
+      </View>
+    );
+  }
+  if (state.kind === 'no-community') {
+    return (
+      <EmptyState
+        action={<Button large onPress={onOpenOptions} title="选择社区" variant="primary" />}
+        description="Reddit 榜单按社区看。选一个已订阅的社区，或输入任意社区。"
+        title="还没选社区"
+      />
+    );
+  }
   return (
-    <View className="gap-2">
-      {board === 'reddit' ? (
+    <FlatList
+      ListEmptyComponent={<EmptyState title="这个榜单现在是空的" />}
+      ListHeaderComponent={
         <>
-          <Input autoCapitalize="none" defaultValue={subreddit} label="社区" placeholder="r/python" />
-          {subscribedCommunities.length > 0 ? (
-            <View className="-mx-4">
-              <SectionHeading inset="sheet" title="已订阅的社区" />
-              <Tabs inset="sheet" onSelect={() => undefined} options={subscribedCommunities.map((name) => ({ key: name, label: `r/${name}` }))} selected={subreddit ?? null} />
-            </View>
+          <ContextLine freshness={state.freshness} label={label} onOpenOptions={onOpenOptions} />
+          {state.refreshFailed ? (
+            <Message bar kind="warning">
+              {state.refreshFailed}
+            </Message>
           ) : null}
         </>
+      }
+      contentOffset={{ x: 0, y: initialOffset }}
+      data={state.rows}
+      keyExtractor={(row) => `${row.rank}:${row.url}`}
+      onScroll={(event) => onOffset?.(event.nativeEvent.contentOffset.y)}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            colors={spinner ? [spinner] : undefined}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+            tintColor={spinner}
+          />
+        ) : undefined
+      }
+      renderItem={({ item }) => <BoardEntry entry={item} onOpen={() => onOpen?.(item)} />}
+      scrollEventThrottle={64}
+    />
+  );
+}
+
+/**
+ * Content of the 调整 sheet. GitHub and Product Hunt: tapping a version applies it. Reddit: a
+ * community (subscribed ones as quick choices, or any typed name, P17) and a sort, applied with 查看.
+ */
+export function BoardOptions({
+  view,
+  subscribedCommunities = [],
+  onApply,
+}: {
+  view: BoardView;
+  subscribedCommunities?: string[];
+  onApply?: (view: BoardView) => void;
+}) {
+  const [typed, setTyped] = useState(view.subreddit ?? '');
+  const [sort, setSort] = useState(view.variant);
+  const [touched, setTouched] = useState(false);
+  const community = communityName(typed);
+  const choices = VARIANTS[view.board];
+
+  if (view.board !== 'reddit') {
+    return (
+      <View className="-mx-4">
+        <SectionHeading inset="sheet" title={view.board === 'product_hunt' ? '日期（洛杉矶时间）' : '周期'} />
+        <Tabs inset="sheet" onSelect={(key) => onApply?.({ ...view, variant: key })} options={choices} selected={view.variant} />
+      </View>
+    );
+  }
+  return (
+    <View className="gap-2">
+      <Input
+        autoCapitalize="none"
+        autoCorrect={false}
+        error={touched && typed.trim() && !community ? '社区名只能有字母、数字和下划线' : undefined}
+        label="社区"
+        onBlur={() => setTouched(true)}
+        onChangeText={setTyped}
+        placeholder="r/python"
+        value={typed}
+      />
+      {subscribedCommunities.length > 0 ? (
+        <View className="-mx-4">
+          <SectionHeading inset="sheet" title="已订阅的社区" />
+          <Tabs
+            inset="sheet"
+            onSelect={(key) => key && setTyped(key)}
+            options={subscribedCommunities.map((name) => ({ key: name, label: `r/${name}` }))}
+            selected={community ?? null}
+          />
+        </View>
       ) : null}
       <View className="-mx-4">
-        <SectionHeading inset="sheet" title={board === 'reddit' ? '排序' : board === 'product_hunt' ? '日期（洛杉矶时间）' : '周期'} />
-        <Tabs inset="sheet" onSelect={(key) => onVariant?.(key)} options={choices[board]} selected={variant} />
+        <SectionHeading inset="sheet" title="排序" />
+        <Tabs inset="sheet" onSelect={setSort} options={choices} selected={sort} />
       </View>
-      {board === 'reddit' ? <Button className="mt-2" large title="查看" variant="primary" /> : null}
+      <Button
+        className="mt-2"
+        disabled={!community}
+        large
+        onPress={() => community && onApply?.({ ...view, subreddit: community, variant: sort })}
+        title="查看"
+        variant="primary"
+      />
+      {!community && !typed.trim() ? (
+        <Text level="caption" tone="secondary">
+          输入社区名，或点一个已订阅的社区。
+        </Text>
+      ) : null}
     </View>
   );
 }

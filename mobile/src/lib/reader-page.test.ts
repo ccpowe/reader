@@ -26,6 +26,7 @@ test('switching views starts a fresh document; the same view is not a switch', (
     pageUrl: 'https://e.com/a',
     load: { status: 'loading', progress: 0 },
     canGoBack: false,
+    origin: 'page',
     extracted: null,
   });
   assert.equal(r(reader, { type: 'switch', view: 'reader' }), reader);
@@ -47,7 +48,7 @@ test('retry reloads', () => {
 
 test('back from a link returns to reader mode; the page tool shows the article itself', () => {
   const link = r(r(start, { type: 'switch', view: 'reader' }), { type: 'open-page', url: 'https://other.example/x' });
-  assert.equal(backStaysInside(link), 'reader');
+  assert.equal(backStaysInside(link), 'origin');
   assert.equal(backStaysInside(r(link, { type: 'history', canGoBack: true })), 'history');
   const back = r(link, { type: 'back' });
   assert.equal(back.view, 'reader');
@@ -67,4 +68,18 @@ test('reader mode from the page keeps its article across a link and back', () =>
   assert.equal(back.extracted, article);
   // the page view and back to reader mode reuse it
   assert.equal(r(r(reader, { type: 'switch', view: 'page' }), { type: 'switch', view: 'reader' }).extracted, article);
+});
+
+test('the HN discussion opens from the page and returns to it', () => {
+  const discussion = r(start, { type: 'open-page', url: 'https://news.ycombinator.com/item?id=1' });
+  assert.equal(backStaysInside(discussion), 'origin');
+  const back = r(discussion, { type: 'back' });
+  assert.equal(back.view, 'page');
+  assert.equal(back.pageUrl, 'https://e.com/a');
+  // from reader mode: discussion, a link in it, then back → reader mode
+  const viaReader = r(r(r(start, { type: 'switch', view: 'reader' }), { type: 'open-page', url: 'https://hn/1' }), {
+    type: 'open-page',
+    url: 'https://x/2',
+  });
+  assert.equal(r(viaReader, { type: 'back' }).view, 'reader');
 });

@@ -9,8 +9,8 @@ import { ScrollView, View } from 'react-native';
 
 import { ArticleView, type ReaderTool } from '@/screens/ArticleView';
 import { ConnectView, SignInView } from '@/screens/AuthViews';
-import { BoardItemView } from '@/screens/BoardItemView';
-import { BoardOptions, BoardsView } from '@/screens/BoardsView';
+import type { BoardEntryItem } from '@/components/BoardEntry';
+import { BoardList, BoardOptions, BoardsView, type BoardKey, type Freshness } from '@/screens/BoardsView';
 import { FeedList, type FeedListState } from '@/components/FeedList';
 import { ChannelPicker } from '@/screens/ChannelPicker';
 import { Button, EmptyState, Text } from '@/ui';
@@ -69,54 +69,46 @@ export const TodayChannelPicker = story('今天 · 频道选择弹层', () => (
 
 // --- 榜单 -----------------------------------------------------------------------
 
-export const BoardsGithub = story('榜单 · GitHub 周榜', () => (
+type StoryBoardState =
+  | { kind: 'loading' }
+  | { kind: 'unavailable'; reason: string }
+  | { kind: 'no-community' }
+  | { kind: 'ready'; entries: BoardEntryItem[]; freshness: Freshness };
+const boards = (board: BoardKey, state: StoryBoardState, label?: string, options = false) => (
   <TabFrame tab="boards">
-    <BoardsView board="github" state={{ kind: 'ready', entries: boardEntries.github, freshness: { kind: 'fresh', age: '2 分钟前' } }} user={user} variantLabel="周榜" />
+    <BoardsView board={board} user={user}>
+      <BoardList
+        label={label}
+        onOpenOptions={options ? () => undefined : undefined}
+        state={state.kind === 'ready' ? { kind: 'ready', freshness: state.freshness, rows: state.entries.map((entry) => ({ ...entry, url: `https://example.com/${entry.rank}` })) } : state}
+      />
+    </BoardsView>
   </TabFrame>
-));
-export const BoardsHn = story('榜单 · Hacker News', () => (
-  <TabFrame tab="boards">
-    <BoardsView user={user} board="hn" state={{ kind: 'ready', entries: boardEntries.hn, freshness: { kind: 'fresh', age: '刚刚' } }} />
-  </TabFrame>
-));
-export const BoardsPh = story('榜单 · Product Hunt 今天', () => (
-  <TabFrame tab="boards">
-    <BoardsView board="product_hunt" state={{ kind: 'ready', entries: boardEntries.product_hunt, freshness: { kind: 'fresh', age: '12 分钟前' } }} user={user} variantLabel="今天" />
-  </TabFrame>
-));
-export const BoardsRedditPaused = story('榜单 · Reddit 暂停中', () => (
-  <TabFrame tab="boards">
-    <BoardsView board="reddit" state={{ kind: 'ready', entries: boardEntries.reddit, freshness: { kind: 'paused', reason: '被限流', resumesIn: '约 8 分钟' } }} user={user} variantLabel="r / codex · 热门" />
-  </TabFrame>
-));
-export const BoardsStale = story('榜单 · 已过期（刷新失败）', () => (
-  <TabFrame tab="boards">
-    <BoardsView user={user} board="hn" state={{ kind: 'ready', entries: boardEntries.hn, freshness: { kind: 'stale', age: '48 分钟前' } }} />
-  </TabFrame>
-));
-export const BoardsTechTwitter = story('榜单 · TechTwitter 暂不可用', () => (
-  <TabFrame tab="boards">
-    <BoardsView user={user} board="techtwitter" state={{ kind: 'unavailable', reason: '对方开启了浏览器验证，服务器暂时抓不到' }} />
-  </TabFrame>
-));
-export const BoardsLoading = story('榜单 · 加载中', () => (
-  <TabFrame tab="boards">
-    <BoardsView user={user} board="github" state={{ kind: 'loading' }} />
-  </TabFrame>
-));
+);
+
+export const BoardsGithub = story('榜单 · GitHub 周榜', () => boards('github', { kind: 'ready', entries: boardEntries.github, freshness: { kind: 'fresh', age: '2 分钟前' } }, '周榜', true));
+export const BoardsHn = story('榜单 · Hacker News', () => boards('hn', { kind: 'ready', entries: boardEntries.hn, freshness: { kind: 'fresh', age: '刚刚' } }));
+export const BoardsPh = story('榜单 · Product Hunt 今天', () => boards('product_hunt', { kind: 'ready', entries: boardEntries.product_hunt, freshness: { kind: 'fresh', age: '12 分钟前' } }, '今天', true));
+export const BoardsRedditPaused = story('榜单 · Reddit 暂停中', () =>
+  boards('reddit', { kind: 'ready', entries: boardEntries.reddit, freshness: { kind: 'paused', reason: '被对方限流', resumesIn: '约 8 分钟' } }, 'r/codex · 热门', true),
+);
+export const BoardsStale = story('榜单 · 已过期（刷新失败）', () => boards('hn', { kind: 'ready', entries: boardEntries.hn, freshness: { kind: 'stale', age: '48 分钟前' } }));
+export const BoardsTechTwitter = story('榜单 · TechTwitter 暂不可用', () => boards('techtwitter', { kind: 'unavailable', reason: '对方开启了人机验证，服务器暂时抓不到' }));
+export const BoardsRedditNoCommunity = story('榜单 · Reddit 还没选社区', () => boards('reddit', { kind: 'no-community' }));
+export const BoardsLoading = story('榜单 · 加载中', () => boards('github', { kind: 'loading' }, '日榜', true));
 export const BoardsOptionsGithub = story('榜单 · 调整弹层（GitHub）', () => (
-  <WithSheet page={<TabFrame tab="boards"><BoardsView user={user} board="github" state={{ kind: 'loading' }} /></TabFrame>} title="调整 GitHub">
-    <BoardOptions board="github" variant="weekly" />
+  <WithSheet page={boards('github', { kind: 'loading' }, '周榜', true)} title="调整 GitHub">
+    <BoardOptions view={{ board: 'github', variant: 'weekly', subreddit: null }} />
   </WithSheet>
 ));
 export const BoardsOptionsPh = story('榜单 · 调整弹层（Product Hunt）', () => (
-  <WithSheet page={<TabFrame tab="boards"><BoardsView user={user} board="product_hunt" state={{ kind: 'loading' }} /></TabFrame>} title="调整 Product Hunt">
-    <BoardOptions board="product_hunt" variant="today" />
+  <WithSheet page={boards('product_hunt', { kind: 'loading' }, '今天', true)} title="调整 Product Hunt">
+    <BoardOptions view={{ board: 'product_hunt', variant: 'today', subreddit: null }} />
   </WithSheet>
 ));
 export const BoardsOptionsReddit = story('榜单 · 调整弹层（Reddit）', () => (
-  <WithSheet page={<TabFrame tab="boards"><BoardsView user={user} board="reddit" state={{ kind: 'loading' }} /></TabFrame>} title="调整 Reddit">
-    <BoardOptions board="reddit" subreddit="python" subscribedCommunities={['python', 'rust', 'MachineLearning']} variant="hot" />
+  <WithSheet page={boards('reddit', { kind: 'loading' }, 'r/python · 热门', true)} title="调整 Reddit">
+    <BoardOptions subscribedCommunities={['python', 'rust', 'MachineLearning']} view={{ board: 'reddit', variant: 'hot', subreddit: 'python' }} />
   </WithSheet>
 ));
 
@@ -240,23 +232,6 @@ export const ArticleVideo = story('阅读页 · 视频', () => (
   <ArticleView saved={false} title="视频" tools={[{ key: 'player', icon: IconWorld, label: '打开视频网页', on: false }]}>
     <View className="aspect-video w-full bg-sunken" />
   </ArticleView>
-));
-
-// --- 榜单条目 -------------------------------------------------------------------
-
-export const BoardItemHn = story('榜单条目 · Hacker News', () => (
-  <BoardItemView board="Hacker News" hasDiscussion meta={['github.com', '412 分', '128 评论']} saved={false} title="Protecting SSH keys with the macOS Secure Enclave" translatedTitle="用 macOS 安全隔区保护 SSH 密钥" />
-));
-export const BoardItemTechTwitter = story('榜单条目 · TechTwitter', () => (
-  <BoardItemView
-    board="TechTwitter"
-    description="Claude is rolling out Whiteboards, Sheets and Data, which bring planning, tracking and data storytelling into the same AI workspace."
-    hasDiscussion={false}
-    meta={['质量 8', '11 月 10 日']}
-    saved
-    tags={['AI', 'productivity', 'data visualization']}
-    title="Claude Adds Whiteboards, Sheets and Data Tools"
-  />
 ));
 
 // --- 连接与登录 -----------------------------------------------------------------

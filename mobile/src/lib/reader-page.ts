@@ -4,8 +4,10 @@
  *
  *   switch(view)    → that view, fresh load (the WebView remounts: `key` = view + url)
  *   show-extracted  → reader mode with the article the page itself gave (no full body on the server)
- *   open-page(url)  → the original-page view at another address (a link tapped in reader mode)
- *   back            → from such a link, back to reader mode (Android back at the link's first page)
+ *   open-page(url)  → the original-page view at another address (a link tapped in reader mode, or
+ *                     the HN discussion); the view it came from is remembered
+ *   back            → from such an address, back to the view it came from (Android back at its
+ *                     first page, or the discussion tool again)
  *   load-start      → loading; an earlier error is cleared (a later navigation may succeed)
  *   progress(p)     → loading p
  *   load-end        → loaded
@@ -24,6 +26,8 @@ export type ReaderPageState = {
   pageUrl: string;
   load: { status: 'loading'; progress: number } | { status: 'loaded' } | { status: 'failed'; message: string };
   canGoBack: boolean;
+  /** where `back` returns from another address */
+  origin: ReaderView;
   /** reader mode's article when it came from the page (kept while switching views) */
   extracted: ExtractedArticle | null;
 };
@@ -41,7 +45,15 @@ export type ReaderPageEvent =
   | { type: 'retry' };
 
 export function initialReaderPage(view: ReaderView, articleUrl: string): ReaderPageState {
-  return { view, articleUrl, pageUrl: articleUrl, load: { status: 'loading', progress: 0 }, canGoBack: false, extracted: null };
+  return {
+    view,
+    articleUrl,
+    pageUrl: articleUrl,
+    load: { status: 'loading', progress: 0 },
+    canGoBack: false,
+    origin: view,
+    extracted: null,
+  };
 }
 
 export function readerPageReducer(state: ReaderPageState, event: ReaderPageEvent): ReaderPageState {
@@ -60,11 +72,21 @@ export function readerPageReducer(state: ReaderPageState, event: ReaderPageEvent
         canGoBack: false,
         extracted: event.article,
       };
-    case 'open-page':
-      return { ...state, view: 'page', pageUrl: event.url, load: { status: 'loading', progress: 0 }, canGoBack: false };
+    case 'open-page': {
+      // From one other address to the next, back still returns to where the first one was opened.
+      const elsewhere = state.view === 'page' && state.pageUrl !== state.articleUrl;
+      return {
+        ...state,
+        view: 'page',
+        pageUrl: event.url,
+        origin: elsewhere ? state.origin : state.view,
+        load: { status: 'loading', progress: 0 },
+        canGoBack: false,
+      };
+    }
     case 'back':
       return state.view === 'page' && state.pageUrl !== state.articleUrl
-        ? { ...state, view: 'reader', pageUrl: state.articleUrl, load: { status: 'loading', progress: 0 }, canGoBack: false }
+        ? { ...state, view: state.origin, pageUrl: state.articleUrl, load: { status: 'loading', progress: 0 }, canGoBack: false }
         : state;
     case 'load-start':
       return { ...state, load: { status: 'loading', progress: state.load.status === 'loading' ? state.load.progress : 0 } };
@@ -83,11 +105,11 @@ export function readerPageReducer(state: ReaderPageState, event: ReaderPageEvent
   }
 }
 
-/** Whether Android back stays inside the page (its history, or back from a link to reader mode). */
-export function backStaysInside(state: ReaderPageState): 'history' | 'reader' | null {
+/** Whether Android back stays inside the page (its history, or back from another address to where it was opened). */
+export function backStaysInside(state: ReaderPageState): 'history' | 'origin' | null {
   if (state.view !== 'page') return null;
   if (state.canGoBack) return 'history';
-  return state.pageUrl !== state.articleUrl ? 'reader' : null;
+  return state.pageUrl !== state.articleUrl ? 'origin' : null;
 }
 
 /** The WebView remounts when this changes: a different document, not a navigation. */
