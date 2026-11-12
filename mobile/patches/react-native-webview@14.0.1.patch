@@ -1,89 +1,11 @@
-diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
-index 80c6803..2b886c8 100644
---- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
-+++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
-@@ -9,6 +9,7 @@ import android.view.Menu;
- import android.view.MenuItem;
- import android.view.MotionEvent;
- import android.view.View;
-+import android.view.WindowInsets;
- import android.webkit.JavascriptInterface;
- import android.webkit.ValueCallback;
- import android.webkit.WebChromeClient;
-@@ -17,6 +18,8 @@ import android.webkit.WebViewClient;
- 
- import androidx.annotation.NonNull;
- import androidx.annotation.Nullable;
-+import androidx.core.graphics.Insets;
-+import androidx.core.view.WindowInsetsCompat;
- import androidx.webkit.JavaScriptReplyProxy;
- import androidx.webkit.WebMessageCompat;
- import androidx.webkit.WebViewCompat;
-@@ -91,6 +94,23 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
-         progressChangedFilter = new ProgressChangedFilter();
-     }
- 
-+    @Override
-+    public WindowInsets onApplyWindowInsets(WindowInsets insets) {
-+        // React Native owns the app's edge-to-edge layout. Forwarding the same system-bar and
-+        // display-cutout insets into web content adds a second safe area and shifts fullscreen
-+        // players away from the physical center of the display. Keep IME and future inset updates
-+        // intact, but zero the native inset types that have already been handled by the app.
-+        final int webContentInsetTypes = WindowInsetsCompat.Type.systemBars()
-+                | WindowInsetsCompat.Type.displayCutout();
-+        final WindowInsetsCompat adjustedInsets = new WindowInsetsCompat.Builder(
-+                WindowInsetsCompat.toWindowInsetsCompat(insets)
-+        )
-+                .setInsets(webContentInsetTypes, Insets.NONE)
-+                .build();
-+        final WindowInsets adjustedPlatformInsets = adjustedInsets.toWindowInsets();
-+        return super.onApplyWindowInsets(adjustedPlatformInsets != null ? adjustedPlatformInsets : insets);
-+    }
-+
-     public void setBasicAuthCredential(RNCBasicAuthCredential credential) {
-         mRNCWebViewClient.setBasicAuthCredential(credential);
-     }
-diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
-index f83033b..d071b08 100644
---- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
-+++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
-@@ -10,7 +10,6 @@ import android.os.Environment
- import android.util.Log
- import android.view.View
- import android.view.ViewGroup
--import android.view.WindowManager
- import android.webkit.CookieManager
- import android.webkit.DownloadListener
- import android.webkit.WebSettings
-@@ -159,10 +158,9 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
-                         mCustomViewCallback = callback
-                         activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                         mVideoView.systemUiVisibility = FULLSCREEN_SYSTEM_UI_VISIBILITY
--                        activity.window.setFlags(
--                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
--                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
--                        )
-+                        // React Native already owns the edge-to-edge window bounds. Applying
-+                        // the legacy no-limits flag here shifts this centered view beyond the
-+                        // physical display on landscape devices with a cutout.
-                         mVideoView.setBackgroundColor(Color.BLACK)
- 
-                         // Since RN's Modals interfere with the View hierarchy
-@@ -197,7 +195,6 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
-                             // Same view hierarchy (no Modal)
-                             mWebView.visibility = View.VISIBLE
-                         }
--                        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-                         rootView.removeView(mVideoView)
-                         mCustomViewCallback.onCustomViewHidden()
-                         mVideoView = null
 diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebChromeClient.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebChromeClient.java
+index 1b5c4c9f83159f15f710851e52558944b592d113..5177c381f8cf7da6436da32a9e9bce661b0f968a 100644
 --- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebChromeClient.java
 +++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebChromeClient.java
-@@ -85,8 +85,86 @@
+@@ -82,9 +82,87 @@ public class RNCWebChromeClient extends WebChromeClient implements LifecycleEven
          this.mWebView = webView;
      }
-
+ 
 +    // Keep the actual Chromium child window. Loading only its URL in the parent
 +    // (or in an unrelated WebView) breaks OAuth window.opener/postMessage.
 +    private android.app.Dialog readerPopup;
@@ -162,19 +84,99 @@ diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebChrome
 +
      @Override
      public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
-+
+ 
 +        if (!mHasOnOpenWindowEvent) return openReaderPopup(view, isUserGesture, resultMsg);
-
++
          final WebView newWebView = new WebView(view.getContext());
-
-@@ -347,7 +425,9 @@
+ 
+         if(mHasOnOpenWindowEvent) {
+@@ -332,7 +410,9 @@ public class RNCWebChromeClient extends WebChromeClient implements LifecycleEven
      public void onHostPause() { }
-
+ 
      @Override
 -    public void onHostDestroy() { }
 +    public void onHostDestroy() {
 +        if (readerPopup != null) readerPopup.dismiss();
 +    }
-
+ 
      protected ViewGroup getRootView() {
          return this.mWebView.getThemedReactContext().getCurrentActivity().findViewById(android.R.id.content);
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+index 80c68034b193a47bedb56ca527352de9548e8ac6..99e0e3e46566d05b3729210fc7d2b75596ec8e51 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+@@ -9,6 +9,7 @@ import android.view.Menu;
+ import android.view.MenuItem;
+ import android.view.MotionEvent;
+ import android.view.View;
++import android.view.WindowInsets;
+ import android.webkit.JavascriptInterface;
+ import android.webkit.ValueCallback;
+ import android.webkit.WebChromeClient;
+@@ -17,6 +18,8 @@ import android.webkit.WebViewClient;
+ 
+ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
++import androidx.core.graphics.Insets;
++import androidx.core.view.WindowInsetsCompat;
+ import androidx.webkit.JavaScriptReplyProxy;
+ import androidx.webkit.WebMessageCompat;
+ import androidx.webkit.WebViewCompat;
+@@ -91,6 +94,23 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+         progressChangedFilter = new ProgressChangedFilter();
+     }
+ 
++    @Override
++    public WindowInsets onApplyWindowInsets(WindowInsets insets) {
++        // React Native owns the app's edge-to-edge layout. Forwarding the same system-bar and
++        // display-cutout insets into web content adds a second safe area and shifts fullscreen
++        // players away from the physical center of the display. Keep IME and future inset updates
++        // intact, but zero the native inset types that have already been handled by the app.
++        final int webContentInsetTypes = WindowInsetsCompat.Type.systemBars()
++                | WindowInsetsCompat.Type.displayCutout();
++        final WindowInsetsCompat adjustedInsets = new WindowInsetsCompat.Builder(
++                WindowInsetsCompat.toWindowInsetsCompat(insets)
++        )
++                .setInsets(webContentInsetTypes, Insets.NONE)
++                .build();
++        final WindowInsets adjustedPlatformInsets = adjustedInsets.toWindowInsets();
++        return super.onApplyWindowInsets(adjustedPlatformInsets != null ? adjustedPlatformInsets : insets);
++    }
++
+     public void setBasicAuthCredential(RNCBasicAuthCredential credential) {
+         mRNCWebViewClient.setBasicAuthCredential(credential);
+     }
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+index f83033b3597a425da159555233bacce250ccfce0..d071b08648ce9e93dcbc2ef466ad0fe8592b0a62 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+@@ -10,7 +10,6 @@ import android.os.Environment
+ import android.util.Log
+ import android.view.View
+ import android.view.ViewGroup
+-import android.view.WindowManager
+ import android.webkit.CookieManager
+ import android.webkit.DownloadListener
+ import android.webkit.WebSettings
+@@ -159,10 +158,9 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+                         mCustomViewCallback = callback
+                         activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                         mVideoView.systemUiVisibility = FULLSCREEN_SYSTEM_UI_VISIBILITY
+-                        activity.window.setFlags(
+-                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+-                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+-                        )
++                        // React Native already owns the edge-to-edge window bounds. Applying
++                        // the legacy no-limits flag here shifts this centered view beyond the
++                        // physical display on landscape devices with a cutout.
+                         mVideoView.setBackgroundColor(Color.BLACK)
+ 
+                         // Since RN's Modals interfere with the View hierarchy
+@@ -197,7 +195,6 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+                             // Same view hierarchy (no Modal)
+                             mWebView.visibility = View.VISIBLE
+                         }
+-                        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+                         rootView.removeView(mVideoView)
+                         mCustomViewCallback.onCustomViewHidden()
+                         mVideoView = null

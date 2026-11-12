@@ -15,6 +15,9 @@ minimumReleaseAgeExclude:
   - expo-secure-store@57.0.4
   - lucide-react-native@1.72.0
 
-# patches/react-native-webview+13.16.1.patch (Android edge-to-edge insets for WebView and
-# fullscreen video) is not applied since the SDK 58 upgrade (react-native-webview 14). Expo Go
-# does not use it; before the next APK build, check whether 14.x fixes the issue, else port it.
+# react-native-webview (Android): web content does not add the app's edge-to-edge insets a second
+# time, fullscreen video stays centered (no FLAG_LAYOUT_NO_LIMITS), and OAuth popups open in a
+# real child window so window.opener / postMessage logins (X, Reddit) work.
+patchedDependencies:
+  react-native-webview@14.0.1: patches/react-native-webview@14.0.1.patch
+
