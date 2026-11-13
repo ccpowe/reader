@@ -87,7 +87,7 @@ def _line(text: str | None) -> str | None:
 
 INSTRUCTIONS = (
     "Reader: the user's subscriptions (RSS, websites, YouTube, X, Reddit) and boards "
-    "(Hacker News, GitHub Trending, Product Hunt, Reddit, TechTwitter). Typical brief: "
+    "(Hacker News, GitHub Trending, Product Hunt, Reddit). Typical brief: "
     "get_subscription_updates_summary for a window → list_updates (follow next_cursor) "
     "→ get_board for the boards that matter → get_item for the few entries to read. "
     "Times need a timezone; windows are [since, until) by when Reader first saw an "
