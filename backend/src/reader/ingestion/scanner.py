@@ -7,7 +7,9 @@ One scan of one source:
      seen and fewer than `scan_max_items` were read. A first scan reads one page
      of `scan_initial_items` as a baseline that never counts as new.
   3. Store everything in one transaction under the source row lock: new items get
-     the source's next sequence numbers (the new-content badge), changed items are
+     the source's next sequence numbers (the new-content badge), except items
+     published well before the source was followed (history, no sequence);
+     changed items are
      updated in place, new or changed titles are queued for translation, and the
      scan is marked finished. A failure anywhere before
      this point writes nothing, so a retry reads the same pages again.
@@ -50,6 +52,9 @@ from reader.models import Article, ProviderUsage, Source, SourceScanRun, Subscri
 from reader.translation.titles import request_titles
 
 logger = logging.getLogger(__name__)
+
+# An item published this long before the source was first followed is history, not news.
+HISTORY_GRACE = timedelta(days=2)
 
 YOUTUBE_PROVIDER = "youtube_data_api"
 # Leave room for one more scan's calls (channels + playlistItems + videos per page).
@@ -415,11 +420,22 @@ async def _store_scan(
             else {}
         )
         new_items = []
+        older_items = []  # unknown but published before the source was followed: history
         titles = []  # new or changed titles, to translate in the background
+        # A first scan keeps only the newest few items, yet many feeds return their whole
+        # history on every page. Judge by publish date, not by position (X threads, undated
+        # entries and pinned posts break position order); undated items count as new.
+        # Popularity lists are exempt: an old post newly entering the list is news there.
+        history_before = source.created_at - HISTORY_GRACE
         for item in items:
             article = existing.get(item.native_id)
             if article is None:
-                new_items.append(item)
+                is_history = (
+                    result.chronological
+                    and item.published_at is not None
+                    and item.published_at < history_before
+                )
+                (older_items if is_history else new_items).append(item)
                 titles.append(item.title[:1000])
             else:
                 old_title = article.title
@@ -433,6 +449,8 @@ async def _store_scan(
                 source.latest_sequence += 1
                 sequence = source.latest_sequence
             db.add(_new_article(source.id, item, sequence))
+        for item in older_items:
+            db.add(_new_article(source.id, item, None))
         for page in pages:
             _apply_source_metadata(source, page)
         await request_titles(db, settings, source.id, titles)

@@ -170,6 +170,63 @@ async def test_next_page_only_until_a_known_item_is_seen(monkeypatch) -> None:
     assert not source.may_have_gap
 
 
+def _dated(n: int, days_ago: float | None, **extra) -> Item:
+    published = None if days_ago is None else datetime.now(UTC) - timedelta(days=days_ago)
+    return _item(n, published_at=published, **extra)
+
+
+@pytest.mark.asyncio
+async def test_items_published_before_the_source_was_followed_are_history(monkeypatch) -> None:
+    # A feed returns its whole history on every page; the first scan kept only the newest 2.
+    async with _database(scan_initial_items=2) as (factory, config):
+        await _followed_source(factory)
+        history = [_dated(n, 30 + n) for n in (1, 2, 3, 4)]
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page(history)}))
+        page = [_dated(9, 0.1), *history, _dated(8, None)]  # new dated, history, new undated
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page(page)}))
+        source, articles, runs = await _state(factory)
+
+    assert sorted(native for native, sequence in articles if sequence) == ["id-8", "id-9"]
+    assert {("id-3", None), ("id-4", None)} <= set(articles)
+    assert source.latest_sequence == 2 and source.last_new_items == 2
+    assert runs[-1].new_items == 2
+
+
+@pytest.mark.asyncio
+async def test_a_new_reply_below_its_known_root_is_still_new(monkeypatch) -> None:
+    # Conversation modules list the root before its replies; order says nothing about age.
+    async with _database(scan_initial_items=1) as (factory, config):
+        await _followed_source(factory)
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page([_dated(1, 0.5)])}))
+        page = [_dated(3, 0.01), _dated(1, 0.5), _dated(2, 0.02)]
+        await _scan(factory, config, monkeypatch, ScriptedAdapter({None: Page(page)}))
+        _, articles, _ = await _state(factory)
+
+    assert sorted(native for native, sequence in articles if sequence) == ["id-2", "id-3"]
+
+
+@pytest.mark.asyncio
+async def test_popularity_lists_count_every_unknown_item_as_new(monkeypatch) -> None:
+    # Not time-ordered: a post below a known one can still be new to the list.
+    async with _database(scan_initial_items=2) as (factory, config):
+        await _followed_source(factory, kind="reddit")
+        await _scan(
+            factory,
+            config,
+            monkeypatch,
+            ScriptedAdapter({None: Page(_items(1, 2), chronological=False)}),
+        )
+        await _scan(
+            factory,
+            config,
+            monkeypatch,
+            ScriptedAdapter({None: Page([_item(1), _dated(3, 6)], chronological=False)}),
+        )
+        _, articles, _ = await _state(factory)
+
+    assert ("id-3", 1) in articles  # posted days ago, but new to the list
+
+
 @pytest.mark.asyncio
 async def test_item_limit_ends_the_scan_and_flags_a_possible_gap(monkeypatch) -> None:
     async with _database(scan_initial_items=1, scan_max_items=10) as (factory, config):

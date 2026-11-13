@@ -79,7 +79,7 @@ Reader 采用前后端分离结构。后端是一个 Python 包 `reader`，以 A
 
 1. 添加订阅时，API 规范化来源身份（[identity.py](../backend/src/reader/ingestion/identity.py)）；类型为「网站」时先找 RSS／Atom，找不到返回 `feed_not_found`。同一来源被多人订阅时共用一条来源记录。
 2. Worker 每隔 `APP_WORKER_POLL_INTERVAL_SECONDS` 领取到期来源（[scanner.py](../backend/src/reader/ingestion/scanner.py)）：在来源行上设租约，按新到旧读取上游，读到已知条目或达到上限就停；首次扫描只读一页作为基线，不算新内容。
-3. 读取期间不写库；读完后在一个事务里、持有来源行锁写入：新条目取得来源的下一个序号（「有更新」角标的依据），有变化的条目原地更新，新标题排队翻译，扫描标记完成。租约已过期的扫描什么都不写；失败记录错误并退避。
+3. 读取期间不写库；读完后在一个事务里、持有来源行锁写入：新条目取得来源的下一个序号（「有更新」角标的依据）；按时间排序的来源里，发布时间早于该来源被订阅前两天的未知条目视为历史，只存不编号（RSS 等每次返回全部历史，首扫只留了最新几条）；有变化的条目原地更新，新标题排队翻译，扫描标记完成。租约已过期的扫描什么都不写；失败记录错误并退避。
 4. 适配器（[adapters/](../backend/src/reader/ingestion/adapters/)）：RSS／Atom 一次读完整个 feed；YouTube 有 API key 且配额够时用 Data API，否则用公开 Atom；X 经 Scweet；Reddit 读 subreddit 的公开 RSS。面向公网来源的出站请求经 [url_safety.py](../backend/src/reader/ingestion/url_safety.py) 校验公网目的地并有界读取；管理员配置的私有 Scweet 服务不做公网目的地校验，但响应同样有界读取。
 5. 每日清理（[retention.py](../backend/src/reader/ingestion/retention.py)）按来源保留最新的 `APP_ARTICLES_KEPT_PER_SOURCE` 篇文章（按首次看到的时间排序，收藏的文章也占名额），更早的文章只要有人收藏就不删；扫描历史只保留有限条。
 
