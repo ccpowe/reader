@@ -29,6 +29,7 @@ import {
 } from '@/lib/boards';
 import { absoluteUrl } from '@/lib/feed';
 import { boardQuery, boardTranslationsQuery, refreshBoard, translationPreferenceQuery } from '@/lib/queries/boards';
+import { titlesFailed } from '@/lib/queries/translation';
 import { subscriptionsQuery } from '@/lib/queries/subscriptions';
 import { meQuery } from '@/lib/queries/today';
 import { isAborted } from '@/lib/query';
@@ -96,6 +97,7 @@ function BoardPage({
       rows: board.items.map((entry) => toRow(entry, view.board, now)),
       freshness: freshness(board, now),
       refreshFailed: query.isRefetchError && !refreshing ? t().common.refreshFailedWith(errorMessage(query.error)) : null,
+      titlesFailed: titlesFailed(translations, preference.data),
     };
   }
 

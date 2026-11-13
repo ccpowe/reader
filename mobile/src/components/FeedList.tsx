@@ -27,6 +27,8 @@ export type FeedListState =
       hasMore: boolean;
       loadingMore: boolean;
       moreFailed?: string | null;
+      /** the titles' translation failed: the originals show, with a retry (old app) */
+      titlesFailed?: { message: string; onRetry: () => void } | null;
       /** any fetch in flight (a refresh): loading more waits, so it cannot cancel the refresh */
       busy?: boolean;
     };
@@ -146,12 +148,19 @@ export function FeedList({
         ) : undefined
       }
       ListHeaderComponent={
-        state.refreshFailed || (heading && state.items.length > 0) ? (
+        state.refreshFailed || state.titlesFailed || (heading && state.items.length > 0) ? (
           <>
             {state.refreshFailed ? (
               <View className="px-6 pt-4">
                 <Message action={<Button onPress={onRetry} title={t().common.retry} variant="ghost" />} kind="danger">
                   {state.refreshFailed}
+                </Message>
+              </View>
+            ) : null}
+            {state.titlesFailed ? (
+              <View className="px-6 pt-4">
+                <Message action={<Button onPress={state.titlesFailed.onRetry} title={t().common.retry} variant="ghost" />} kind="warning">
+                  {state.titlesFailed.message}
                 </Message>
               </View>
             ) : null}

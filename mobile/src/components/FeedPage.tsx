@@ -12,9 +12,10 @@ import type { FeedItem } from '@/lib/api/schema.gen';
 import { queryClient, useSession } from '@/lib/app-session';
 import { absoluteUrl, missingTitles, toCard, withTitleTranslations, type FeedScope } from '@/lib/feed';
 import { createListMemory } from '@/lib/list-memory';
-import { subscriptionsQuery } from '@/lib/queries/subscriptions';
+import { clearCountOnLoad, subscriptionsQuery } from '@/lib/queries/subscriptions';
+import { useMountEffect } from '@/lib/use-mount-effect';
 import { feedQuery, setSaved, UnknownOutcome } from '@/lib/queries/today';
-import { titleTranslationsQuery, translationPreferenceQuery } from '@/lib/queries/translation';
+import { titlesFailed, titleTranslationsQuery, translationPreferenceQuery } from '@/lib/queries/translation';
 import { isAborted } from '@/lib/query';
 import { errorMessage } from '@/lib/user-error';
 import { EmptyState } from '@/ui';
@@ -60,6 +61,8 @@ export function FeedPage({
   const query = useInfiniteQuery({ ...feedQuery(identity, scope), subscribed: active });
   const [refreshing, setRefreshing] = useState(false);
   const offsetKey = `${identity}|${JSON.stringify(scope)}`;
+  // One subscription shown: its count clears when its feed has loaded (not before, old app).
+  useMountEffect(() => (scope.kind === 'subscription' ? clearCountOnLoad(identity, scope.id) : () => undefined));
 
   // Titles the server had no translation for yet are asked for here, then shown in place.
   const loaded = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
@@ -112,6 +115,7 @@ export function FeedPage({
       hasMore: query.hasNextPage,
       loadingMore: query.isFetchingNextPage,
       moreFailed: query.isFetchNextPageError ? t().feed.moreFailed(errorMessage(query.error)) : null,
+      titlesFailed: titlesFailed(titles, preference.data),
       busy: query.isFetching,
     };
   }

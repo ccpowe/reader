@@ -116,8 +116,6 @@ export default function Today() {
   function selectChannel(id: string) {
     setChannel(id);
     setPickerOpen(false);
-    const subscription = list.find((s) => s.id === id);
-    if (subscription) void markViewed(identity, subscription).catch(() => undefined); // the count is a hint; a failure costs nothing
   }
 
   /** Clear one subscription's new-content count without opening it. */

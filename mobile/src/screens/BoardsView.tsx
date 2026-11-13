@@ -29,7 +29,14 @@ export type BoardState =
   | { kind: 'failed'; message: string }
   /** Reddit without a community chosen */
   | { kind: 'no-community' }
-  | { kind: 'ready'; rows: BoardListRow[]; freshness: Freshness | null; refreshFailed?: string | null };
+  | {
+      kind: 'ready';
+      rows: BoardListRow[];
+      freshness: Freshness | null;
+      refreshFailed?: string | null;
+      /** the titles' translation failed: the originals show, with a retry (old app) */
+      titlesFailed?: { message: string; onRetry: () => void } | null;
+    };
 
 const appearLate = {
   animationName: { from: { opacity: 0 }, to: { opacity: 1 } },
@@ -200,6 +207,11 @@ export function BoardList({
           {state.refreshFailed ? (
             <Message bar kind="warning">
               {state.refreshFailed}
+            </Message>
+          ) : null}
+          {state.titlesFailed ? (
+            <Message action={<Button onPress={state.titlesFailed.onRetry} title={t().common.retry} variant="ghost" />} bar kind="warning">
+              {state.titlesFailed.message}
             </Message>
           ) : null}
         </>

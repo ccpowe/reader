@@ -12,7 +12,8 @@ import type { PreferenceResponse, TranslateRequest, TranslateResponse } from '..
 import { queryClient, session } from '../app-session';
 import { identityOf } from '../connection/session';
 import { alreadyInLanguage } from '../language-script';
-import { key } from '../query';
+import { t } from '../i18n';
+import { isAborted, key } from '../query';
 import type { TranslationAnswer } from '../translation-scheduler';
 
 /** The server waits a few seconds for results; give it room before calling the request lost. */
@@ -140,4 +141,13 @@ export function titleTranslationsQuery(
     // Translation is a nicety: a failure leaves the original titles, without retry storms.
     retry: false,
   });
+}
+
+/** A titles query that failed (timeout, no connection) while translation is on: the notice and its retry. */
+export function titlesFailed(
+  query: { isError: boolean; error: unknown; refetch: () => unknown },
+  preference: PreferenceResponse | undefined,
+): { message: string; onRetry: () => void } | null {
+  if (!preference?.enabled || !query.isError || isAborted(query.error)) return null;
+  return { message: t().common.titlesFailed, onRetry: () => void query.refetch() };
 }

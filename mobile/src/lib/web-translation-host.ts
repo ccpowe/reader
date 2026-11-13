@@ -271,6 +271,11 @@ export class WebTranslationHost {
     });
   }
 
+  /** Stop waiting for the article (the reader tool tapped again): it ends as `changed`. */
+  cancelExtract(): void {
+    this.endExtraction({ ok: false, reason: 'changed' });
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.endExtraction({ ok: false, reason: 'changed' });

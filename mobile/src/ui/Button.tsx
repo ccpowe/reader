@@ -40,10 +40,10 @@ const icon: Record<ButtonVariant, IconTone> = {
   danger: 'on-danger',
 };
 
-const fadeIn = { from: { opacity: 0 }, to: { opacity: 1 } };
-const fadeOut = { from: { opacity: 1 }, to: { opacity: 0 } };
+export const fadeIn = { from: { opacity: 0 }, to: { opacity: 1 } };
+export const fadeOut = { from: { opacity: 1 }, to: { opacity: 0 } };
 /** A CSS animation that starts after --delay-loading and keeps its end state. */
-function afterDelay(keyframes: typeof fadeIn) {
+export function afterDelay(keyframes: typeof fadeIn) {
   return {
     animationName: keyframes,
     animationDuration: `${duration.fast}ms`,

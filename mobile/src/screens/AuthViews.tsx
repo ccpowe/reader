@@ -4,12 +4,13 @@
  * Layout: the READER brand row and the old app's large title (P25), fields 44 high, one primary
  * button. The keyboard never covers the focused field (react-native-keyboard-controller).
  */
-import type { ReactNode } from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { IconEye, IconEyeOff } from '@tabler/icons-react-native';
+import { useRef, useState, type ComponentRef, type ReactNode } from 'react';
+import { Image, Pressable, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, Callout, Input, Message, Text } from '@/ui';
+import { Button, Callout, IconButton, Input, Message, Text } from '@/ui';
 import { t } from '@/lib/i18n';
 
 const logo = require('../../assets/reader-logo.png');
@@ -164,6 +165,9 @@ export function SignInView({
   onChangeServer,
 }: SignInViewProps) {
   const register = mode === 'register';
+  const passwordField = useRef<ComponentRef<typeof TextInput>>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [forgot, setForgot] = useState(false);
   return (
     <AuthFrame
       description={register ? t().auth.registerAt(serverLabel) : t().auth.signInTo(serverLabel)}
@@ -191,7 +195,9 @@ export function SignInView({
         label={t().auth.email}
         onChangeText={(value) => onChange?.('email', value)}
         placeholder="you@example.com"
+        onSubmitEditing={() => passwordField.current?.focus()}
         returnKeyType="next"
+        submitBehavior="submit"
         textContentType="emailAddress"
         value={email}
       />
@@ -203,11 +209,27 @@ export function SignInView({
         label={t().auth.password}
         onChangeText={(value) => onChange?.('password', value)}
         onSubmitEditing={onSubmit}
+        ref={passwordField}
         returnKeyType="go"
-        secureTextEntry
+        secureTextEntry={!revealed}
         textContentType={register ? 'newPassword' : 'password'}
+        trailing={
+          <IconButton
+            icon={revealed ? IconEyeOff : IconEye}
+            label={revealed ? t().auth.hidePassword : t().auth.showPassword}
+            onPress={() => setRevealed((shown) => !shown)}
+          />
+        }
         value={password}
       />
+      {register ? null : (
+        <Pressable accessibilityRole="button" className="self-end py-1 active:opacity-60" disabled={submitting} onPress={() => setForgot((open) => !open)}>
+          <Text level="ui" tone="secondary">
+            {t().auth.forgotPassword}
+          </Text>
+        </Pressable>
+      )}
+      {forgot && !register ? <Message>{t().auth.forgotPasswordHelp}</Message> : null}
       {formError ? <Message kind="danger">{formError}</Message> : null}
       <Button className="mt-2" large loading={submitting} onPress={onSubmit} title={register ? t().auth.register : t().auth.signIn} variant="primary" />
       <Button disabled={submitting} onPress={onSwitchMode} title={register ? t().auth.haveAccount : t().auth.noAccount} variant="ghost" />

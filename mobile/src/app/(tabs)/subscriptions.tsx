@@ -5,7 +5,7 @@
  */
 import { useTabBarInset } from '@/components/CollapsingChrome';
 import { onlineManager, useQuery } from '@tanstack/react-query';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Animated from 'react-native-reanimated';
 
@@ -13,7 +13,6 @@ import type { SubscriptionResponse } from '@/lib/api/schema.gen';
 import { useIdentity, useSession } from '@/lib/app-session';
 import { absoluteUrl, folderList, UNGROUPED } from '@/lib/feed';
 import {
-  markViewed,
   setIncludeInHome,
   subscribe,
   subscriptionsQuery,
@@ -62,7 +61,13 @@ export default function Subscriptions() {
   const absolute = absoluteUrl(apiBase);
   const online = useOnline();
   const me = useQuery(meQuery(identity));
-  const subscriptions = useQuery(subscriptionsQuery(identity));
+  // While on screen it follows scans by itself (old app): every few seconds while one is pending.
+  const focused = useIsFocused();
+  const subscriptions = useQuery({
+    ...subscriptionsQuery(identity),
+    subscribed: focused,
+    refetchInterval: (query) => (query.state.data?.some((s) => s.status === 'pending') ? 3_000 : 30_000),
+  });
   const list = useMemo(() => subscriptions.data ?? [], [subscriptions.data]);
 
   const [openFolder, setOpenFolder] = useState<string | null>(null);
@@ -93,7 +98,12 @@ export default function Subscriptions() {
   const menuSubscription = menuId ? list.find((s) => s.id === menuId) : undefined;
 
   let state: SubscriptionsState;
-  if (subscriptions.data !== undefined) state = { kind: 'ready', folders };
+  if (subscriptions.data !== undefined)
+    state = {
+      kind: 'ready',
+      folders,
+      refreshFailed: subscriptions.isRefetchError && !refreshing ? t().common.refreshFailedWith(errorMessage(subscriptions.error)) : null,
+    };
   else if (subscriptions.isError) state = { kind: 'failed', message: errorMessage(subscriptions.error) };
   else state = { kind: 'loading' };
 
@@ -157,8 +167,6 @@ export default function Subscriptions() {
         onCloseFolder={() => setOpenFolder(null)}
         onMenu={setMenuId}
         onOpen={(id) => {
-          const subscription = list.find((s) => s.id === id);
-          if (subscription) void markViewed(identity, subscription).catch(() => undefined); // the count is a hint
           router.push({ pathname: '/subscription/[id]', params: { id } });
         }}
         onOpenFolder={setOpenFolder}

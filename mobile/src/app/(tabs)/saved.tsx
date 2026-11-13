@@ -7,6 +7,8 @@ import { useTabBarInset } from '@/components/CollapsingChrome';
 import { onlineManager, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { View } from 'react-native';
+import PagerView from 'react-native-pager-view';
 import Animated from 'react-native-reanimated';
 
 import type { FeedCardItem } from '@/components/FeedCard';
@@ -15,7 +17,7 @@ import { useIdentity, useSession } from '@/lib/app-session';
 import { absoluteUrl, folderLabel, folderList, missingTitles, withTitleTranslations } from '@/lib/feed';
 import { createListMemory } from '@/lib/list-memory';
 import { hiddenSaved, savedQuery, unsaveLater } from '@/lib/queries/saved';
-import { titleTranslationsQuery, translationPreferenceQuery } from '@/lib/queries/translation';
+import { titlesFailed, titleTranslationsQuery, translationPreferenceQuery } from '@/lib/queries/translation';
 import { subscriptionsQuery } from '@/lib/queries/subscriptions';
 import { meQuery, UnknownOutcome } from '@/lib/queries/today';
 import { isAborted } from '@/lib/query';
@@ -51,16 +53,18 @@ function useOnline(): boolean {
 function SavedList({
   identity,
   scope,
+  active,
   onUnsave,
 }: {
   identity: string;
   scope: SavedScope;
+  /** the folder page on screen, on a focused tab: only then does it follow the server */
+  active: boolean;
   onUnsave: (item: FeedCardItem) => void;
 }) {
   const apiBase = useApiBase();
-  // Follows the server only while 收藏 is on screen; coming back re-reads a list gone stale.
-  const focused = useIsFocused();
-  const query = useInfiniteQuery({ ...savedQuery(identity, scope), subscribed: focused });
+  // Follows the server only while on screen; coming back re-reads a list gone stale.
+  const query = useInfiniteQuery({ ...savedQuery(identity, scope), subscribed: active });
   const lang = useLanguage(); // card texts are in the interface language
   useSyncExternalStore(hiddenSaved.subscribe, hiddenSaved.getSnapshot);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,7 +75,7 @@ function SavedList({
   const loaded = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
   const missing = useMemo(() => missingTitles(loaded), [loaded]);
   const preference = useQuery(translationPreferenceQuery(identity));
-  const titles = useQuery({ ...titleTranslationsQuery(identity, ['saved', scope], missing, preference.data), subscribed: focused });
+  const titles = useQuery({ ...titleTranslationsQuery(identity, ['saved', scope], missing, preference.data), subscribed: active });
   // Only while titles are translated: switching it off shows the originals at once.
   const filled = preference.data?.enabled ? titles.data : undefined;
 
@@ -108,12 +112,14 @@ function SavedList({
       hasMore: query.hasNextPage,
       loadingMore: query.isFetchingNextPage,
       moreFailed: query.isFetchNextPageError ? t().saved.moreFailed(errorMessage(query.error)) : null,
+      titlesFailed: titlesFailed(titles, preference.data),
       busy: query.isFetching,
     };
   }
 
   return (
     <FeedList
+      active={active}
       empty={
         searching ? (
           <EmptyState title={t().saved.noMatch} />
@@ -159,9 +165,21 @@ export default function Saved() {
   const [typed, setTyped] = useState('');
   const [q, setQ] = useState('');
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const focused = useIsFocused();
+  // Folders are swipeable pages (old app); only the shown page and its neighbours hold a list.
+  const pages: (string | null)[] = [null, ...folders.map((f) => f.key)];
+  const pager = useRef<PagerView>(null);
   const [chosen, setChosen] = useState<string | null>(null);
   // A folder gone since (its last subscription moved or left) falls back to 全部.
   const group = chosen !== null && folders.some((f) => f.key === chosen) ? chosen : null;
+  const current = pages.indexOf(group);
+
+  function selectFolder(folder: string | null) {
+    const index = pages.indexOf(folder);
+    if (index < 0) return;
+    setChosen(folder);
+    pager.current?.setPage(index);
+  }
   const [notice, setNotice] = useState<{ id: number; message: string; undo?: () => void } | null>(null);
 
   const showNotice = useCallback((message: string, undo?: () => void) => {
@@ -190,7 +208,7 @@ export default function Saved() {
     [identity, showNotice],
   );
 
-  const scope: SavedScope = { q: q.trim(), group };
+  const searchText = q.trim();
   const name = me.data?.display_name || me.data?.email.split('@')[0] || '';
   return (
     <>
@@ -200,12 +218,27 @@ export default function Saved() {
         folder={group}
         folders={folders}
         onSearch={search}
-        onSelectFolder={setChosen}
+        onSelectFolder={selectFolder}
         query={typed}
         user={name ? { name, avatarUrl: absolute(me.data?.avatar_url) } : undefined}
       >
-        {/* Another search or folder is another list (its own data and position). */}
-        <SavedList identity={identity} key={JSON.stringify(scope)} onUnsave={unsave} scope={scope} />
+        <PagerView
+          initialPage={current}
+          // A different set of folders or another search is a different pager (react-guidelines §2: reset by key).
+          key={`${pages.join('\u0000')}\u0001${searchText}`}
+          onPageSelected={(event) => setChosen(pages[event.nativeEvent.position] ?? null)}
+          ref={pager}
+          style={{ flex: 1 }}
+        >
+          {pages.map((folder, index) => (
+            <View key={folder ?? '*'} style={{ flex: 1 }}>
+              {Math.abs(index - current) <= 1 ? (
+                // Each folder and search is its own list (its own data and position).
+                <SavedList active={focused && index === current} identity={identity} onUnsave={unsave} scope={{ q: searchText, group: folder }} />
+              ) : null}
+            </View>
+          ))}
+        </PagerView>
       </SavedView>
       {notice ? (
         <Animated.View className="absolute left-0 right-0" key={notice.id} pointerEvents="box-none" style={[toastLife, { bottom: tabBar + 24 }]}>

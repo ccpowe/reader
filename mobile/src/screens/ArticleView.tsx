@@ -17,10 +17,19 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { cn } from '@/lib/cn';
 import { clampPosition, toolsPosition } from '@/lib/reader-tools-position';
 import { useMountEffect } from '@/lib/use-mount-effect';
-import { Icon, IconButton, Message, TopBar, useShadow } from '@/ui';
+import { Icon, IconButton, Message, Spinner, TopBar, useShadow } from '@/ui';
+import { afterDelay, fadeIn, fadeOut } from '@/ui/Button';
 import { t } from '@/lib/i18n';
 
-export type ReaderTool = { key: string; icon: TablerIcon; label: string; on: boolean; onPress?: () => void };
+export type ReaderTool = {
+  key: string;
+  icon: TablerIcon;
+  label: string;
+  on: boolean;
+  /** working (translating, extracting): a spinner after --delay-loading */
+  busy?: boolean;
+  onPress?: () => void;
+};
 
 /**
  * The floating tools on the right edge (P23 R3-A, old app): drag the pill up or down; the place is
@@ -77,13 +86,20 @@ function FloatingTools({ tools }: { tools: ReaderTool[] }) {
               accessibilityHint={t().reader.dragToolsHint}
               accessibilityLabel={tool.label}
               accessibilityRole="switch"
-              accessibilityState={{ checked: tool.on }}
+              accessibilityState={{ checked: tool.on, busy: tool.busy }}
               className={cn('h-12 w-12 items-center justify-center rounded-full active:bg-pressed', tool.on ? 'bg-selected' : '')}
               key={tool.key}
               onAccessibilityAction={(event) => moveBy(event.nativeEvent.actionName === 'increment' ? 0.1 : -0.1)}
               onPress={tool.onPress}
             >
-              <Icon icon={tool.icon} size="toolbar" tone={tool.on ? 'strong' : 'neutral'} />
+              <Animated.View style={tool.busy ? afterDelay(fadeOut) : undefined}>
+                <Icon icon={tool.icon} size="toolbar" tone={tool.on ? 'strong' : 'neutral'} />
+              </Animated.View>
+              {tool.busy ? (
+                <Animated.View className="absolute inset-0 items-center justify-center" pointerEvents="none" style={afterDelay(fadeIn)}>
+                  <Spinner />
+                </Animated.View>
+              ) : null}
             </Pressable>
           ))}
         </Animated.View>

@@ -54,7 +54,11 @@ function FolderBar({ name, count, onBack }: { name: string; count: number; onBac
   );
 }
 
-export type SubscriptionsState = { kind: 'loading' } | { kind: 'failed'; message: string } | { kind: 'ready'; folders: Folder[] };
+export type SubscriptionsState =
+  | { kind: 'loading' }
+  | { kind: 'failed'; message: string }
+  /** refreshFailed: the list shown is the one loaded before (old app: an error with retry above it) */
+  | { kind: 'ready'; folders: Folder[]; refreshFailed?: string | null };
 
 export function SubscriptionsView({
   user,
@@ -149,6 +153,13 @@ export function SubscriptionsView({
         refreshColor={spinner}
         refreshing={refreshing}
       >
+        {state.refreshFailed ? (
+          <View className="pt-2">
+            <Message action={<Button onPress={onRetry} title={t().common.retry} variant="ghost" />} kind="danger">
+              {state.refreshFailed}
+            </Message>
+          </View>
+        ) : null}
         <View className="pb-2 pt-2">
           <SearchField autoCapitalize="none" autoCorrect={false} onChangeText={onSearch} placeholder={t().subs.search} value={query} />
         </View>

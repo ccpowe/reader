@@ -6,14 +6,14 @@
  * Commands on one subscription run one at a time (`serially`); each checks, right before it sends,
  * that the account that asked is still the signed-in one, so nothing queued runs as someone else.
  */
-import { queryOptions } from '@tanstack/react-query';
+import { hashKey, queryOptions } from '@tanstack/react-query';
 
 import { errorCode, isApiError } from '../api/errors';
 import type { SubscribeRequest, SubscriptionResponse, UpdateSubscriptionRequest } from '../api/schema.gen';
 import { queryClient, session } from '../app-session';
 import { identityOf } from '../connection/session';
 import { key } from '../query';
-import { UnknownOutcome } from './today';
+import { feedQuery, UnknownOutcome } from './today';
 
 type Edit = Partial<Pick<SubscriptionResponse, 'name' | 'group' | 'include_in_home'>>;
 type EditField = keyof Edit;
@@ -168,7 +168,30 @@ export function markViewed(identity: string, subscription: SubscriptionResponse)
       method: 'POST',
       body: { sequence: subscription.latest_sequence },
     });
+    // A list read still on its way began before this: its count is the old one (cancelled, it keeps the current list).
+    await queryClient.cancelQueries({ queryKey: listKey(identity) });
     patchSubscription(identity, subscription.id, { new_count: updated.new_count });
+  });
+}
+
+/**
+ * While one subscription's feed is shown: every load of it that succeeds (the first, a retry, a
+ * refresh) clears its count up to what the list knew when that load started (old app). A load that
+ * fails or is cancelled (the page left) clears nothing. Returns the unsubscribe.
+ */
+export function clearCountOnLoad(identity: string, id: string): () => void {
+  const feedKey = feedQuery(identity, { kind: 'subscription', id }).queryKey;
+  const feedHash = hashKey(feedKey);
+  const known = () => queryClient.getQueryData<SubscriptionResponse[]>(listKey(identity))?.find((s) => s.id === id);
+  // The page's first load may have started just before this listens.
+  let sequence = queryClient.getQueryState(feedKey)?.fetchStatus === 'fetching' ? (known()?.latest_sequence ?? 0) : 0;
+  return queryClient.getQueryCache().subscribe((event) => {
+    if (event.type !== 'updated' || event.query.queryHash !== feedHash) return;
+    if (event.action.type === 'fetch') sequence = known()?.latest_sequence ?? 0;
+    else if (event.action.type === 'success') {
+      const subscription = known();
+      if (subscription && sequence > 0) void markViewed(identity, { ...subscription, latest_sequence: sequence }).catch(() => undefined);
+    }
   });
 }
 

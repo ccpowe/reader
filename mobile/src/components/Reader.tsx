@@ -9,6 +9,7 @@
  */
 import { IconArticle, IconBrandYoutube, IconLanguage, IconMessages, IconWorld } from '@tabler/icons-react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useReducer, useRef, useState } from 'react';
 import { Appearance, BackHandler, Linking, Share, useColorScheme, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -24,6 +25,7 @@ import { CaptionList, type CaptionListHandle } from '@/components/CaptionList';
 import { CaptionPlayer } from '@/components/CaptionPlayer';
 import { TranslatedWebView } from '@/components/TranslatedWebView';
 import { EMPTY_TIMELINE, captionProblem, type CaptionHost, type CaptionState, type CaptionTimeline } from '@/lib/caption-host';
+import type { SchedulerStatus } from '@/lib/translation-scheduler';
 import type { WebViewHandle } from '@/lib/webview';
 import { backStaysInside, documentKey, initialReaderPage, readerKey, readerPageReducer, shareUrl } from '@/lib/reader-page';
 import {
@@ -40,6 +42,8 @@ import { translationProblem, type HostState, type TranslationMode, type WebTrans
 import { ArticleView, type ReaderTool } from '@/screens/ArticleView';
 import { Button, Text, Toast } from '@/ui';
 import { duration } from '@/ui/theme';
+import { queryClient, useIdentity } from '@/lib/app-session';
+import { translationPreferenceQuery } from '@/lib/queries/translation';
 import { t } from '@/lib/i18n';
 import { useMountEffect } from '@/lib/use-mount-effect';
 
@@ -74,6 +78,11 @@ export type ReaderDoc = {
   /** HN: the comments page, a tool switches to it */
   discussionUrl?: string | null;
 };
+
+/** Translation requests are going through (not stopped by a pause or an outage). */
+function working(status: SchedulerStatus | undefined): boolean {
+  return !!status && status.working > 0 && status.blocked === null;
+}
 
 export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: () => Promise<string | null> }) {
   const url = doc.url;
@@ -127,6 +136,22 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
     setNotice((current) => ({ id: (current?.id ?? 0) + 1, message }));
   }
 
+  // Translation switched off in 我的: the tools here do not turn it on, they say where to (old app).
+  // Read at the moment it is asked (the in-page caption buttons keep the callback they started with).
+  const preferenceQuery = translationPreferenceQuery(useIdentity());
+  useQuery(preferenceQuery);
+  function mayTranslate(next: TranslationMode): boolean {
+    if (next === 'original' || queryClient.getQueryData(preferenceQuery.queryKey)?.enabled !== false) return true;
+    notify(t().reader.translationOff);
+    return false;
+  }
+  /** The player's own captions button (in the page) asks; refused, the page shows the original again. */
+  function requestPlayerMode(requested: TranslationMode) {
+    const next = mayTranslate(requested) ? requested : 'original';
+    setPlayerMode(next);
+    captionHost.current?.setMode(next);
+  }
+
   // Android back: inside the page first (its history, or from a link back to reader mode), then leave.
   const inside = backStaysInside(state);
   useFocusEffect(
@@ -147,6 +172,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
 
   function toggleTranslation() {
     const next = mode === 'original' ? 'bilingual' : 'original';
+    if (!mayTranslate(next)) return;
     setMode(next);
     // Both documents follow it: reader mode and the page underneath.
     pageHost?.setMode(next);
@@ -155,6 +181,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
 
   function toggleTimelineTranslation() {
     const next = timelineMode === 'original' ? 'bilingual' : 'original';
+    if (!mayTranslate(next)) return;
     setTimelineMode(next);
     captionsHost?.setTimelineMode(next);
   }
@@ -162,9 +189,11 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
   /** Reader mode: the server's full body, or else the article the open page gives (old app). */
   async function toggleReader() {
     if (view === 'reader') return dispatch({ type: 'switch', view: 'page' });
+    // Tapped again while the page is asked for its article: stop asking (old app).
+    if (extracting) return pageHost?.cancelExtract();
     setTheme(scheme);
     if (readable) return dispatch({ type: 'switch', view: 'reader' });
-    if (!pageHost || extracting) return;
+    if (!pageHost) return;
     setExtracting(true);
     const result = await pageHost.extract();
     setExtracting(false);
@@ -189,13 +218,21 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
 
   const tools: ReaderTool[] = [];
   if (translatable) {
-    tools.push({ key: 'translate', icon: IconLanguage, label: t().reader.bilingual, on: mode === 'bilingual', onPress: toggleTranslation });
+    tools.push({
+      key: 'translate',
+      icon: IconLanguage,
+      label: t().reader.bilingual,
+      on: mode === 'bilingual',
+      busy: mode === 'bilingual' && working(translation?.scheduler),
+      onPress: toggleTranslation,
+    });
   } else {
     tools.push({
       key: 'translate',
       icon: IconLanguage,
       label: t().reader.translateCaptions,
       on: timelineMode === 'bilingual',
+      busy: timelineMode === 'bilingual' && working(captions?.scheduler),
       onPress: () => toggleTimelineTranslation(),
     });
   }
@@ -206,6 +243,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
       icon: IconArticle,
       label: t().reader.readerMode,
       on: view === 'reader' || extracting,
+      busy: extracting,
       onPress: () => void toggleReader(),
     });
   }
@@ -302,10 +340,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
         captionHost.current = current;
         setCaptionHost(current);
       }}
-      onModeRequest={(requested) => {
-        setPlayerMode(requested);
-        captionHost.current?.setMode(requested);
-      }}
+      onModeRequest={requestPlayerMode}
       onTimeline={(next) => {
         setTimeline(next);
         captionList.current?.follow(next);
@@ -329,10 +364,7 @@ export function Reader({ doc, onToggleSave }: { doc: ReaderDoc; onToggleSave: ()
         kind.kind === 'youtube'
           ? {
               mode: playerMode,
-              onModeRequest: (requested) => {
-                setPlayerMode(requested);
-                captionHost.current?.setMode(requested);
-              },
+              onModeRequest: requestPlayerMode,
               onHost: (current) => {
                 captionHost.current = current;
                 setCaptionHost(current);
