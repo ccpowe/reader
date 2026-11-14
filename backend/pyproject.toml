@@ -6,18 +6,13 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
-    "aiohttp>=3.14.3",
     "alembic>=1.14.0",
     "asyncpg>=0.30.0",
     "beautifulsoup4>=4.12.0",
-    "crawl4ai==0.9.3",
     "feedparser>=6.0.11",
     "filelock>=3.20",
     "fastapi>=0.115.0",
     "httpx>=0.28.0",
-    "langchain==1.4.0",
-    "langchain-deepseek>=1.1.0",
-    "langchain-openai>=1.1.0",
     "pydantic-settings>=2.7.0",
     "pwdlib[argon2,bcrypt]>=0.3.0",
     "pillow>=11.0.0",
@@ -26,17 +21,14 @@ dependencies = [
     "pyjwt[crypto]>=2.10.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "uvicorn[standard]>=0.34.0",
+    # /mcp is served by the API itself.
+    "mcp>=2.3.0,<3",
+    "youtube-transcript-api>=1.2.4,<2",
 ]
 
 [project.scripts]
-reader-worker = "app.workers.main:main"
-reader-admin = "app.admin.cli:main"
-reader-web-rule = "app.ingestion.web_rule_cli:main"
-reader-browser-adapter = "app.browser_tasks.adapter_app:main"
-reader-browser-adapter-healthcheck = "app.browser_tasks.adapter_app:healthcheck_main"
-reader-browser-manager = "app.browser_tasks.manager_app:main"
-reader-browser-reaper = "app.browser_tasks.reaper:main"
-reader-browser-admin = "app.browser_tasks.admin:main"
+reader-worker = "reader.worker:main"
+reader-admin = "reader.cli:main"
 
 [dependency-groups]
 dev = [
@@ -62,7 +54,7 @@ exclude = ["migrations"]
 select = ["E", "F", "I", "UP"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/app"]
+packages = ["src/reader"]
 
 [build-system]
 requires = ["hatchling>=1.26.0"]

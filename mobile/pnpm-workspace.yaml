@@ -13,6 +13,11 @@ minimumReleaseAgeExclude:
   - expo-build-properties@57.0.17
   - expo-image-picker@57.0.16
   - expo-secure-store@57.0.4
+  - lucide-react-native@1.72.0
 
+# react-native-webview (Android): web content does not add the app's edge-to-edge insets a second
+# time, fullscreen video stays centered (no FLAG_LAYOUT_NO_LIMITS), and OAuth popups open in a
+# real child window so window.opener / postMessage logins (X, Reddit) work.
 patchedDependencies:
-  react-native-webview@13.16.1: patches/react-native-webview+13.16.1.patch
+  react-native-webview@14.0.1: patches/react-native-webview@14.0.1.patch
+

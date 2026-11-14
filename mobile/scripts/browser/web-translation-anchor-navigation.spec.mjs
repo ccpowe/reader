@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test';
 import { buildSync } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-const source = JSON.parse(readFileSync(resolve('domain/translationRuntimeSources.generated.ts'), 'utf8').match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/)[1]);
-const bundle = buildSync({ entryPoints: [resolve('domain/webTranslationRules.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
+const source = JSON.parse(readFileSync(resolve('src/lib/injected/translationRuntimeSources.generated.ts'), 'utf8').match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/)[1]);
+const bundle = buildSync({ entryPoints: [resolve('src/lib/injected/webTranslationRules.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
 const { WEB_TRANSLATION_RULE_REGISTRY: rules } = await import(`data:text/javascript;base64,${Buffer.from(bundle).toString('base64')}`);
 async function start(page, path = '/model') {
   await page.route('https://anchor.test/**', route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<main><section id="providers"><p>Providers paragraph remains translated.</p></section><section id="pricing"><p>Pricing paragraph remains translated.</p></section><div id="章节"></div><a name="legacy"></a></main>' }));

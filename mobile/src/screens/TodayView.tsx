@@ -1,0 +1,96 @@
+/**
+ * 今天 (PRODUCT §3.1), old app layout at P25 values: READER header with the date, folder tabs with
+ * the channel filter on the right (badge = new items on 全部), or — when one subscription is shown
+ * alone — a bar naming it with a way back. The feed itself is the `children` (one list, or the
+ * folder pager). Presentational: data and callbacks come from the route.
+ */
+import { IconAdjustmentsHorizontal, IconX } from '@tabler/icons-react-native';
+import type { ReactNode } from 'react';
+import { View } from 'react-native';
+
+import { CollapsingScreen } from '@/components/CollapsingChrome';
+import { IconButton, Message, PageHeader, SolidCount, Tabs, Text } from '@/ui';
+import { t } from '@/lib/i18n';
+
+export function TodayView({
+  date,
+  user,
+  onPressUser,
+  folders,
+  folder,
+  channel,
+  newCount,
+  banner,
+  children,
+  onSelectFolder,
+  onOpenChannels,
+  onClearChannel,
+}: {
+  /** e.g. "11 月 11 日 · 星期三" */
+  date: string;
+  user?: { name: string; avatarUrl?: string | null };
+  /** the header's avatar: opens 我的 */
+  onPressUser?: () => void;
+  /** tabs after 全部: key and label */
+  folders: { key: string; label: string }[];
+  /** null = 全部 */
+  folder: string | null;
+  /** the one subscription being shown, if any */
+  channel?: string | null;
+  /** new items across the subscriptions on 全部 */
+  newCount?: number;
+  /** view-level problem (no network), one at a time */
+  banner?: string | null;
+  children: ReactNode;
+  onSelectFolder?: (folder: string | null) => void;
+  onOpenChannels?: () => void;
+  onClearChannel?: () => void;
+}) {
+  const filter = (
+    <IconButton
+      badge={newCount ? <SolidCount value={newCount} /> : null}
+      icon={IconAdjustmentsHorizontal}
+      label={t().today.pickChannel}
+      onPress={onOpenChannels}
+    />
+  );
+  const header = (
+    <>
+      {banner ? (
+        <Message bar kind="warning">
+          {banner}
+        </Message>
+      ) : null}
+      <PageHeader aside={date} title={t().today.title} onPressUser={onPressUser} user={user} />
+      {channel ? (
+        <View className="h-11 flex-row items-center gap-2 border-b border-subtle px-6">
+          <Text className="flex-1" numberOfLines={1} tone="secondary">
+            {t().today.onlyChannel(channel)}
+          </Text>
+          {/* another channel straight from here (old app), or back to the folders */}
+          {filter}
+          <IconButton icon={IconX} label={t().today.backToFolders} onPress={onClearChannel} size="sm" />
+        </View>
+      ) : (
+        <Tabs
+          bordered
+          onSelect={(key) => onSelectFolder?.(key)}
+          options={[{ key: null, label: t().common.all }, ...folders]}
+          selected={folder}
+          trailing={filter}
+        />
+      )}
+    </>
+  );
+  // The header and folder tabs slide away while the feed scrolls (old app, PRODUCT §2).
+  return (
+    <CollapsingScreen header={header} revealKey={`${channel ?? ''}|${folder ?? ''}`} tab="index">
+      {children}
+    </CollapsingScreen>
+  );
+}
+
+/** The date line in the header: "11 月 11 日 · 星期三" / "Wed, Nov 11". */
+export function todayLabel(now: Date): string {
+  return t().time.todayLine(now);
+}

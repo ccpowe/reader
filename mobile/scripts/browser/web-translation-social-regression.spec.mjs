@@ -3,9 +3,9 @@ import { buildSync } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../..', import.meta.url));
-const generated = readFileSync(`${root}/domain/translationRuntimeSources.generated.ts`, 'utf8');
+const generated = readFileSync(`${root}/src/lib/injected/translationRuntimeSources.generated.ts`, 'utf8');
 const source = JSON.parse(generated.match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/)[1]);
-const bundle = buildSync({ entryPoints: [`${root}/domain/webTranslationRules.ts`], bundle: true, write: false, platform: 'node', format: 'esm' }).outputFiles[0].text;
+const bundle = buildSync({ entryPoints: [`${root}/src/lib/injected/webTranslationRules.ts`], bundle: true, write: false, platform: 'node', format: 'esm' }).outputFiles[0].text;
 const { WEB_TRANSLATION_RULE_REGISTRY: rules } = await import(`data:text/javascript;base64,${Buffer.from(bundle).toString('base64')}`);
 async function load(page, host, html, initialState) {
   await page.route(`https://${host}/**`, route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta charset="utf-8"><style>body{font:16px/24px Arial;margin:16px}h1{font-size:32px;line-height:40px;font-weight:700}p{margin:12px 0}</style>${html}` }));

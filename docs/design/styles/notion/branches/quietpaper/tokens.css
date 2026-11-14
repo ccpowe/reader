@@ -1,0 +1,364 @@
+/* ==========================================================================
+   Quietpaper v0.7 · tokens.css
+   由 DECISIONS.md（D1–D19，随包附带）生成；与 DESIGN.md v0.7、quietpaper.css v0.7 配套（版本记录见 CHANGELOG.md）。
+   数值只写在本文件里；DESIGN.md 只引用 token 名。
+
+   来源标签（只用这四种）：
+     [测量]      参考产品（Notion Web，浅色，1440×900）capture 中的计算值 / 动画记录 / 根变量原值
+     [估计]      看截图推测，或参考数据里没有、按惯例定的占位值（包括沿用早期原型、没有经过采集或评审的值）
+     [推导]      在已有值上为满足约束（对比度、几何、一致性）计算或换算得到
+     [选定 Dn]   DECISIONS.md 第 n 条拍板的值
+   对比度按 WCAG 相对亮度公式计算，格式为「在 #fff 上 / 在 --color-bg-sidebar 上」。
+
+   只有浅色模式；深色模式没有采集（见 DESIGN.md「已知不足」）。
+   注释里写「= --x」的派生值一律写成 var(--x) / calc()，暗色模式只需重写源 token。
+   ========================================================================== */
+
+:root {
+  /* ---------------------------------------------------------------------
+     1. 颜色 · 表面
+     --------------------------------------------------------------------- */
+  --color-bg:               #ffffff;                  /* [测量] 内容区、正文、浮层 */
+  --color-bg-sidebar:       #f9f8f7;                  /* [测量] 侧边栏、弹窗左侧导航 */
+  --color-bg-sunken:        #f0efed;                  /* [测量] 键帽、头像底、徽标底、骨架条、禁用的主按钮 */
+  --color-bg-code:          #f7f6f3;                  /* [测量] 代码块、行内代码 */
+  --color-surface-raised:   #ffffff;                  /* [测量] 菜单、popover、tooltip、弹窗 */
+  --color-surface-glass:    rgba(255, 255, 255, 0.9); /* [测量] 只用于命令面板 */
+  --color-surface-tint:     rgba(66, 35, 3, 0.03);    /* [测量] callout、文本输入框底、中性提示 */
+  --color-overlay:          rgba(15, 15, 15, 0.6);    /* [测量] 模态遮罩（纯中性）*/
+
+  /* ---------------------------------------------------------------------
+     2. 颜色 · 文字（D2：Notion 原值）
+     --------------------------------------------------------------------- */
+  --color-text-primary:     #2c2c2b;  /* [选定 D2] 14.0:1 */
+  --color-text-secondary:   #7d7a75;  /* [选定 D2] 4.27 / 4.03 —— 用户接受原值，不按 4.5:1 加深 */
+  --color-text-tertiary:    #a19e99;  /* [选定 D2] 2.67 / 2.52 —— 只用于不读也不影响使用的文字 */
+  --color-text-disabled:    #bcbab6;  /* [测量] 与 --color-icon-disabled 同为参考产品禁用态的实测值；只用于 disabled 控件 */
+  --color-text-on-accent:   #ffffff;  /* [推导] 主按钮 / 危险按钮上的文字，取白色以获得最高对比度 */
+  --color-text-link:        var(--color-accent-button-hover);  /* [推导] 4.64 / 4.38 —— 链接按 4.5:1 底线取 D3 的 hover 色 */
+
+  /* ---------------------------------------------------------------------
+     3. 颜色 · 图标（D6 / D9 / D10 / D11：图标默认全灰）
+     --------------------------------------------------------------------- */
+  --color-icon-neutral:     #73726e;  /* [推导] 4.82 / 4.54 —— 所有图标的默认色：功能图标、文件夹 / 文档等对象图标、列类型图标 */
+  --color-icon-strong:      #383836;  /* [测量] hover / 激活中的图标 */
+  --color-icon-disabled:    #bcbab6;  /* [测量] 禁用的图标 */
+  /* 对象 / 功能图标的语义固定色：只有下面两个，尺寸不超过 --size-icon-box。
+     状态反馈图标（成功 / 警告 / 出错）不用这里的色，用第 7 组 --color-success / --color-warning / --color-danger。
+     --color-icon-danger 与 --color-danger 目前同值，但角色不同：前者只给删除类图标，后者给出错反馈 */
+  --color-icon-danger:      #cd3c3a;  /* [测量] 4.88 / 4.60 —— 删除类图标，任何位置都用 */
+  --color-icon-ai:          #c14c8a;  /* [测量] 4.50 / 4.24 —— 只用于"AI 正在工作"这类瞬时状态（如生成中）；静止的 AI 图标用 --color-icon-neutral（D11）*/
+
+  /* 语言徽标底色（D9：文件树里颜色的来源之一）。白色缩写在每种底色上都 ≥4.5:1 */
+  --color-lang-ts:    #3178c6;  /* [估计] 4.53 */
+  --color-lang-js:    #946c09;  /* [推导] 原 #b8860b 只有 3.25，加深到和其他语言同一档：4.76 */
+  --color-lang-py:    #3572a5;  /* [估计] 5.12 */
+  --color-lang-md:    #6e6c68;  /* [估计] 5.24 */
+  --color-lang-json:  #8a6a1f;  /* [估计] 5.05 */
+  --color-lang-other: var(--color-icon-neutral);  /* [推导] 4.82；没有专属色的语言 */
+
+  /* ---------------------------------------------------------------------
+     4. 颜色 · 边框
+     --------------------------------------------------------------------- */
+  --color-border-subtle:    rgba(42, 28, 0, 0.07);   /* [测量] 表格线、分隔线、浮层外环 */
+  --color-border-strong:    rgba(28, 19, 1, 0.11);   /* [测量] 输入框、下拉触发器、secondary 按钮描边 */
+  --color-border-control:   rgba(27, 21, 0, 0.19);   /* [测量] 未勾选的勾选框描边；也用作关闭态开关轨道、拖动手柄的填充 */
+  --color-border-edge:      #f0efed;                 /* [测量] 侧边栏右缘 inset 线；与 --color-bg-sunken 同值只是巧合，两者是独立的实测值，不互相引用 */
+
+  /* ---------------------------------------------------------------------
+     5. 颜色 · 交互态（半透明暖黑叠加，可放在任何浅色表面上）
+     --------------------------------------------------------------------- */
+  --color-state-hover:          rgba(33, 27, 23, 0.05);  /* [测量] hover、键盘当前项 */
+  --color-state-pressed:        rgba(33, 27, 23, 0.10);  /* [测量] 动画终点 α≈0.102 */
+  --color-state-selected:       rgba(33, 27, 23, 0.05);  /* [测量] 选中项 */
+  --color-state-selected-hover: rgba(33, 27, 23, 0.076); /* [测量] 选中项再 hover；也是当前评论线程卡片（D5 + D17：比 hover 的线程深一档）*/
+
+  /* ---------------------------------------------------------------------
+     6. 颜色 · 强调色
+     --------------------------------------------------------------------- */
+  --color-accent:               #2783de;  /* [测量] 开关打开、勾选框填充（非文本，3.9:1）*/
+  --color-accent-focus:         #2383e2;  /* [测量] 焦点环颜色（--focus-ring / --focus-ring-input 引用它）*/
+  --color-accent-button:        #2783de;  /* [选定 D3] 主按钮底；白字 3.9:1，按钮文字短，接受 */
+  --color-accent-button-hover:  #1f76cc;  /* [选定 D3] */
+  --color-accent-soft:          rgba(0, 124, 215, 0.094); /* [测量] soft 按钮底 */
+  --color-accent-soft-hover:    rgba(0, 124, 215, 0.141); /* [测量] soft 按钮 hover */
+  --color-accent-soft-text:     #105fad;  /* [推导] soft 按钮文字；原 #2783de 在软底上 3.45:1，这里 5.7:1 */
+  --color-selection:            rgba(35, 131, 226, 0.18);  /* [估计] ::selection */
+
+  /* ---------------------------------------------------------------------
+     7. 颜色 · 状态反馈
+     --------------------------------------------------------------------- */
+  --color-success:          #448361;  /* [测量] 4.50 / 4.24 —— 图标、符号 */
+  --color-success-text:     #2a533c;  /* [测量] */
+  --color-success-bg:       #e8f1ec;  /* [测量] */
+  --color-warning:          #c0650b;  /* [推导] 由 Notion orange #d9730d 加深：4.11 / 3.88；叠加 pressed 后 3.36 / 3.18，两种底上都 ≥3:1 */
+  --color-warning-text:     #8d4e17;  /* [测量] 6.5:1 */
+  --color-warning-bg:       #fbebde;  /* [测量] */
+  --color-danger:           #cd3c3a;  /* [测量] 4.88 / 4.60 */
+  --color-danger-text:      #6d3531;  /* [测量] */
+  --color-danger-bg:        #fce9e7;  /* [测量] */
+  --color-danger-button:    #cd3c3a;  /* [测量] 白字 4.88:1 */
+  --color-danger-button-hover: #ae2f2e; /* [测量] */
+
+  /* ---------------------------------------------------------------------
+     8. 颜色 · 标签（Select / Status）：底 = *BacTer，文字 = *TexPri
+     --------------------------------------------------------------------- */
+  --color-tag-gray-bg:   #e6e5e3; --color-tag-gray-text:   #494846; /* [测量] 7.3:1 */
+  --color-tag-brown-bg:  #ebdfd7; --color-tag-brown-text:  #584437; /* [测量] */
+  --color-tag-orange-bg: #f3ddcb; --color-tag-orange-text: #6a4222; /* [测量] 6.6:1 */
+  --color-tag-yellow-bg: #f2e3b7; --color-tag-yellow-text: #655121; /* [测量] */
+  --color-tag-green-bg:  #d7e6dd; --color-tag-green-text:  #2a533c; /* [测量] 6.8:1 */
+  --color-tag-blue-bg:   #cee3f7; --color-tag-blue-text:   #264a72; /* [测量] 6.9:1 */
+  --color-tag-teal-bg:   #cae9f0; --color-tag-teal-text:   #18505b; /* [测量] */
+  --color-tag-purple-bg: #e8dbf2; --color-tag-purple-text: #553b69; /* [测量] */
+  --color-tag-pink-bg:   #f4d8e4; --color-tag-pink-text:   #68354e; /* [测量] */
+  --color-tag-red-bg:    #f7d9d5; --color-tag-red-text:    #6d3531; /* [测量] */
+  /* Status 圆点（非文本；总有文字标签相伴） */
+  --color-tag-dot-gray:  #8e8b86;  /* [测量] 3.39 / 3.20 */
+  --color-tag-dot-green: #46a171;  /* [测量] 3.18 / 3.00 */
+  /* v0.6 删除 --color-tag-dot-blue：实测值 #2783de 与 --color-accent 相同，违反"状态圆点不用强调色"（D12） */
+
+  /* ---------------------------------------------------------------------
+     9. 颜色 · 评论锚点与查找（值 [测量] 自 marEdi*Yel / finHig* 变量；用途为 [估计]）
+     黄色只用于正文里面积很小的行内区间；带行号的整行（代码行等）上的评论标记（整行底、竖线、引文条）全部用第 10 组的中性 token（D17）
+     --------------------------------------------------------------------- */
+  --color-comment-anchor-bg:        rgba(215, 177, 24, 0.07);
+  --color-comment-anchor-bg-hover:  #fbf3db;
+  --color-comment-anchor-underline: rgba(236, 191, 66, 0.39);
+  --color-comment-anchor-active:    rgba(236, 191, 66, 0.39);  /* 当前线程的锚点底 */
+  --color-find-match:               rgba(255, 205, 56, 0.4);
+  --color-find-match-current:       rgba(255, 205, 56, 0.9);
+
+  /* ---------------------------------------------------------------------
+     10. 颜色 · 代码（语法高亮 D7，不受"暖灰"约束）
+     --------------------------------------------------------------------- */
+  --color-syntax-text:     #24292f;  /* [选定 D7] */
+  --color-syntax-keyword:  #8a3fc7;  /* [选定 D7] */
+  --color-syntax-string:   #1a7f4b;  /* [选定 D7] */
+  --color-syntax-number:   #c25412;  /* [选定 D7] 数字、布尔、null */
+  --color-syntax-comment:  #6a7069;  /* [选定 D7] 斜体 */
+  --color-syntax-function: #2563c9;  /* [选定 D7] */
+  --color-syntax-type:     #0f7f7b;  /* [选定 D7] 类型、类名 */
+  --color-syntax-builtin:  #a8650a;  /* [选定 D7] */
+  --color-syntax-property: #b23a48;  /* [选定 D7] 属性、attr（只在代码块 / 代码文件内）*/
+  --color-syntax-meta:     #56606e;  /* [选定 D7] 装饰器、预处理 */
+  --color-syntax-punct:    #3d3c38;  /* [选定 D7] 运算符、标点、参数 */
+  --color-code-line-number: var(--color-text-tertiary); /* [推导] */
+  --color-code-line-active: var(--color-state-hover);   /* [推导] 原为浅蓝，整行宽度属于大面积，按 D12 改为中性 */
+  /* 带行号的整行（代码行等）的评论标记（D17）：全部中性。整行底三档：随便划过 --color-state-hover < 指向线程 < 当前线程 */
+  --color-line-thread-hover:  var(--color-state-selected-hover); /* [选定 D17] 被指向的线程（hover 线程卡片 / 竖线 / 气泡）覆盖的行 */
+  --color-line-thread-active: var(--color-state-pressed);        /* [选定 D17] 当前线程、划选后待提交的行 */
+  --color-line-thread-bar:       var(--color-border-control);    /* [选定 D17] 评论范围竖线、线程顶部的引文条：灰色 */
+  --color-line-thread-bar-stale: var(--color-border-strong);     /* [推导] 原文已变：比正常竖线浅一档（待用户确认）*/
+
+  /* ---------------------------------------------------------------------
+     11. 颜色 · 其他
+     --------------------------------------------------------------------- */
+  --color-scrollbar-thumb:  rgba(33, 27, 23, 0.16);    /* [估计] */
+  --color-quote-bar:        var(--color-text-primary); /* [估计] 引用块左侧竖线 */
+
+  /* ---------------------------------------------------------------------
+     12. 字体
+     --------------------------------------------------------------------- */
+  /* 西文 / UI 字体栈 [测量]；中文回退 PingFang SC → Microsoft YaHei → Noto Sans CJK SC，系统字体，不打包 [选定 D14]。
+     中文字体排在所有西文字体之后，避免西文字符落到中文字体的西文字形上 */
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display",
+               "Segoe UI", Helvetica, Arial,
+               "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC",
+               sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  /* [选定 D8] JetBrains Mono，用 @fontsource/jetbrains-mono 打包 400 / 500 / 700 + italic。
+     JetBrains Mono 没有 CJK 字形，代码里的中文按 D14 回退到系统中文字体 */
+  --font-mono: "JetBrains Mono", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", ui-monospace, monospace;
+  /* [选定 D15] 公式用 KaTeX 自带字体（随 KaTeX 打包），不受"界面只有两种字体族"的限制 */
+  --font-math: KaTeX_Main, "Times New Roman", serif;
+  --font-numeric-table: lining-nums tabular-nums;   /* [测量] */
+
+  /* 字重：只有这四档 */
+  --font-weight-regular:  400;  /* [测量] 默认；选中项也保持这一档（D4）*/
+  --font-weight-medium:   500;  /* [测量] ui-strong、caption-strong、micro */
+  --font-weight-semibold: 600;  /* [选定 D4] h1–h3、正文加粗、徽标缩写 */
+  --font-weight-bold:     700;  /* [测量] 只给 display 和 title */
+
+  /* 级别：size / line-height / weight */
+  --font-display-size: 40px;  --font-display-line: 48px;   --font-display-weight: var(--font-weight-bold);     /* [测量] 文档页标题 */
+  --font-title-size:   32px;  --font-title-line:   38.4px; --font-title-weight:   var(--font-weight-bold);     /* [测量] 数据库 / 详情侧板标题 */
+  --font-h1-size:      30px;  --font-h1-line:      39px;   --font-h1-weight:      var(--font-weight-semibold); /* [测量] 值；字重 [选定 D4] */
+  --font-h2-size:      24px;  --font-h2-line:      31.2px; --font-h2-weight:      var(--font-weight-semibold); /* [测量] 值；字重 [选定 D4] */
+  --font-h3-size:      20px;  --font-h3-line:      26px;   --font-h3-weight:      var(--font-weight-semibold); /* [测量] 值；字重 [选定 D4] */
+  --font-section-size: 16px;  --font-section-line: 24px;   --font-section-weight: var(--font-weight-medium);   /* [测量] 设置 / 表单分区标题、视图内标题 */
+  --font-body-size:    16px;  --font-body-line:    24px;   --font-body-weight:    var(--font-weight-regular);  /* [选定 D1] 正文 16px */
+  --font-ui-size:      14px;  --font-ui-line:      20px;   --font-ui-weight:      var(--font-weight-regular);  /* [选定 D1] 界面 14px */
+  --font-ui-strong-weight: var(--font-weight-medium);                                                         /* [测量] 行标题、按钮、表单标签 */
+  --font-desc-size:    13px;  --font-desc-line:    18px;   --font-desc-weight:    var(--font-weight-regular);  /* [测量] 说明文字 */
+  --font-caption-size: 12px;  --font-caption-line: 16px;   --font-caption-weight: var(--font-weight-regular);  /* [测量] */
+  --font-caption-strong-weight: var(--font-weight-medium);                                                    /* [测量] 分组标题 */
+  --font-micro-size:   11px;  --font-micro-line:   14px;   --font-micro-weight:   var(--font-weight-medium);   /* [测量] 键帽、徽标 */
+  --font-mono-size:    13.5px; --font-mono-line:   22px;                                                       /* [估计] 代码块、行内代码、代码文件 */
+  --font-bold-weight:  var(--font-weight-semibold);                                                           /* [选定 D4] 正文中的 **加粗** */
+  --font-control-line: 1.2;                                                                                   /* [测量] 按钮、下拉触发器内文字的行高（14 / 16.8）*/
+  /* 图形内文字（语言徽标缩写）：不属于文字阶梯，只能放在 --size-icon-sm 见方的徽标里 */
+  --font-badge-size:   8.5px;                                                                                 /* [估计] */
+  --font-badge-weight: var(--font-weight-semibold);                                                           /* [推导] 粗体取 600，不用 700（700 只给 display / title）*/
+  --font-input-size-touch: 16px;  /* [推导] 触屏输入框最小字号：低于 16px 时 iOS 聚焦会放大页面 */
+
+  /* ---------------------------------------------------------------------
+     13. 间距（只允许这些值）
+     --------------------------------------------------------------------- */
+  --space-px:  1px;   /* [测量] 树节点 / 列表项之间 */
+  --space-2xs: 2px;   /* [测量] 正文块内边距、列表项间距 */
+  --space-xs:  4px;   /* [测量] 浮层内菜单项距容器边、行内代码左右内边距 */
+  --space-sm:  6px;   /* [测量] 同组控件之间（最常见 gap）*/
+  --space-md:  8px;   /* [测量] 控件水平内边距、图标 → 文字 */
+  --space-lg:  12px;  /* [测量] 分隔线内缩、callout / 线程内边距 */
+  --space-xl:  16px;  /* [测量] 侧边栏分组标题左缘、代码块内边距 */
+  --space-2xl: 24px;  /* [测量] 列表缩进、分组之间 */
+  --space-3xl: 32px;  /* [估计] 正文标题上方 */
+  --space-4xl: 48px;  /* [估计] 表单 / 设置分区之间 */
+  /* 尺度外的唯一例外：数据库表格单元格垂直内边距，用来把行高凑到 --size-row-table */
+  --space-table-cell-y: 7.5px;  /* [测量] */
+
+  /* ---------------------------------------------------------------------
+     14. 尺寸
+     --------------------------------------------------------------------- */
+  --size-row-table:    36px;  /* [测量] 数据库表格行 / 表头（实测 36.67）*/
+  --size-row-command:  32px;  /* [测量] 插入菜单项、导航内搜索框、视图 tab */
+  --size-row-nav:      30px;  /* [测量] 侧边栏树节点 */
+  --size-row-menu:     28px;  /* [测量] 菜单项、设置导航、分段 tab */
+  --size-input:        34px;  /* [测量] 文本输入框 */
+  --size-touch-target: 44px;  /* [估计] 触屏最小点击区域 */
+  --size-control:      28px;  /* [选定 D1] 文字按钮（含顶栏 / 横栏里的 ghost 按钮）、下拉触发器 */
+  --size-control-sm:   24px;  /* [测量] 独立图标按钮 .qp-icon-btn、筛选 chip、split 按钮的下拉部分 */
+  --size-control-xs:   20px;  /* [测量] 行内图标按钮、状态标签 */
+  --size-checkbox:     16px;  /* [测量] */
+  --size-switch-w:     30px;  /* [测量] */
+  --size-switch-h:     18px;  /* [测量] */
+  --size-switch-knob:  14px;  /* [测量] */
+  --size-dot:          8px;   /* [估计] Status 圆点 */
+  --size-avatar-sm:    20px;  /* [测量] */
+
+  /* 图标（D6：Tabler outline）。名称按大小排序：xs < sm < md */
+  --size-icon-xs:      12px;  /* [测量] chevron、spinner */
+  --size-icon-sm:      16px;  /* [选定 D6] 默认图标尺寸：导航 / 菜单前置图标、行内操作、按钮图标、列类型图标 */
+  --size-icon-md:      18px;  /* [测量] 页面标题旁的页面图标 */
+  --size-icon-box:     calc(var(--size-icon-sm) + 2 * var(--space-2xs));  /* [推导] 20px：图标容器 = 图标 + 两侧各 --space-2xs；也是彩色图形（emoji、徽标）的尺寸上限 */
+  --size-icon-emoji:   14px;  /* [估计] 自定义页面 emoji 在 --size-icon-box 里的字号 */
+  --icon-stroke-width: 2.1;   /* [选定 D6] 24 单位 viewBox 上的 stroke-width；--size-icon-sm 下实际线宽 1.4px；端点、拐角 round */
+
+  /* 引用块与底部面板 */
+  --size-quote-bar:          3px;   /* [估计] 引用块竖线宽 */
+  --size-sheet-handle-w:     36px;  /* [估计] 底部面板拖动手柄 */
+  --size-sheet-handle-h:     4px;   /* [估计] */
+  --sheet-dismiss-ratio:     0.333; /* [估计] 向下拖过面板高度的这个比例即关闭 */
+
+  /* ---------------------------------------------------------------------
+     15. 布局（尺寸本身是视觉层；"哪里放什么"属于 DESIGN 的模式层）
+     --------------------------------------------------------------------- */
+  --layout-sidebar-width:     270px;  /* [测量] */
+  --layout-sidebar-min:       220px;  /* [估计] 侧边栏拖动下限 */
+  --layout-sidebar-max:       420px;  /* [估计] 侧边栏拖动上限 */
+  --layout-topbar-height:     44px;   /* [测量] 顶栏；也用作视图内横栏（面包屑行等）的高度 */
+  --layout-content-width:     708px;  /* [测量] 正文列最大宽度（空间不足时收缩）*/
+  --layout-content-min:       480px;  /* [估计] 正文列最小宽度；再窄就折叠评论栏 */
+  --layout-form-width:        800px;  /* [测量] 表单列最大宽度（空间不足时收缩）*/
+  --layout-comment-width:     320px;  /* [推导] 评论栏：占版面的一列，不是浮层 */
+  --layout-tree-indent:       16px;   /* [估计] 文件树每层缩进（校准页使用的值）*/
+  --layout-modal-nav-width:   240px;  /* [测量] 弹窗左侧导航 */
+  --layout-modal-max-width:   1296px; /* [测量] */
+  --layout-modal-max-height:  800px;  /* [测量] */
+  --layout-modal-inset-x:     72px;   /* [测量] */
+  --layout-modal-inset-y:     50px;   /* [测量] */
+  --layout-command-width:     1006px; /* [测量] 命令面板 */
+  --layout-command-height:    700px;  /* [测量] */
+  --layout-command-top:       81px;   /* [测量] */
+  --layout-peek-width:        66.667vw; /* [测量] 960/1440；就是详情侧板 .qp-drawer 的宽度 */
+  --layout-menu-width:        265px;  /* [测量] 普通菜单 */
+  --layout-menu-width-wide:   324px;  /* [测量] 插入菜单 */
+  --layout-menu-max-height:   360px;  /* [测量] 插入菜单；其他会变长的菜单（下拉选择等）沿用 [推导] */
+  --layout-modal-width-sm:    560px;  /* [估计] 单列表单 / 确认弹窗 .qp-modal--sm（无左侧导航）；按惯例定的占位值，未采集 */
+  --layout-sidebar-drawer-width: min(85vw, 320px); /* [估计] 移动端文件树抽屉 .qp-sidebar--drawer（v0.6 由 --layout-drawer-width 改名）*/
+  --layout-toast-max-width:   80vw;   /* [估计] Toast 最大宽度，超出省略（v0.7 从 quietpaper.css 的字面量提出）*/
+
+  /* 断点。CSS 变量不能用在 @media 里，媒体查询需要手写同值 */
+  --breakpoint-compact:       1024px; /* [估计] 低于此宽度：侧边栏变浮层，详情侧板变全屏 */
+  --breakpoint-wide:          1330px; /* [推导] = sidebar-width + content-width + comment-width + 2 × space-xl；
+                                         低于此宽度：正文列开始收缩（评论栏仍在） */
+  --breakpoint-comment:       1102px; /* [推导] = sidebar-width + content-min + comment-width + 2 × space-xl；
+                                         低于此宽度：正文列已收到 --layout-content-min，评论栏折成按钮 */
+  /* 两个断点都按 --layout-sidebar-width 的默认宽度推导。侧边栏被拖宽后，收缩应由主区的容器宽度
+     （容器查询）决定，而不是视口断点 */
+
+  /* ---------------------------------------------------------------------
+     16. 圆角
+     --------------------------------------------------------------------- */
+  --radius-xs:   3px;    /* [测量] 勾选框、--size-control-xs 图标按钮、语言徽标、行内代码 */
+  --radius-sm:   4px;    /* [测量] 键帽、Select 标签、骨架条 */
+  --radius-md:   6px;    /* [选定 D1] 主圆角：按钮、交互行、tooltip、代码块 */
+  --radius-lg:   8px;    /* [测量] 导航内搜索框 */
+  --radius-xl:   10px;   /* [测量] 菜单 / popover、callout、Toast、Status 胶囊 */
+  --radius-2xl:  12px;   /* [测量] 模态弹窗、搜索结果行、预览卡、底部面板上两角 */
+  --radius-3xl:  20px;   /* [测量] 命令面板 */
+  --radius-full: 9999px; /* [测量] 头像、开关、圆点、分段 tab、视图 tab */
+
+  /* ---------------------------------------------------------------------
+     17. 边框与阴影
+     --------------------------------------------------------------------- */
+  --border-width:  1px;   /* [推导] 计算值 0.667px，DPR 1 下渲染为 1 物理像素，按 1px 取整 */
+  --shadow-ring:   0 0 0 1px var(--color-border-subtle);                              /* [测量] 浮层外环 */
+  --shadow-sm:     0 2px 4px 0 rgba(0, 0, 0, 0.04), var(--shadow-ring);              /* [测量] 浮动小控件 */
+  --shadow-md:     0 8px 12px 0 rgba(25, 25, 25, 0.027), 0 2px 6px 0 rgba(25, 25, 25, 0.027), var(--shadow-ring);  /* [测量] tooltip、行内工具条、详情侧板 */
+  --shadow-lg:     0 20px 24px 0 rgba(25, 25, 25, 0.05), 0 5px 8px 0 rgba(25, 25, 25, 0.027), var(--shadow-ring);  /* [测量] 菜单、popover、预览卡、Toast */
+  --shadow-modal:  0 24px 48px 0 rgba(25, 25, 25, 0.24), 0 4px 12px 0 rgba(25, 25, 25, 0.14), var(--shadow-ring);  /* [测量] 弹窗、命令面板 */
+  --shadow-sheet:  0 -8px 24px 0 rgba(25, 25, 25, 0.08), var(--shadow-ring);         /* [估计] 移动端底部面板 */
+  --shadow-edge-right: inset -1px 0 0 0 var(--color-border-edge);                    /* [测量] 侧边栏右缘（不算阴影层级，是一条线）*/
+  --blur-glass:    12px;  /* [估计] 命令面板 backdrop-filter */
+
+  --focus-ring:        0 0 0 2px #f8f8f7, 0 0 0 4px var(--color-accent-focus), 0 0 0 6px rgba(255, 255, 255, 0.25); /* [测量] 内环 #f8f8f7 是实测值，不等于任何表面 token；暗色模式要单独重写 */
+  --focus-ring-input:  inset 0 0 0 1px var(--color-accent-focus), 0 0 0 1px var(--color-accent-focus);              /* [测量] */
+  --focus-ring-danger: inset 0 0 0 1px var(--color-danger), 0 0 0 1px var(--color-danger);                          /* [测量] */
+
+  /* ---------------------------------------------------------------------
+     18. 动效 · 时长
+     --------------------------------------------------------------------- */
+  --duration-instant: 20ms;    /* [测量] 行类元素 hover：列表行、菜单项、单元格、行内图标按钮、行内文字按钮；主按钮 hover */
+  --duration-tooltip: 50ms;    /* [测量] tooltip 进出 */
+  --duration-fast:    100ms;   /* [测量] 独立控件 hover：独立图标按钮、tab、soft / secondary / ghost 按钮；焦点环 */
+  --duration-base:    200ms;   /* [测量] 浮层、弹窗、chevron、开关、勾选框、行附件（hover 间接引起的显隐）、侧边栏宽度 */
+  --duration-ambient: 700ms;   /* [测量] 顶栏打字时淡出 / 恢复（打字间接引起的显隐，不是打字的直接反馈）*/
+  --duration-shimmer: 1000ms;  /* [测量] 骨架 shimmer 一圈 */
+  --duration-spin:    1200ms;  /* [测量] spinner 一圈 */
+  --duration-toast:   5000ms;  /* [估计] toast 停留时间 */
+  --delay-loading:    300ms;   /* [估计] 超过此时长才显示加载态 */
+  --delay-tooltip:    500ms;   /* [估计] 悬停多久才出现 tooltip */
+
+  /* ---------------------------------------------------------------------
+     19. 动效 · 缓动与幅度（不使用 spring / 回弹曲线）
+     --------------------------------------------------------------------- */
+  --ease-standard: ease;         /* [测量] 浮层 / 弹窗进出、侧边栏宽度、顶栏淡出 */
+  --ease-in:       ease-in;      /* [测量] instant hover、焦点环 */
+  --ease-in-out:   ease-in-out;  /* [测量] fast hover */
+  --ease-out:      ease-out;     /* [测量] tooltip、chevron、开关、勾选框、行附件 */
+  --ease-linear:   linear;       /* [测量] spinner、shimmer */
+
+  --motion-scale-popover: 0.96;  /* [测量] 菜单 / tooltip 起始缩放 */
+  --motion-scale-modal:   0.97;  /* [测量] 弹窗起始缩放（只给 .qp-modal；命令面板没有测量数据，不借用）*/
+  --motion-row-affordance-opacity: 0.7; /* [测量] 表格行 hover 时拖拽柄 / 勾选框的不透明度；只用于这里 */
+  --motion-chevron-rotate: -90deg; /* [测量] 折叠态 chevron 的旋转角度（展开态为 0）*/
+  --motion-shimmer: running;     /* [推导] 骨架 shimmer 的 animation-play-state；reduced-motion 下为 paused（显示静态底色）*/
+
+  /* ---------------------------------------------------------------------
+     20. 层级
+     --------------------------------------------------------------------- */
+  --z-base: 0; --z-sticky: 10; --z-sidebar: 20; --z-popover: 100; --z-overlay: 200; --z-modal: 210; --z-toast: 300; --z-tooltip: 400; /* [估计] */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    /* [估计] 去掉缩放和位移；颜色、不透明度变化保留，但不长于 --duration-fast；
+       spinner 保留（它是唯一的加载指示）；shimmer 停在静态底色 */
+    --duration-base:    var(--duration-fast);
+    --duration-ambient: var(--duration-fast);
+    --motion-scale-popover: 1;
+    --motion-scale-modal:   1;
+    --motion-shimmer:   paused;
+  }
+}

@@ -10,17 +10,19 @@
 
 | 路径 | 内容与入口 |
 | --- | --- |
-| `index.ts`、`App.tsx` | 应用注册、应用壳与页面装配 |
-| `screens/`、`components/` | 页面及复用组件；阅读宿主入口为 `components/TranslatableWebView.tsx` |
-| `ui/` | 共享样式与布局，入口为 `tokens.ts`、`layout.ts` |
-| `domain/`、`hooks/` | 阅读、翻译、导航等客户端逻辑与 Hooks；网页正文提取与净化位于 `domain/webReaderExtraction.ts`，网页和字幕脚本位于 `domain/webTranslationRuntime.ts`、`domain/youtubeTranslation.ts` |
-| `lib/api.ts`、`lib/http.ts`、`lib/readerTransport*.ts` | 业务 API、HTTP 处理与平台传输适配 |
-| `lib/connection/`、`lib/readerAuth.ts` | 服务发现、连接切换、凭据与账户会话；连接入口为 `lib/connection/runtime.ts` |
-| `state/` | 查询客户端、缓存更新与失效处理；入口为 `queryClient.ts`、`cacheUpdates.ts`、`invalidation.ts` |
-| `i18n/` | 界面语言、消息与语言包；修改文案时核对 `messages/`、`packs/` |
-| `lib/generated/api.ts`、`domain/translationRuntimeSources.generated.ts` | 生成的 API 类型与注入脚本资源，不手改 |
-| `scripts/` | 代码生成和行为检查；浏览器场景位于 `scripts/browser/`，测试命令以 `package.json` 为准 |
-| `app.json`、`eas.json`、`assets/` | 原生应用配置、构建 profile 与应用资源 |
+| `src/app/` | Expo Router 路由：`_layout.tsx` 按会话状态决定可用路由（连接 → 登录 → 应用），`(tabs)/` 为今日、榜单、订阅、收藏、我的；路由文件只做装配 |
+| `src/screens/`、`src/components/`、`src/ui/` | 页面视图（只接数据和回调）、带状态的复用组件、共享 UI 组件；阅读页入口为 `components/Reader.tsx` |
+| `src/lib/api/` | HTTP 客户端 `client.ts`、错误类型 `errors.ts`、生成的 API 类型 `schema.gen.ts`（不手改） |
+| `src/lib/connection/`、`src/lib/app-session.ts` | 服务发现、地址解析、会话状态机与唯一的会话存储（`session-store.ts`）、凭据存储（原生为 SecureStore）；`app-session.ts` 提供会话和查询客户端 |
+| `src/lib/queries/`、`src/lib/query.ts` | 各页面的服务端数据与命令（TanStack Query）；查询键都以服务器和账户身份开头 |
+| `src/lib/*.ts` | 各页面的纯逻辑（`feed`、`boards`、`subscriptions`、`saved`、`me`、`reader` 等，配 `*.test.ts`）和页面状态机（`*-flow.ts`、`reader-page.ts`） |
+| `src/lib/i18n/`、`src/lib/interface-language.ts` | 界面文字表（`zh.ts` 为基准，`en.ts` 同结构）与本机界面语言 |
+| `src/lib/injected/` | 注入 WebView 的网页翻译／阅读模式运行时与 YouTube 字幕运行时（TypeScript 源码）；`translationRuntimeSources.generated.ts` 为生成物，不手改 |
+| `src/lib/web-translation-host.ts`、`src/lib/caption-host.ts`、`src/lib/translation-scheduler.ts` | App 一侧的运行时宿主：校验页面消息、调度 `POST /translations`、回送结果；组件入口为 `components/TranslatedWebView.tsx`、`components/CaptionPlayer.tsx` |
+| `src/design/`、`.rnstorybook/` | 设计原型（Storybook stories、示例数据、校准页），不进入产品页面 |
+| `design/` | 前端重新设计的流程文件；`DECISIONS.md` 是前端产品决策的唯一来源，`PRODUCT.md` 为产品说明 |
+| `scripts/` | 代码生成（API 类型、注入运行时）、翻译运行时测试与浏览器场景 `scripts/browser/`、设计原型对齐检查 |
+| `app.json`、`eas.json`、`assets/`、`patches/` | 原生应用配置、构建 profile、应用资源与依赖补丁 |
 
 ## 环境与命令
 
@@ -33,10 +35,9 @@
 | 安装依赖 | `pnpm install --frozen-lockfile` |
 | 开发客户端预览 | `pnpm run start --dev-client --max-workers 1` |
 | Web 预览 | `pnpm run web --max-workers 1` |
-| 类型／lint 检查，逐条运行 | `pnpm run typecheck`、`pnpm run lint` |
-| 指定行为检查 | 从 `package.json` 选择对应的 `pnpm run test:<名称>` |
+| 类型／lint／纯逻辑测试，逐条运行 | `pnpm run typecheck`、`pnpm run lint`、`pnpm run test:unit` |
 | 前端完整检查 | `pnpm test` |
-| Android 真机首页返回回归 | 先启动开发客户端 Metro，再运行 `maestro --device <adb-serial> test .maestro/flows/home-article-return.yaml` |
+| 设计原型对齐检查（真机，需先 `pnpm run storybook`） | `pnpm run check:story-alignment -- --device <adb-serial>`；只列可疑处，需对照截图确认 |
 | 更新网页／字幕注入资源 | `pnpm run generate:translation-runtime` |
 | 检查翻译运行时，含浏览器场景 | `pnpm run test:translation-runtime` |
 | 安装浏览器测试依赖 | `pnpm exec playwright install chromium` |
@@ -46,13 +47,14 @@
 
 ## 客户端开发约定
 
-- 修改 Expo／React Native API、原生配置、插件或依赖时，核对安装版本对应的官方文档；当前 Expo SDK 57 的入口为 [版本文档](https://docs.expo.dev/versions/v57.0.0/)。普通业务逻辑或工具脚本修改按相关实现核对，不强制重读整套框架文档。
-- 页面和 Hooks 复用现有 API、连接与缓存入口。修改账户请求、服务器切换或异步状态更新时，同时核对会话刷新、缓存失效和 `lib/connection/guard.ts`，避免绕过既有连接与身份检查；边界依据见[连接服务与账户会话](../docs/ARCHITECTURE.md#连接服务与账户会话)。
-- 服务器地址及凭据沿用运行时发现、连接存储与平台密钥存储，不写入应用配置、dotenv 或构建脚本。修改传输层时同时核对普通与 `.native.ts` 实现，以及第三方网页请求与 Reader 账户请求的区别。
-- 修改网页／字幕逻辑时编辑 TypeScript 源码，再生成注入资源并验证。核对导航、视频切换和偏好变化期间的过期结果处理；职责与执行路径见[翻译架构](../docs/ARCHITECTURE.md#翻译的三条执行路径)。
-- 网页缓存清理入口为 `domain/webStorage.ts`，与翻译脚本共用 `generate:translation-runtime` 生成链；修改时运行 `test:web-translation-browser` 中的 `web-storage.spec.mjs`，核对既有缓存回收、持续写入及登录存储保留。Android 与 iOS 的 `clearCache`／`cacheEnabled` 语义不同，不可直接共用会清除站点状态的配置。
-- 修改网页阅读模式时，同时验证 Screen 切换状态与真实 DOM／桥接场景：`test:social-web-reader` 覆盖页面挂载，`test:web-translation-browser` 包含正文提取、可信阅读文档净化和页面变更失效。桌面 Chromium 结果不能替代 Android／iOS WebView 的注入、双视图性能与视觉验收。
-- 修改界面文案和共享样式时核对 `i18n/`、`ui/` 及已有组件，统一维护可复用内容。新设计不受旧组件样式限制，但采用新的共享样式后应同步受影响页面。
+- 修改 Expo／React Native API、原生配置、插件或依赖时，核对安装版本对应的官方文档；当前 Expo SDK 58 的入口为 [版本文档](https://docs.expo.dev/versions/v58.0.0/)。普通业务逻辑或工具脚本修改按相关实现核对，不强制重读整套框架文档。
+- 页面复用现有 API 客户端、会话与查询入口。修改账户请求、服务器切换或异步状态更新时，同时核对 `src/lib/connection/session-store.ts` 的刷新与身份切换、查询键里的身份和命令的回滚，避免旧账户的数据或结果落到新账户；边界依据见[连接与账户会话](../docs/ARCHITECTURE.md#连接与账户会话)。
+- 服务器地址及凭据沿用运行时发现与平台密钥存储，不写入应用配置、dotenv 或构建脚本。修改存储时同时核对普通与 `.native.ts` 实现；第三方网页和注入脚本不接收 Reader 凭据。
+- 修改网页／字幕逻辑时编辑 `src/lib/injected/` 的 TypeScript 源码，再生成注入资源并验证。核对导航、视频切换和偏好变化期间的过期结果处理；职责与执行路径见[翻译](../docs/ARCHITECTURE.md#翻译)。
+- 网页缓存清理入口为 `src/lib/injected/webStorage.ts`，与翻译脚本共用 `generate:translation-runtime` 生成链；修改时运行 `test:web-translation-browser` 中的 `web-storage.spec.mjs`，核对既有缓存回收、持续写入及登录存储保留。Android 与 iOS 的 `clearCache`／`cacheEnabled` 语义不同，不可直接共用会清除站点状态的配置。
+- 修改网页阅读模式时，同时验证页面状态机（`src/lib/reader-page.ts` 及其测试）与真实 DOM／桥接场景：`test:web-translation-browser` 包含正文提取、可信阅读文档净化和页面变更失效。桌面 Chromium 结果不能替代 Android／iOS WebView 的注入、双视图性能与视觉验收。
+- 新版样式用 uniwind 类名。Metro 运行期间新出现的类名可能不会编进样式表（2026-11-12 实测：`mt-12` 首次使用时不生效），表现为某个类“没作用”；先用 `--clear` 重启 Metro 再判断是不是代码问题。
+- 界面文字只写进 `src/lib/i18n/` 的文字表（`zh.ts` 与 `en.ts` 同时改，测试会检查两表的键一致、英文表里没有中文），代码里不写死界面文字；共享样式与组件在 `src/ui/`，采用新的共享样式后同步受影响页面。编写规则见 [React 开发规范](../docs/engineering/react-guidelines.md)。
 - `app.json` 管理原生配置；当前 Android 明文 HTTP 通过 `expo-build-properties` 配置，iOS 使用 ATS 配置，Web 受浏览器策略约束。修改这些配置时检查各平台影响，不用单个平台结果代表其他平台。
 
 ## UI 与验证
@@ -63,7 +65,6 @@
 - 行为测试与视觉验收分别报告。尚未完成浏览器对照、真机检查或用户视觉确认时明确待验收，不以测试通过或页面打开代替视觉确认。
 - 按根目录要求选择针对性或完整检查，具体脚本以 `package.json` 为准。JS／UI 迭代优先使用现有开发客户端和真机预览；原生配置、依赖、资源或打包行为变化，发布交付或有具体打包风险时，才执行对应平台的导出／构建。导出时限制 Metro worker 为 1。
 - APK 构建使用 `eas.json` 的 `preview` profile；`production` 保持商店 AAB 输出，`development` 使用开发客户端，不能作为独立发布包的验收证据。
-- `.maestro/flows/` 保存少量发布前真机关键链路。Flow 使用稳定 `testID` 和可观察状态，不使用屏幕坐标；需要保留登录或连接状态的场景不得设置 `clearState: true`。Android 真机由 ADB 连接，应用需预先安装，运行时用 `--device` 明确目标设备。
 
 ## 本文件更新时机
 

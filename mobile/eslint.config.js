@@ -5,8 +5,8 @@ module.exports = defineConfig([
   globalIgnores([
     '.expo/**',
     'dist/**',
-    'lib/generated/**',
-    'domain/translationRuntimeSources.generated.ts',
+    'src/lib/api/schema.gen.ts',
+    'src/lib/injected/translationRuntimeSources.generated.ts',
     'test-results/**',
   ]),
   expoConfig,
@@ -24,6 +24,40 @@ module.exports = defineConfig([
       'react-hooks/set-state-in-effect': 'off',
       '@typescript-eslint/array-type': 'error',
       '@typescript-eslint/no-unused-vars': 'error',
+    },
+  },
+  {
+    // New app (src/): no direct effects (docs/engineering/react-guidelines.md §3). The only
+    // exception is src/lib/use-mount-effect.ts, which carries its own disable comment.
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'react',
+              importNames: ['useEffect', 'useLayoutEffect'],
+              message: 'Use the replacements in react-guidelines §3 (Query, handlers, key, useSyncExternalStore, useFocusEffect, useMountEffect).',
+            },
+          ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[object.name='React'][property.name=/^use(Layout)?Effect$/]",
+          message: 'Use the replacements in react-guidelines §3.',
+        },
+        {
+          selector: "CallExpression[callee.object.name='Alert'][callee.property.name='alert']",
+          message: 'Show errors in place (react-guidelines §5), not with Alert.alert.',
+        },
+      ],
+      'react-hooks/set-state-in-effect': 'error',
+      'react-hooks/refs': 'error',
+      'react-hooks/purity': 'error',
+      'react-hooks/immutability': 'error',
     },
   },
 ]);

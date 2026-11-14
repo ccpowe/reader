@@ -3,7 +3,7 @@ import { buildSync } from 'esbuild';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const bundle = buildSync({ entryPoints: [resolve(root, 'domain/webTranslationCommitQueue.ts')], bundle: true, format: 'iife', globalName: 'ReaderCommitQueue', write: false }).outputFiles[0].text;
+const bundle = buildSync({ entryPoints: [resolve(root, 'src/lib/injected/webTranslationCommitQueue.ts')], bundle: true, format: 'iife', globalName: 'ReaderCommitQueue', write: false }).outputFiles[0].text;
 async function setup(page) {
   await page.setContent('<style>article{width:330px}p{line-height:24px}.translated{display:block}</style><article></article>');
   await page.evaluate(() => {

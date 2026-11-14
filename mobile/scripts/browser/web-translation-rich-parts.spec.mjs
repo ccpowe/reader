@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test';
 import { buildSync } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-const source = JSON.parse(readFileSync(resolve('domain/translationRuntimeSources.generated.ts'), 'utf8').match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/)[1]);
-const bundle = buildSync({ entryPoints: [resolve('domain/webTranslationRules.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
+const source = JSON.parse(readFileSync(resolve('src/lib/injected/translationRuntimeSources.generated.ts'), 'utf8').match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/)[1]);
+const bundle = buildSync({ entryPoints: [resolve('src/lib/injected/webTranslationRules.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
 const { WEB_TRANSLATION_RULE_REGISTRY: rules } = await import(`data:text/javascript;base64,${Buffer.from(bundle).toString('base64')}`);
 async function start(page, html, selectedRules = rules) {
   await page.setContent(html);
@@ -122,7 +122,7 @@ test('transport plans bound JSON-escaped payloads across current and adjacent wi
   expect(Math.max(...sizes)).toBeLessThan(100000);
 });
 test('token splitting preserves exact Unicode and newline boundaries after independent trimming',async()=>{
-  const partBundle=buildSync({entryPoints:[resolve('domain/webTranslationParts.ts')],bundle:true,format:'esm',platform:'node',write:false}).outputFiles[0].text;
+  const partBundle=buildSync({entryPoints:[resolve('src/lib/injected/webTranslationParts.ts')],bundle:true,format:'esm',platform:'node',write:false}).outputFiles[0].text;
   const { splitWebTranslationPayload:split }=await import(`data:text/javascript;base64,${Buffer.from(partBundle).toString('base64')}`);
   const removeTokens=text=>text.replace(/⟪READER_(?:(?:OPEN|CLOSE)_)?\d+⟫/g,'');
   for(const payload of ['😀'.repeat(1000),('Meaningful prose\n\nAnother line 😀\n').repeat(200).trim(),`Opening ⟪READER_OPEN_0⟫${'linked words\n'.repeat(500)}⟪READER_CLOSE_0⟫ ending.`]){
@@ -164,4 +164,15 @@ test('render-only template activation updates a successful layout without provid
   await expect.poll(()=>page.locator('#card').evaluate(node=>getComputedStyle(node).webkitLineClamp)).toBe('none');
   expect(await page.evaluate(()=>window.saved===document.querySelector('.reader-translation-node'))).toBe(true);
   expect((await segments(page)).length).toBe(1);
+});
+test('spaces a model puts inside link markers stay outside the rendered link',async({page})=>{
+  await start(page,'<p id="source">Nabu Casa runs the <a href="https://example.org/foundation">Open Home Foundation</a> for everyone today.</p>');
+  await expect.poll(async()=> (await segments(page)).length).toBe(1);
+  const [segment]=await segments(page);
+  const translated=segment.text.replace(/⟪READER_OPEN_(\d+)⟫/,'运营的 ⟪READER_OPEN_$1⟫ ').replace(/⟪READER_CLOSE_(\d+)⟫/,' ⟪READER_CLOSE_$1⟫ 的商业分支').replace(/^[^⟪]*/,'Nabu Casa ').replace(/⟫[^⟪]*$/,'⟫ ，的商业分支。');
+  await page.evaluate(({id,text,source})=>window.__readerTranslationBridge.applyTranslations([{segment_id:id,source_text:source,translated_text:text,translation_status:'succeeded'}]),{id:segment.segment_id,text:translated,source:segment.text});
+  const link=page.locator('.reader-translation-node a');
+  await expect(link).toHaveCount(1);
+  expect(await link.evaluate(a=>a.textContent)).toBe('Open Home Foundation');
+  expect(await page.locator('.reader-translation-node').evaluate(n=>n.textContent)).toBe('Nabu Casa Open Home Foundation，的商业分支。');
 });

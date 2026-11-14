@@ -3,7 +3,7 @@ import { buildSync } from 'esbuild';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const bundle = buildSync({ entryPoints: [resolve(root, 'domain/webTranslationLayout.ts')], bundle: true, format: 'iife', globalName: 'ReaderLayout', write: false }).outputFiles[0].text;
+const bundle = buildSync({ entryPoints: [resolve(root, 'src/lib/injected/webTranslationLayout.ts')], bundle: true, format: 'iife', globalName: 'ReaderLayout', write: false }).outputFiles[0].text;
 async function setup(page, { wrapper = '', inline = '', controls = '' } = {}) {
   await page.setContent(`<style>.clamp {width:230px;line-height:24px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}</style><main style="${wrapper}"><div id="container" class="clamp" style="${inline}"><span id="source">This is the original paragraph with enough source words to wrap across several visible lines of text.</span><span id="translation">这是完整的中文译文，需要解除行数限制才能显示所有内容。它必须确实可读，不能只是插入节点。</span></div>${controls}</main>`);
   await page.addScriptTag({ content: bundle });

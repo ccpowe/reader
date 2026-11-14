@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
-const source = JSON.parse(readFileSync(`${root}/domain/translationRuntimeSources.generated.ts`, 'utf8').match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/)[1]);
-const bundle = buildSync({ entryPoints: [`${root}/domain/webTranslationRules.ts`], bundle: true, write: false, platform: 'node', format: 'esm' }).outputFiles[0].text;
+const source = JSON.parse(readFileSync(`${root}/src/lib/injected/translationRuntimeSources.generated.ts`, 'utf8').match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/)[1]);
+const bundle = buildSync({ entryPoints: [`${root}/src/lib/injected/webTranslationRules.ts`], bundle: true, write: false, platform: 'node', format: 'esm' }).outputFiles[0].text;
 const { WEB_TRANSLATION_RULE_REGISTRY: rules, compileWebTranslationRule } = await import(`data:text/javascript;base64,${Buffer.from(bundle).toString('base64')}`);
 
 async function load(page, html, extraRules = []) {

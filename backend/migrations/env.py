@@ -11,12 +11,9 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.core.settings import Settings, get_settings
-from app.storage import models  # noqa: F401
-from app.storage.database import Base
-
-# Import domain models here as they are added so autogenerate sees metadata.
-# pylint: disable=unused-import
+from reader import models  # noqa: F401  (registers every table on Base.metadata)
+from reader.core.db import Base
+from reader.core.settings import Settings, get_settings
 
 config = context.config
 

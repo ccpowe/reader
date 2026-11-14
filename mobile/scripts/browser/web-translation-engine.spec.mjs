@@ -6,12 +6,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const mobileRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const fixtures = resolve(mobileRoot, 'scripts/fixtures/web-translation-browser');
-const generated = readFileSync(resolve(mobileRoot, 'domain/translationRuntimeSources.generated.ts'), 'utf8');
+const generated = readFileSync(resolve(mobileRoot, 'src/lib/injected/translationRuntimeSources.generated.ts'), 'utf8');
 const runtimeMatch = generated.match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/);
 if (!runtimeMatch) throw new Error('generated web runtime source is missing');
 const runtimeSource = JSON.parse(runtimeMatch[1]);
 const rulesBundle = buildSync({
-  entryPoints: [resolve(mobileRoot, 'domain/webTranslationRules.ts')],
+  entryPoints: [resolve(mobileRoot, 'src/lib/injected/webTranslationRules.ts')],
   bundle: true,
   format: 'esm',
   platform: 'node',
@@ -802,4 +802,27 @@ test('expired webpage translations leave the DOM and cannot be replayed', async 
   await page.evaluate(({ result, epoch }) => window.__readerTranslationBridge.applyTranslations([result], epoch), { result, epoch });
   await expect(page.locator('[data-reader-translation-for]')).toHaveCount(0);
   await expect.poll(async () => (await messages(page, 'reader_translation_batch_plan')).length).toBeGreaterThan(1);
+});
+
+test('a result marked same_as_source (already in the target language) adds nothing to the page', async ({ page }) => {
+  const reset = await startRuntime(page, 'visual-block-span.html');
+  const segments = await latestSegments(page);
+  expect(segments.length).toBeGreaterThan(1);
+  const [same, ...others] = segments;
+  await page.evaluate(({ epoch, sameSegment, rest }) => window.__readerTranslationBridge.applyTranslations([
+    { segment_id: sameSegment.segment_id, source_text: sameSegment.text, translated_text: sameSegment.text, translation_status: 'succeeded', same_as_source: true },
+    ...rest.map((segment) => ({ segment_id: segment.segment_id, source_text: segment.text, translated_text: `译：${segment.text}`, translation_status: 'succeeded' })),
+  ], epoch), { epoch: reset.document_epoch, sameSegment: same, rest: others });
+  await expect(page.locator('.reader-translation-node')).toHaveCount(others.length);
+  await expect(page.locator(`[data-reader-translation-for]`)).toHaveCount(others.length);
+  const rendered = (await messages(page, 'reader_translation_segment_event')).filter((event) => event.reason === 'rendered');
+  expect(rendered.map((event) => event.segment_id)).toContain(same.segment_id);
+  // A later change on the page rescans it; the finished paragraph is not dropped and asked again.
+  const plansBefore = (await messages(page, 'reader_translation_batch_plan')).length;
+  await page.evaluate(() => document.querySelector('main p').remove());
+  await page.waitForTimeout(1500);
+  const events = await messages(page, 'reader_translation_segment_event');
+  expect(events.filter((event) => event.segment_id === same.segment_id && event.reason === 'source_removed')).toEqual([]);
+  const replanned = (await messages(page, 'reader_translation_batch_plan')).slice(plansBefore).flatMap((plan) => plan.batches.flatMap((batch) => batch.segments));
+  expect(replanned.map((segment) => segment.segment_id)).not.toContain(same.segment_id);
 });

@@ -15,13 +15,13 @@ Module._initPaths();
 try {
   execFileSync('pnpm', [
     'exec', 'tsc', '--ignoreConfig',
-    'domain/webTranslation.ts', 'domain/youtubeTranslation.ts',
+    'src/lib/injected/webTranslation.ts', 'src/lib/injected/youtubeTranslation.ts',
     '--target', 'es2022', '--module', 'commonjs', '--outDir', outputDirectory,
     '--lib', 'dom,es2022', '--skipLibCheck',
   ], { cwd: mobileRoot, stdio: 'inherit' });
 
-  const webTranslation = require(join(outputDirectory, 'domain/webTranslation.js'));
-  const youtubeTranslation = require(join(outputDirectory, 'domain/youtubeTranslation.js'));
+  const webTranslation = require(join(outputDirectory, 'webTranslation.js'));
+  const youtubeTranslation = require(join(outputDirectory, 'youtubeTranslation.js'));
   const originalFunctionToString = Function.prototype.toString;
   Function.prototype.toString = function hermesFunctionToString() {
     if (this.name === 'webTranslationBootstrap' || this.name === 'youTubeTranslationBootstrap') {

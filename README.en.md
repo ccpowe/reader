@@ -22,7 +22,7 @@
 Reader is a self-hosted information aggregation app. Bring blogs, communities, websites, and video channels into one reading space, organize subscriptions around your interests, read translations alongside the original text, and save content worth revisiting.
 
 - **Make following a daily habit.** Updates from multiple sources flow into the Today timeline. Organize your reading topics with folders, or discover something new through trending rankings.
-- **Understand more, then go deeper.** X posts in Today are translated automatically according to your preference. Read articles and web pages in bilingual views. For YouTube videos, follow the subtitle timeline, jump to a line, and replay it.
+- **Understand more, then go deeper.** Titles in your feed and in the rankings are translated automatically according to your settings. Read web pages in the original or side by side with a translation. For YouTube videos, follow the subtitle timeline, jump to a line, and replay it.
 - **Connect to your own service.** Subscriptions, saved items, and accounts live on the Reader service you connect to. The service operator configures the translation models.
 
 ## Current release status
@@ -30,9 +30,9 @@ Reader is a self-hosted information aggregation app. Bring blogs, communities, w
 > [!WARNING]
 > Reader is currently a development preview, not a production release. Known issues remain, and parts of the experience are still being refined.
 
-- **Web extraction:** The web extraction rules Agent still needs improvement to recognize and parse a wider range of pages. Some websites may not return article lists or content correctly.
-- **X sign-in:** The Android client now uses the same OAuth popup mechanism as Reddit; whether completing or cancelling Google sign-in reliably returns to the original X page still requires real-device verification.
-- **Interaction quality:** Page interactions, transition animations, and loading feedback still need further refinement.
+- **Website subscriptions:** Only websites that publish RSS / Atom are supported for now; sites without a feed are planned for a separate web-crawling service.
+- **Interface:** The client has just been redesigned; dark-mode colors and some details are still being calibrated.
+- **Languages:** The interface is available in Simplified Chinese and English (follow the system or choose one); content can be translated into several languages.
 
 ## Getting started
 
@@ -56,7 +56,7 @@ cp .env.docker.example .env.docker
 ./docker-init.sh token
 ```
 
-The API listens on `127.0.0.1:8000` by default. `token` prints the connection token for the client. Provider keys, the database password, and the JWT signing secret are never added to an image or Git. Without a provider key, original-content features remain available while `/worker-ready` stays at 503 to report that translation loops are unavailable.
+The API listens on `127.0.0.1:8000` by default. `token` prints the connection token for the client. Provider keys, the database password, and the JWT signing secret are never added to an image or Git. Without credentials for the selected translation engine (a provider API key or an imported Codex login), subscriptions, original-content reading, rankings and saved items keep working; only translation is unavailable.
 
 > [!CAUTION]
 > **X / Scweet risk notice**
@@ -74,13 +74,11 @@ The API listens on `127.0.0.1:8000` by default. `token` prints the connection to
   <img src="docs/assets/readme/reading-editorial-en.png" width="960" alt="Bilingual reading: English editorial labels around Reader mode with English source text and a Chinese translation, alongside the original bilingual web page.">
 </p>
 
-If some articles are missing a title or link while others can still be fetched, the subscription screen reports that updates are working but some articles could not be parsed. If nothing can be parsed, it continues to show an error state.
+**RSS and website articles open in the original in-app web page by default**, preserving the website's content and interactions. Select Reader Mode to show the article in a consistent layout. You can switch back to the original page at any time or open it in the system browser.
 
-**Web and RSS articles open in the original in-app web page by default**, preserving the website's content and interactions. Select Reader Mode to extract the main content from the currently loaded page and display it in a consistent layout. You can switch back to the original page at any time or open it in the system browser.
+Reader Mode uses the article body stored by the server when it is long enough (at least 400 characters); otherwise it extracts the article from the page currently loaded. If the page cannot be extracted or has not finished loading, Reader keeps the original page available and explains why, without stopping subscription updates. Extracted content is only used for the current reading session—it is not automatically saved for offline use or synchronized to other devices.
 
-Reader Mode uses the current web page; it does not switch content sources based on whether the RSS feed contains a full article. If the page cannot be extracted or has not finished loading, Reader keeps the original page available and explains why, without stopping subscription updates. Extracted content is only used for the current reading session—it is not automatically saved for offline use or synchronized to other devices.
-
-Choose between original, bilingual, and translation-only views. While a translation is pending or if it fails, the original remains readable. The backend currently supports configurable **DeepSeek** and **OpenRouter** integrations.
+Switch between the original and a bilingual view, with each translated paragraph placed under its original and styled like it. Translations appear paragraph by paragraph; while they are pending, if they fail, or when the translation budget is used up, the original remains readable. The server can be configured with **DeepSeek**, **OpenRouter** or a **Codex subscription**.
 
 ### Watch a video—and read along
 
@@ -88,7 +86,7 @@ Choose between original, bilingual, and translation-only views. While a translat
   <img src="docs/assets/readme/video-editorial-en.png" width="960" alt="YouTube subtitles: an English editorial layout with a video frame and an enlarged bilingual subtitle segment at 0:40, showing that selecting a subtitle jumps to that moment.">
 </p>
 
-Play YouTube videos in the app and optionally enable bilingual player subtitles, or follow the original and translated text in the subtitle timeline below. **Select any subtitle to jump to that moment**, making it easy to replay something you missed. Translation display can be controlled separately for the player and the subtitle timeline.
+Play YouTube videos in the app with a subtitle timeline below that follows playback. With translation on, the timeline shows each line with its translation, and the player can show bilingual subtitles too. **Select any subtitle to jump to that moment**, making it easy to replay something you missed.
 
 Subtitle features depend on captions provided by the video. Reader does not currently transcribe videos that have no captions, and availability can also be affected by YouTube page and player behavior.
 
@@ -100,13 +98,16 @@ Subtitle features depend on captions provided by the video. Reader does not curr
   <img src="docs/assets/readme/rankings-editorial-en.png" width="960" alt="Trending rankings: an English editorial layout with entry points for Hacker News, Reddit, and GitHub, plus popular Hacker News stories and discussions.">
 </p>
 
-Open Rankings and switch between **Hacker News, Reddit, and GitHub** to discover discussions, articles, and open-source projects beyond your subscriptions.
+Open Rankings and swipe between **Hacker News, Reddit, GitHub and Product Hunt** to discover discussions, articles, open-source projects and new products beyond your subscriptions. Titles and descriptions are translated automatically according to your settings; until a translation arrives, the original is shown.
 
-- **Hacker News:** Browse technology articles and discussions, using scores and comment counts to find promising stories.
-- **Reddit:** Select from communities you subscribe to and browse by hot, top, or rising. Add a Reddit community subscription before using this view.
-- **GitHub:** Discover open-source projects worth following.
+- **Hacker News:** technology articles and discussions, with score, comment count and domain.
+- **Reddit:** your subscribed communities as shortcuts, or any community you type; sort by hot, rising, or top of the day/week/month/year.
+- **GitHub:** daily, weekly or monthly Trending, with description, language, stars and stars gained in the period.
+- **X Tech Trends (hidden for now):** since 2026-11-09 TechTwitter answers server requests with a browser check, so Reader cannot read it; the board comes back with the separate web-crawling service.
+- **Product Hunt:** today's and yesterday's featured launches, by Los Angeles date. Requires an official API token on the server (see the [deployment guide](docs/deployment.md)).
 
-When something looks interesting, open it to continue reading or **save it and return from the Saved screen later**.
+Rankings are fetched from upstream only when someone opens them: each shows how old its data is; if a refresh fails the previous data stays, marked as out of date; when an upstream rate-limits Reader, fetching pauses and the reason is shown. Manual refresh is allowed once a minute per ranking.
+Opening an entry takes you straight to the reader. Entries can be saved and reopened from Saved, where they show which ranking they came from.
 
 <p align="center"><sub>These are AI-assisted editorial compositions based on screenshots from a physical Android device, not pixel-for-pixel UI screenshots. The rankings image uses Hacker News as its example. See the <a href="docs/assets/readme/README.md">asset notes</a> for the original material, versions, and sources.</sub></p>
 
@@ -115,12 +116,46 @@ When something looks interesting, open it to continue reading or **save it and r
 | Source | What you can follow | Requirements |
 | --- | --- | --- |
 | **RSS / Atom** | Blogs, news sites, and public feeds | Add the feed URL |
-| **Websites** | Article lists from public blogs | Reader first looks for RSS / Atom. If no usable feed is available and a rules Agent is configured on the server, it attempts to discover article updates. Sites requiring sign-in or using anti-bot protections may not work; not every website is supported |
+| **Websites** | Article lists from public blogs | Enter a website address and Reader finds and subscribes to its RSS / Atom feed; sites without a feed are not supported yet |
 | **Reddit** | Community posts | Add a community source |
 | **YouTube** | Channel updates | Optionally configure the YouTube Data API; otherwise Reader uses the public Atom feed |
 | **X** | Public posts from an account | Uses Scweet and a dedicated secondary-account cookie; platform policy, rate-limit, and account-restriction risks apply |
 
-A website subscription may initially discover only currently available articles, and historical coverage can be limited. The backend stores the rules Agent's decisions and limitations for administrators to inspect. Main-content extraction does not determine whether a subscription succeeds.
+## Let an AI client use Reader through MCP
+
+The Reader API includes an MCP endpoint at `/mcp` (Streamable HTTP), so an AI assistant can see what is new in your subscriptions and rankings — for example to brief you on the day's AI and tech news. Reader runs no model and no schedule of its own; judging what matters, grouping topics and writing the brief are the assistant's job.
+
+| Tool | What it does |
+| --- | --- |
+| `get_subscription_updates_summary` | New items per enabled subscription in a time window, optionally for one group |
+| `list_updates` | New items of all enabled subscriptions in a window, newest first, 50 a page |
+| `get_item` | One item's stored text (body, post or video description; text taken from HTML is capped at 20,000 characters), plus X quotes and the stored rest of a thread; missing article bodies are not fetched |
+| `get_board` | A ranking's first 30 entries now (fetched on the spot if expired); GitHub daily/weekly/monthly, Product Hunt today/yesterday, Reddit needs a community |
+| `get_youtube_transcript` | A public video's subtitles with timestamps, paged, untranslated; prefers the auto-generated track, otherwise the first manual one, which may not match the spoken language |
+| `add_subscription` | Follows an RSS feed, website, YouTube channel, X account or Reddit community when the user explicitly asks, optionally into a group; following twice is harmless |
+
+**Token:** the operator issues a personal MCP token for your account on the server (shown once; issuing again replaces it): `reader-admin mcp-token create you@example.com`, and `reader-admin mcp-token revoke you@example.com`. See the [Chinese README](README.md#通过-mcp-交给-ai-阅读) for the Docker form.
+
+**Client configuration** (any client that supports remote MCP over Streamable HTTP):
+
+```json
+{
+  "mcpServers": {
+    "reader": {
+      "type": "http",
+      "url": "https://reader.example/mcp",
+      "headers": {
+        "X-Reader-Server-Token": "<deployment connection token>",
+        "Authorization": "Bearer <personal MCP token>"
+      }
+    }
+  }
+}
+```
+
+The URL is the API base plus `/mcp`, keeping any reverse-proxy prefix; use HTTPS for a remote server. Keep both tokens in the client's private configuration, never in a committed file. Each call runs as the token's account and sees only its subscriptions; queries do not mark anything read, clear new-item badges or create translations.
+
+Time windows are ISO 8601 with a timezone. Counts cover only the data the server still keeps (the newest items of each source), not a complete archive. Subtitle reading sends no Reader credentials and does not transcribe audio; missing or restricted captions are reported as such. MCP cannot delete subscriptions, change groups or send notifications.
 
 ## Self-hosted reading spaces, managed by service
 
@@ -128,7 +163,7 @@ The Android client connects to a service at runtime, so server URLs and translat
 
 Download the Android preview APK from [GitHub Releases](https://github.com/ccpowe/reader/releases). The current build targets arm64-v8a devices; after installation, enter your own Reader service URL and connection token in the app.
 
-One client can switch between multiple Reader services. Sessions and local caches are isolated by service. Switching services does not migrate subscriptions, saved items, or account data from the previous service.
+The client connects to one Reader service at a time. Changing the server in Me means connecting again: the local session and caches are cleared, and nothing is migrated from the previous service.
 
 ## Frequently asked questions
 

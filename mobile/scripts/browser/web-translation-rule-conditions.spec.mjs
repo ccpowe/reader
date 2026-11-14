@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { buildSync } from 'esbuild';
 import { resolve } from 'node:path';
 
-const bundle = buildSync({ entryPoints: [resolve('domain/webTranslationRules.ts')], bundle: true,
+const bundle = buildSync({ entryPoints: [resolve('src/lib/injected/webTranslationRules.ts')], bundle: true,
   format: 'iife', globalName: 'ReaderRules', platform: 'browser', write: false }).outputFiles[0].text;
 
 async function prepare(page) {

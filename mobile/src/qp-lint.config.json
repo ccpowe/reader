@@ -1,0 +1,15 @@
+{
+  "ignore": [
+    "uniwind-types.d.ts",
+    "env.d.ts",
+    "design/calibration/"
+  ],
+  "tokenFiles": [
+    "global.css"
+  ],
+  "baseCss": "../design/style/quietpaper.css",
+  "tokenCss": [
+    "../design/style/tokens.css",
+    "../global.css"
+  ]
+}

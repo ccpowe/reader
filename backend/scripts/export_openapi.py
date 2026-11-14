@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from app.main import create_app
+from reader.main import create_app
 
 
 def main() -> None:

@@ -25,7 +25,7 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 | `backend/`                      | Python / FastAPI 后端，API 与 Worker 分别运行；详细导航和命令见 [后端约定](backend/AGENTS.md) |
 | `contracts/`                    | 系统边界协议，当前包含生成的 Reader API `openapi.json`                                 |
 | `architecture/`                 | C4 DSL 源文件；`html/` 为不提交的本地预览产物                                           |
-| `docs/`                         | 部署说明、系统架构及 README 所需素材                                                   |
+| `docs/`                         | 部署说明、系统架构、开发规范（`engineering/`）、界面设计流程与风格库（`design/`）及 README 所需素材 |
 | `services/`                     | 核心进程的 systemd／Caddy 模板及可选 Scweet 服务                                      |
 | `compose.yaml`、`docker-init.sh` | 完整 Docker 部署拓扑与受限的初始化、升级、停止和状态入口                                         |
 | `.github/workflows/`            | CI 配置，目前包含网页翻译运行时检查                                                      |
@@ -43,6 +43,8 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 | 模块职责、数据归属、依赖约束或关键运行流程 | [ARCHITECTURE.md](docs/ARCHITECTURE.md)，随后核对相关代码                               |
 | 系统、运行单元、重要组件及其关系      | [architecture/workspace.dsl](architecture/workspace.dsl)，包含 C1–C3 视图；C4 直接查看源码 |
 | 前后端接口                 | [contracts/openapi.json](contracts/openapi.json) 查看协议；修改入口为后端路由及请求／响应模型        |
+| 设计、编写与审查代码的原则      | [软件设计规范](docs/engineering/software-design-guidelines.md)（通用与后端）；前端另读 [React 开发规范](docs/engineering/react-guidelines.md) |
+| 界面设计（产品文档、布局、风格）   | [设计流程包](docs/design/kit/README.md) 与 [风格库](docs/design/styles/README.md)                                      |
 
 
 历史文档是检索线索。文档与代码不一致时，区分当前实现、已确认的目标和未知项，判断是文档过期、实现偏离还是目标变化；不要把旧方案当作当前约束，也不要通过修改文档把实现缺陷变成预期行为。
@@ -51,8 +53,8 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 
 公开树保留产品代码与必需配套资料：`mobile/`、`backend/`、`contracts/`、
 `architecture/`、`docs/`、`services/`、`.github/`、`.codex/` 和 `.serena/`。
-`workspaces/` 的网页规则实验不是产品运行或发布所需内容，不纳入公开树；
-后续实验应放在独立私有仓库或本地目录。新增顶层目录前先确认它是产品、构建、部署或维护的必需输入。
+`workspaces/` 的网页爬取实验不是产品运行或发布所需内容，不纳入公开树；
+后续实验应放在独立私有仓库或本地目录。网页爬取与规则编写计划作为独立服务另行实现，不放回 Reader 后端。新增顶层目录前先确认它是产品、构建、部署或维护的必需输入。
 
 ## 开发与审查
 
@@ -84,7 +86,7 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 | 仓库根目录 | 导入／检查 Docker Codex 订阅凭据 | `./docker-init.sh codex-auth import /path/to/dedicated/auth.json` / `./docker-init.sh codex-auth status` |
 
 
-接口以 FastAPI 路由及请求／响应模型中的声明为编写入口。生成命令通过 `backend/scripts/export_openapi.py` 导出 `contracts/openapi.json`，并从同一份 OpenAPI 生成 `mobile/lib/generated/api.ts`；需要已安装的前端依赖和 `backend/.venv`。两份生成文件均纳入版本控制，不要手改或另写一份协议。路径、参数、响应、认证、错误声明或说明变化后，重新生成、运行契约检查，并将生成变化随实现一起提交。检查命令只校验是否同步，不会修复文件，也不代替兼容性审查与行为测试。
+接口以 FastAPI 路由及请求／响应模型中的声明为编写入口。生成命令通过 `backend/scripts/export_openapi.py` 导出 `contracts/openapi.json`，并从同一份 OpenAPI 生成 `mobile/src/lib/api/schema.gen.ts`；需要已安装的前端依赖和 `backend/.venv`。两份生成文件均纳入版本控制，不要手改或另写一份协议。路径、参数、响应、认证、错误声明或说明变化后，重新生成、运行契约检查，并将生成变化随实现一起提交。检查命令只校验是否同步，不会修复文件，也不代替兼容性审查与行为测试。
 
 架构图命令使用 [Structurizr 官方二进制](https://docs.structurizr.com/binaries) 和 Java 21，`/path/to/structurizr.war` 替换为本地工具路径；导出后用浏览器打开 `architecture/html/index.html`。修改 DSL 后重新导出并刷新页面。只维护 DSL 源文件，不手改或提交导出物；`architecture/html/` 已加入 Git 忽略。
 
@@ -101,6 +103,7 @@ Reader 是前后端分离的信息聚合与阅读应用。本文供人和 AI 共
 ## 文档维护
 
 - 默认文档范围是 README、根目录及按需设置的前后端 AGENTS、ARCHITECTURE、架构模型和接口定义。其他文档类别按用户明确需要再增加，不为任务自动生成计划、总结或验收 Markdown。
+- 例外（用户 2026-11-11 确认）：前端重新设计按 [设计流程](docs/design/kit/design/START.md) 进行，流程要求的 `DECISIONS.md`、`PRODUCT.md`、原型说明、校准页和 `reports/` 放在 `mobile/design/`；其中 `DECISIONS.md` 是前端产品决策的唯一来源。
 - README 在用户可见能力、使用方式或支持范围变化时更新；ARCHITECTURE 在职责、数据归属、依赖约束或关键运行流程变化时更新。
 - 本文件在共享规则、跨端约定、仓库级入口或共享命令变化时更新；前后端各自的环境、命令、导航和开发约定变化只更新对应子目录 AGENTS。同一详细规则只在负责它的位置维护，其他资料引用。
 - 架构结构变化更新模型，接口变化更新契约，重要决定才记录 ADR；普通实现修改不要求更新全部文档。

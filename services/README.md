@@ -41,8 +41,7 @@ serialises jobs, so one X account is never used concurrently.
 
 ### Recommended server deployment: systemd + host Python
 
-The live Reader deployment runs Scweet as a host Python process, not as a
-Docker container:
+Scweet can also run as a host Python process instead of a Docker container:
 
 ```text
 systemd → reader-scweet.service → services/scweet/.venv/bin/uvicorn
@@ -116,22 +115,33 @@ and HTTPS access to X, so do not make its only network internal-only. The
 `*.dev.yml` override is the only configuration that opens a port, and it is
 bound to localhost. Do not expose this service publicly.
 
-Set `APP_X_PROVIDER=scweet` explicitly (it is the default). Apify remains an
-explicit compatibility path through `APP_X_PROVIDER=apify`; the backend never
-switches providers automatically because their pagination checkpoints are not
-interchangeable. If the selected collector is not configured, only X syncing
-degrades; RSS, Web, Reddit, and YouTube continue normally. Authentication,
+Scweet is Reader's only X collector. If it is not configured, only X syncing
+degrades; RSS, Reddit, and YouTube continue normally. Authentication,
 manifest, protected-account, and rate-limit failures are returned as structured
 errors and use the backend retry policy.
 
 The timeline endpoint returns an opaque continuation plus boundary tweet IDs.
 The service replays and validates the previous boundary before advancing,
 filters ads/recommendations, and keeps original tweets, quotes, replies,
-retweets, and pinned events. Its cumulative collector safety window is 120
-items per backend scan. When X returns a profile timeline that Scweet parses as
-empty, the service performs one bounded 45-day `SearchTimeline` recovery for
-the exact author handle. Recovered rows are author-validated, de-duplicated,
-sorted by tweet ID, and capped to the requested limit. If neither timeline nor
-search returns content, a public profile lookup distinguishes a valid dormant
-account from an unverified empty result; the latter is reported as a structured
-failure instead of a successful empty sync.
+retweets, and pinned events. Reader's `scweet_service/profile_timeline.py`
+expands `TimelineTimelineModule` conversation items and `TimelineAddToModule`
+continuations before Scweet parses, de-duplicates, and counts page results.
+Quoted and reposted content remains attached to its timeline event rather than
+being recursively emitted as separate posts. The profile engine shares the
+existing account/session configuration; search and profile lookup are unchanged.
+Its cumulative collector safety window remains 120 items per backend scan.
+
+The backend accepts both ISO timestamps and X's textual `created_at` dates,
+normalizing them to UTC so new entries use publication time instead of collection
+time. Neither change resets checkpoints, schedules a historical backfill, or
+rewrites existing entry sort times; ordinary scans may still discover previously
+missed items within their current window.
+
+When X returns an empty profile timeline, the service performs one bounded
+45-day `SearchTimeline` recovery for the exact author handle. Recovered rows
+are author-validated, de-duplicated, sorted by tweet ID, and capped to the
+requested limit. If neither timeline nor search returns content, a public
+profile lookup distinguishes a valid dormant account from an unverified empty
+result; the latter is reported as a structured failure instead of a successful
+empty sync. This remains a bounded collector of undocumented upstream endpoints,
+not a guarantee of complete X history or availability.

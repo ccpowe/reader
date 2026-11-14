@@ -2,9 +2,9 @@ import { expect, test } from '@playwright/test';
 import { buildSync } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-const generated = readFileSync(resolve('domain/translationRuntimeSources.generated.ts'), 'utf8');
+const generated = readFileSync(resolve('src/lib/injected/translationRuntimeSources.generated.ts'), 'utf8');
 const source = JSON.parse(generated.match(/export const WEB_TRANSLATION_BOOTSTRAP_SOURCE = (".*");\n/)[1]);
-const bundle = buildSync({ entryPoints: [resolve('domain/webTranslationRules.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
+const bundle = buildSync({ entryPoints: [resolve('src/lib/injected/webTranslationRules.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
 const { WEB_TRANSLATION_RULE_REGISTRY: rules } = await import(`data:text/javascript;base64,${Buffer.from(bundle).toString('base64')}`);
 const all = page => page.evaluate(() => [...new Map(window.messages.filter(m => m.type === 'reader_translation_batch_plan').flatMap(m => m.batches.flatMap(b => b.segments)).map(s => [s.segment_id, s])).values()]);
 async function start(page, html, setup, frameHtml) {

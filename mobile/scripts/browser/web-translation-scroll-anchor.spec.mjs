@@ -3,7 +3,7 @@ import { buildSync } from 'esbuild';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const bundle = buildSync({ entryPoints: [resolve(root, 'domain/webTranslationScrollAnchor.ts')], bundle: true, format: 'iife', globalName: 'ReaderAnchor', write: false }).outputFiles[0].text;
+const bundle = buildSync({ entryPoints: [resolve(root, 'src/lib/injected/webTranslationScrollAnchor.ts')], bundle: true, format: 'iife', globalName: 'ReaderAnchor', write: false }).outputFiles[0].text;
 async function setup(page, { native = false, wrapper = '' } = {}) {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.setContent(`<style>html {overflow-anchor:${native ? 'auto' : 'none'};scroll-behavior:auto}body{margin:0}main{width:600px;margin:auto;${wrapper}}p{font:20px/24px sans-serif;margin:0 0 24px}</style><div id="spacer" style="height:800px"></div><main>${'<p>Readable source paragraph with sufficient words to cover several lines. Translation must preserve the text currently being read in this ordinary article.</p>'.repeat(40)}</main><div style="height:1000px"></div>`);

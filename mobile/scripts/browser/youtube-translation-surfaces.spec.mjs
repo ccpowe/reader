@@ -5,9 +5,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const generated = readFileSync(resolve(root, 'domain/translationRuntimeSources.generated.ts'), 'utf8');
+const generated = readFileSync(resolve(root, 'src/lib/injected/translationRuntimeSources.generated.ts'), 'utf8');
 const runtime = name => JSON.parse(generated.match(new RegExp(`export const ${name} = (".*");\\n`))[1]);
-const bundle = buildSync({ entryPoints: [resolve(root, 'domain/webTranslationRules.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
+const bundle = buildSync({ entryPoints: [resolve(root, 'src/lib/injected/webTranslationRules.ts')], bundle: true, format: 'esm', platform: 'node', write: false }).outputFiles[0].text;
 const { WEB_TRANSLATION_RULE_REGISTRY: rules } = await import(`data:text/javascript;base64,${Buffer.from(bundle).toString('base64')}`);
 
 test('YouTube timeline, player captions and webpage comments translate independently', async ({ page }) => {
